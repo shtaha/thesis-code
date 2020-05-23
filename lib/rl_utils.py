@@ -21,6 +21,4 @@ def compute_returns(rewards, gamma=1.0):
 
 def one_hot_test(tensor, axis=-1):
     test = np.sum(tensor, axis=axis, dtype=np.int)
-    assert (
-        np.equal(test, np.ones_like(test, dtype=np.int)).all()
-    )
+    assert np.equal(test, np.ones_like(test, dtype=np.int)).all()

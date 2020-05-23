@@ -94,7 +94,10 @@ class AgentCEMG(AgentWithConverter, tf.keras.Model):
         for layer, layer_n_hidden in enumerate(n_hidden[1:]):
             self.layers_hidden.append(
                 tf.keras.layers.Dense(
-                    layer_n_hidden, activation=tf.nn.relu, name=f"actor_layer_hidden_{layer}", trainable=True
+                    layer_n_hidden,
+                    activation=tf.nn.relu,
+                    name=f"actor_layer_hidden_{layer}",
+                    trainable=True,
                 )
             )
 
@@ -130,9 +133,7 @@ class AgentCEMG(AgentWithConverter, tf.keras.Model):
         #     observation.to_vect(), (-1, self.n_states)
         # )
 
-        return np.reshape(
-            observation.rho, (-1, self.n_states)
-        )
+        return np.reshape(observation.rho, (-1, self.n_states))
 
     def convert_act(self, encoded_act: np.ndarray):
         if encoded_act.size > 1:
@@ -178,9 +179,7 @@ class RandomAgent(AgentWithConverter):
         return action_ids
 
     def convert_obs(self, observation):
-        return np.reshape(
-            observation.to_vect(), (-1, self.n_states)
-        )  # (1, n_states)
+        return np.reshape(observation.to_vect(), (-1, self.n_states))  # (1, n_states)
 
     def convert_act(self, encoded_act: np.ndarray):
         if encoded_act.size > 1:
@@ -214,7 +213,9 @@ def main_cem(args, env, agent, sampling_agent):
         sample_states = []
         sample_actions = []
         for j in range(args.n_samples):
-            states, actions, rewards = episode_rollout(env, agent.action_set, sampling_agent, args.max_timesteps)
+            states, actions, rewards = episode_rollout(
+                env, agent.action_set, sampling_agent, args.max_timesteps
+            )
             total_return, returns = compute_returns(rewards)
 
             sample_states.append(states)
@@ -225,14 +226,18 @@ def main_cem(args, env, agent, sampling_agent):
         best_indices = np.argsort(sample_returns)[::-1][:best_n_samples]
 
         data = np.vstack([sample_states[k] for k in best_indices])
-        targets = np.vstack([np.reshape(sample_actions[k], (-1, 1)) for k in best_indices])
+        targets = np.vstack(
+            [np.reshape(sample_actions[k], (-1, 1)) for k in best_indices]
+        )
 
         # Learn policy
         agent.fit(data, targets, verbose=1, epochs=3)
 
         # Test actor
         if i % 5 == 0:
-            _, actions, rewards = episode_rollout(env, agent.action_set, agent, args.max_timesteps, render=False)
+            _, actions, rewards = episode_rollout(
+                env, agent.action_set, agent, args.max_timesteps, render=False
+            )
             print(f"unique: R {np.unique(targets)} CEM {np.unique(actions)}")
             print_trainable_variables(agent)
 

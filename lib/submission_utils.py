@@ -1,12 +1,7 @@
 import os
 import zipfile
 
-
-def make_dir(directory):
-    if not os.path.exists(directory):
-        os.mkdir(directory)
-
-    return directory
+from lib.data_utils import make_dir
 
 
 def write_file(file_path, contents):
@@ -44,7 +39,7 @@ def zip_directory(directory, zip_name=None, ignore_dirs=("__pycache__",)):
                 file_paths.append(filepath)
 
     print(f"Creating archive {zip_path}")
-    with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
+    with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zipf:
         for file in file_paths:
             print(f"\t-- {file}")
             zipf.write(file)

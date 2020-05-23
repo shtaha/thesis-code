@@ -11,12 +11,16 @@ def make_dir(directory):
 
 
 def create_results_dir(results_dir_path):
-    results_dir = make_dir(os.path.join(results_dir_path,
-                                        datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S_model")))
+    results_dir = make_dir(
+        os.path.join(
+            results_dir_path,
+            datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S_model"),
+        )
+    )
     return results_dir
 
 
 def hot_vector(hot_indices, length, dtype=np.bool):
-    vector = np.zeros((length, ), dtype=dtype)
+    vector = np.zeros((length,), dtype=dtype)
     vector[hot_indices] = np.True_
     return vector

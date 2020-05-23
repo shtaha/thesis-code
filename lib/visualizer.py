@@ -7,7 +7,7 @@ import numpy as np
 
 def custom_formatwarning(msg, *args, **kwargs):
     del args, kwargs  # Unused.
-    return str(msg) + '\n'
+    return str(msg) + "\n"
 
 
 warnings.formatwarning = custom_formatwarning
@@ -15,7 +15,9 @@ warnings.formatwarning = custom_formatwarning
 
 def print_action(action):
     representation = action.__str__()
-    representation = [line.strip() for line in representation.split("\n")[1:] if "NOT" not in line]
+    representation = [
+        line.strip() for line in representation.split("\n")[1:] if "NOT" not in line
+    ]
     if len(representation) > 0:
         assert not action.is_ambiguous()[0]
         print("action", "\n".join(representation))
@@ -68,38 +70,63 @@ def render_and_save(environment, save_dir, fig_title):
 
 
 def get_line_status(observation):
-    line_status = [f"Line id {i}: {int(observation.line_status[i])}" for i in range(observation.n_line)]
+    line_status = [
+        f"Line id {i}: {int(observation.line_status[i])}"
+        for i in range(observation.n_line)
+    ]
     return line_status
 
 
 def get_line_topology(observation):
     topology_vect = observation.topo_vect
-    line_topology = [f"Line id {i}: {topology_vect[pos_or]}, {topology_vect[pos_ex]}" for i, (pos_or, pos_ex) in
-                     enumerate(zip(observation.line_or_pos_topo_vect, observation.line_ex_pos_topo_vect))]
+    line_topology = [
+        f"Line id {i}: {topology_vect[pos_or]}, {topology_vect[pos_ex]}"
+        for i, (pos_or, pos_ex) in enumerate(
+            zip(observation.line_or_pos_topo_vect, observation.line_ex_pos_topo_vect)
+        )
+    ]
 
     return line_topology
 
 
 def get_gen_topology(observation):
     topology_vect = observation.topo_vect
-    gen_topology = [f"Gen id {i}: {topology_vect[pos]}" for i, pos in enumerate(observation.gen_pos_topo_vect)]
+    gen_topology = [
+        f"Gen id {i}: {topology_vect[pos]}"
+        for i, pos in enumerate(observation.gen_pos_topo_vect)
+    ]
     return gen_topology
 
 
 def get_load_topology(observation):
     topology_vect = observation.topo_vect
-    load_topology = [f"Load id {i}: {topology_vect[pos]}" for i, pos in enumerate(observation.load_pos_topo_vect)]
+    load_topology = [
+        f"Load id {i}: {topology_vect[pos]}"
+        for i, pos in enumerate(observation.load_pos_topo_vect)
+    ]
     return load_topology
 
 
-def print_topology_changes(observation, observation_next, p_line_status=False, p_line_topology=False,
-                           p_gen_topology=False, p_load_topology=False):
+def print_topology_changes(
+    observation,
+    observation_next,
+    p_line_status=False,
+    p_line_topology=False,
+    p_gen_topology=False,
+    p_load_topology=False,
+):
     def before_after(inputs, inputs_next):
         changes = list()
         if len(inputs - inputs_next):
-            changes.append("BEFORE:" + "\t|\t".join([f"{status}" for status in list(inputs - inputs_next)]))
+            changes.append(
+                "BEFORE:"
+                + "\t|\t".join([f"{status}" for status in list(inputs - inputs_next)])
+            )
         if len(inputs_next - inputs):
-            changes.append("AFTER:" + "\t|\t".join([f"{status}" for status in list(inputs_next - inputs)]))
+            changes.append(
+                "AFTER:"
+                + "\t|\t".join([f"{status}" for status in list(inputs_next - inputs)])
+            )
         return changes
 
     if p_line_status:
@@ -159,7 +186,12 @@ def print_info(info, done, reward):
 
 def print_rho(observation):
     rho = "\t|\t".join(
-        ["Line id {}: {:.2f}".format(i, r) for i, r in enumerate(observation.rho) if r >= 0.8 or r == 0.0])
+        [
+            "Line id {}: {:.2f}".format(i, r)
+            for i, r in enumerate(observation.rho)
+            if r >= 0.8 or r == 0.0
+        ]
+    )
     if rho:
         print("Line rho:\n" + rho)
 
@@ -172,13 +204,29 @@ def describe_substation(subid, environment):
     n_elements = environment.sub_info[subid]
     gens = [gen for gen, sub in enumerate(environment.gen_to_subid) if sub == subid]
     loads = [load for load, sub in enumerate(environment.load_to_subid) if sub == subid]
-    lines_or = [line for line, sub in enumerate(environment.line_or_to_subid) if sub == subid]
-    lines_ex = [line for line, sub in enumerate(environment.line_ex_to_subid) if sub == subid]
+    lines_or = [
+        line for line, sub in enumerate(environment.line_or_to_subid) if sub == subid
+    ]
+    lines_ex = [
+        line for line, sub in enumerate(environment.line_ex_to_subid) if sub == subid
+    ]
 
-    pos_gens = [pos for gen, pos in enumerate(environment.gen_to_sub_pos) if gen in gens]
-    pos_loads = [pos for load, pos in enumerate(environment.load_to_sub_pos) if load in loads]
-    pos_lines_or = [pos for line, pos in enumerate(environment.line_or_to_sub_pos) if line in lines_or]
-    pos_lines_ex = [pos for line, pos in enumerate(environment.line_ex_to_sub_pos) if line in lines_ex]
+    pos_gens = [
+        pos for gen, pos in enumerate(environment.gen_to_sub_pos) if gen in gens
+    ]
+    pos_loads = [
+        pos for load, pos in enumerate(environment.load_to_sub_pos) if load in loads
+    ]
+    pos_lines_or = [
+        pos
+        for line, pos in enumerate(environment.line_or_to_sub_pos)
+        if line in lines_or
+    ]
+    pos_lines_ex = [
+        pos
+        for line, pos in enumerate(environment.line_ex_to_sub_pos)
+        if line in lines_ex
+    ]
 
     elements = list(itertools.chain(lines_or, lines_ex, gens, loads))
     positions = list(itertools.chain(pos_lines_or, pos_lines_ex, pos_gens, pos_loads))
@@ -188,7 +236,9 @@ def describe_substation(subid, environment):
 
     print(f"substation id: {subid} {n_elements}")
     print(f"ids: lines_or {lines_or} lines_ex {lines_ex} gens {gens} loads {loads}")
-    print(f"pos: lines_or {pos_lines_or} lines_ex {pos_lines_ex} gens {pos_gens} loads {pos_loads}")
+    print(
+        f"pos: lines_or {pos_lines_or} lines_ex {pos_lines_ex} gens {pos_gens} loads {pos_loads}"
+    )
 
 
 def describe_environment(environment):
@@ -200,14 +250,20 @@ def describe_environment(environment):
     print(f"n_line {environment.n_line}")
     print(f"n_sub {len(environment.sub_info)}")
 
-    sub_info = ", ".join(["{}:{:>2}".format(i, sub) for i, sub in enumerate(environment.sub_info)])
+    sub_info = ", ".join(
+        ["{}:{:>2}".format(i, sub) for i, sub in enumerate(environment.sub_info)]
+    )
     print(f"sub_info {sub_info}")
     print(f"dim_topo {environment.dim_topo}")
 
     print(f"load_to_subid {environment.action_space.load_to_subid}")
     print(f"gen_to_subid {environment.action_space.gen_to_subid}")
 
-    line_or_to_subid = ", ".join(["{:>3}".format(subid) for subid in environment.line_or_to_subid])
-    line_ex_to_subid = ", ".join(["{:>3}".format(subid) for subid in environment.line_ex_to_subid])
+    line_or_to_subid = ", ".join(
+        ["{:>3}".format(subid) for subid in environment.line_or_to_subid]
+    )
+    line_ex_to_subid = ", ".join(
+        ["{:>3}".format(subid) for subid in environment.line_ex_to_subid]
+    )
     print(f"line_or_to_subid {line_or_to_subid}")
     print(f"line_ex_to_subid {line_ex_to_subid}")
