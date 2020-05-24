@@ -54,18 +54,22 @@ class ActionSpaceGenerator(object):
     Customized action generation functions. 
     """
 
+    """
+    Topology actions.
+    """
+
     def get_all_unitary_topologies_set(
             self, n_bus=2, verbose=False
     ) -> Tuple[List[TopologyAction], List[Dict]]:
         """
         Returns a list of valid topology substation splitting actions. Currently, it returns
         """
-        action_info = list()
+        actions_info = list()
         actions = list()
         for sub_id, _ in enumerate(self.action_space.sub_info):
             (
                 substation_actions,
-                substation_topologies,
+                substation_actions_info,
             ) = self.get_all_unitary_topologies_set_sub_id(
                 sub_id, n_bus=n_bus, verbose=verbose
             )
@@ -73,19 +77,20 @@ class ActionSpaceGenerator(object):
             # Check if there is only one valid topology on a given substation, then this topology is fixed and thus
             # the corresponding action redundant.
             if len(substation_actions) > 1:
-                substation_info = [{"sub_id": sub_id}]
-                action_info.extend(substation_info)
+                actions_info.extend(substation_actions_info)
                 actions.extend(substation_actions)
             else:
                 print(
                     f"Substation id {sub_id} has only a single valid topology, thus no actions are affecting it."
                 )
 
-        return actions, action_info
+        # Check if every actions has it corresponding information.
+        assert len(actions) == len(actions_info)
+        return actions, actions_info
 
     def get_all_unitary_topologies_set_sub_id(
             self, sub_id, n_bus=2, verbose=False
-    ) -> Tuple[List[TopologyAction], List[np.ndarray]]:
+    ) -> Tuple[List[TopologyAction], List[Dict]]:
         """
         Tested only for n_bus = 2.
         """
@@ -93,8 +98,8 @@ class ActionSpaceGenerator(object):
         n_elements = self.action_space.sub_info[sub_id]
         bus_set = np.arange(1, n_bus + 1)
 
-        substation_topologies = list()
         substation_actions = list()
+        substation_actions_info = list()
 
         # Get line positions within a substation
         lines_or_pos = self.action_space.line_or_to_sub_pos[
@@ -157,15 +162,27 @@ class ActionSpaceGenerator(object):
 
                 # Check if there exists a bus with exactly one line, thus this line is implicitly disconnected.
                 check_one_line = self._check_one_line_on_bus(topology, n_bus)
-                if check_one_line and verbose:
-                    count_disconnection = count_disconnection + 1  # Add 1 to one line disconnection count.
-                    print("There is a bus with exactly one line connected.")
+                if check_one_line:
+                    count_disconnection = (
+                            count_disconnection + 1
+                    )  # Add 1 to one line disconnection count.
+
+                    if verbose:
+                        print("There is a bus with exactly one line connected.")
 
                 action = self.action_space(
                     {"set_bus": {"substations_id": [(sub_id, topology)]}}
                 )
-                substation_topologies.append(topology)
+                action_info = {
+                    "sub_id": sub_id,
+                    "action_type": "topology_set",
+                    "topology": topology.tolist(),
+                    "check_gen_load": check_gen_load,
+                    "check_one_line": check_one_line,
+                }
+
                 substation_actions.append(action)
+                substation_actions_info.append(action_info)
             else:
                 if verbose:
                     print(
@@ -176,59 +193,116 @@ class ActionSpaceGenerator(object):
             print(
                 f"Found {len(substation_actions)} distinct valid substation switching actions."
             )
-            _, n_valid, n_disconnection = self.get_number_topologies_set_sub_id(sub_id, n_bus=n_bus, verbose=verbose)
-            assert n_valid == count_valid
-            assert n_disconnection == count_disconnection
 
-        return substation_actions, substation_topologies
+        _, n_valid, n_disconnection = self.get_number_topologies_set_sub_id(
+            sub_id, n_bus=n_bus, verbose=True
+        )
 
-    def get_all_unitary_line_status_set(self, n_bus=2):
+        # If there are only 2 or less elements per substation, then there is no action possible, despite one topology
+        # being valid.
+        if n_elements < 3:
+            substation_actions = list()
+            substation_actions_info = list()
+            count_valid = 1
+            count_disconnection = 0
+
+        assert len(substation_actions) == len(substation_actions_info)
+        assert n_valid == count_valid
+        assert n_disconnection == count_disconnection
+        return substation_actions, substation_actions_info
+
+    def get_number_topologies_set_sub_id(self, sub_id, n_bus=2, verbose=False):
+        (n_lines, n_gens, n_loads), _ = self._get_substation_info(sub_id)
+
+        (n_actions, n_valid, n_disconnection,) = self._get_number_topologies_set(
+            n_lines, n_gens, n_loads, n_bus=n_bus
+        )
+
+        if verbose:
+            print(
+                f"Substation id {sub_id} with {n_lines} lines, {n_gens} generators and {n_loads} loads. "
+                f"There are {n_actions} possible actions, {n_valid} are valid with "
+                f"{n_disconnection} actions that have a standalone line."
+            )
+        return n_actions, n_valid, n_disconnection
+
+    """
+    Line status actions.
+    """
+
+    def get_all_unitary_line_status_set(self, n_bus=2, verbose=False) -> Tuple[List[TopologyAction], List[Dict]]:
+        """
+        Not customized.
+        """
+        n_lines = self.action_space.n_line
+
         actions = list()
+        actions_info = list()
 
-        _, substation_action_info = self.get_all_unitary_topologies_set(
-            n_bus=n_bus, verbose=False
-        )
-        counts = collections.Counter(
-            [info["sub_id"] for info in substation_action_info]
-        )
-        print(counts)
-        substation_counts = np.array(
-            [counts[sub_id] for sub_id in range(self.action_space.sub_info)]
-        )
-        print(substation_counts)
-        print(np.equal(substation_counts, 0))
+        for line_id in range(n_lines):
+            action = self.action_space.disconnect_powerline(line_id=line_id)
+            action_info = {
+                "line_id": line_id,
+                "action_type": "line_status_set",
+                "line_set": "disconnect"
+            }
 
-        for i in range(self.action_space.n_line):
-            actions.append(self.action_space.disconnect_powerline(line_id=i))
+            actions.append(action)
+            actions_info.append(action_info)
 
         for bus_or in np.arange(1, n_bus + 1):
             for bus_ex in np.arange(1, n_bus + 1):
-                print(bus_or, bus_ex)
-                for i in range(self.action_space.n_line):
+                for line_id in range(n_lines):
                     action = self.action_space.reconnect_powerline(
-                        line_id=i, bus_ex=bus_ex, bus_or=bus_or
+                        line_id=line_id, bus_ex=bus_ex, bus_or=bus_or
                     )
+                    action_info = {
+                        "line_id": line_id,
+                        "action_type": "line_status_set",
+                        "line_set": "reconnect"
+                    }
 
                     actions.append(action)
+                    actions_info.append(action_info)
 
-        return actions
+        if verbose:
+            print(f"Generated {len(actions)} line status set actions, {n_bus ** 2 * n_lines} reconnections and "
+                  f"{n_lines} disconnections.")
 
-    def get_all_unitary_line_status_change(self, verbose=False):
+        assert len(actions) == len(actions_info)
+        return actions, actions_info
+
+    def get_all_unitary_line_status_change(self, verbose=False) -> Tuple[List[TopologyAction], List[Dict]]:
         actions = list()
+        actions_info = list()
 
         default_status = self.action_space.get_change_line_status_vect()
         for line_id in range(self.action_space.n_line):
+            (substation_or, substation_ex), (n_valid_or, n_valid_ex) = self._get_line_info(line_id)
+
             line_status = default_status.copy()
             line_status[line_id] = True
-
             action = self.action_space({"change_line_status": line_status})
 
-            if verbose:
-                pass
-            print(action)
-            actions.append(action)
+            action_info = {
+                "line_id": line_id,
+                "action_type": "line_status_change",
+                "substation_or": (substation_or, n_valid_or),
+                "substation_ex": (substation_ex, n_valid_ex),
+            }
 
-        return actions
+            actions.append(action)
+            actions_info.append(action_info)
+
+        if verbose:
+            print(f"Generated {len(actions)} line status switching actions, one for each line.")
+
+        assert len(actions) == len(actions_info)
+        return actions, actions_info
+
+    """
+    Redispatching actions.
+    """
 
     def get_all_unitary_redispatch(self):
         """
@@ -265,29 +339,80 @@ class ActionSpaceGenerator(object):
 
         return actions
 
-    def get_number_topologies_set_sub_id(self, sub_id, n_bus=2, verbose=False):
-        n_lines = np.sum(self.action_space.line_ex_to_subid == sub_id) + np.sum(
-            self.action_space.line_or_to_subid == sub_id
-        )
-        n_gens = np.sum(self.action_space.gen_to_subid == sub_id)
-        n_loads = np.sum(self.action_space.load_to_subid == sub_id)
-
-        (
-            n_actions,
-            n_valid,
-            n_disconnection,
-        ) = self._get_number_topologies_set(n_lines, n_gens, n_loads, n_bus=n_bus)
-
-        if verbose:
-            print(
-                f"Substation id {sub_id} with {n_lines} lines, {n_gens} generators and {n_loads} loads. "
-                f"There are {n_actions} possible actions, {n_valid} are valid and include "
-                f"{n_disconnection} actions that have a standalone line."
-            )
-        return n_actions, n_valid, n_disconnection
+    """
+    Filtering functions.
+    """
 
     @staticmethod
-    def _get_number_topologies_set(n_lines, n_gens, n_loads, n_bus=2) -> Tuple[int, int, int]:
+    def filter_one_line_disconnections(
+            actions: List[TopologyAndDispatchAction],
+            actions_info: List[Dict],
+            verbose=False,
+    ) -> Tuple[List[TopologyAndDispatchAction], List[Dict]]:
+
+        substation_actions = dict()
+        substation_actions_info = dict()
+        filtered_actions = list()
+        filtered_actions_info = list()
+        for i, action in enumerate(actions):
+            action_info = actions_info[i]
+            sub_id = action_info["sub_id"]
+
+            # Initialize substation action list first time it is called.
+            if sub_id not in substation_actions:
+                substation_actions[sub_id] = list()
+                substation_actions_info[sub_id] = list()
+
+            if not action_info["check_one_line"]:
+                substation_actions[sub_id].append(action)
+                substation_actions_info[sub_id].append(action_info)
+
+        for sub_id in substation_actions:
+            # Discard single substation actions.
+            if len(substation_actions[sub_id]) > 1:
+                filtered_actions.extend(substation_actions[sub_id])
+                filtered_actions_info.extend(substation_actions_info[sub_id])
+            else:
+                if verbose:
+                    print(
+                        f"There are {len(substation_actions[sub_id])} actions on substation id {sub_id}, "
+                        f"thus discarded."
+                    )
+
+        assert len(filtered_actions) == len(filtered_actions_info)
+        return filtered_actions, filtered_actions_info
+
+    """
+    Helper functions.
+    """
+
+    def _get_substation_info(self, sub_id) -> Tuple[Tuple[int, int, int], Tuple[List, List, List]]:
+        lines_or = [line for line, sub in enumerate(self.action_space.line_or_to_subid) if sub == sub_id]
+        lines_ex = [line for line, sub in enumerate(self.action_space.line_ex_to_subid) if sub == sub_id]
+        lines = lines_or + lines_ex
+
+        gens = [gen for gen, sub in enumerate(self.action_space.gen_to_subid) if sub == sub_id]
+        loads = [gen for gen, sub in enumerate(self.action_space.load_to_subid) if sub == sub_id]
+
+        n_lines = len(lines)
+        n_gens = len(gens)
+        n_loads = len(loads)
+
+        return (n_lines, n_gens, n_loads), (lines, gens, loads)
+
+    def _get_line_info(self, line_id) -> Tuple[Tuple[int, int], Tuple[int, int]]:
+        substation_or = self.action_space.line_or_to_subid[line_id]
+        substation_ex = self.action_space.line_ex_to_subid[line_id]
+
+        _, n_valid_or, _ = self.get_number_topologies_set_sub_id(substation_or)
+        _, n_valid_ex, _ = self.get_number_topologies_set_sub_id(substation_ex)
+
+        return (substation_or, substation_ex), (n_valid_or, n_valid_ex)
+
+    @staticmethod
+    def _get_number_topologies_set(
+            n_lines, n_gens, n_loads, n_bus=2
+    ) -> Tuple[int, int, int]:
         """
         Works only with n_bus = 2.
         """
@@ -296,7 +421,17 @@ class ActionSpaceGenerator(object):
         if n_bus == 2:
             n_actions = 2 ** n_elements
             n_valid = 2 ** (n_elements - 1) - (2 ** (n_gens + n_loads) - 1)
-            n_disconnection = n_lines
+
+            # Check for special cases, where only one configuration is possible.
+            if n_lines == 1 and ((n_gens + n_loads) > 0):
+                n_disconnection = 0
+            else:
+                n_disconnection = n_lines
+
+            # If there are only one or two elements per substation, then there is only one valid configuration.
+            if (n_lines + n_gens + n_loads) < 3:
+                n_valid = 1
+                n_disconnection = 0
         else:
             n_actions = None
             n_valid = None
