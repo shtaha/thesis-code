@@ -304,11 +304,10 @@ class ActionSpaceGenerator(object):
     Redispatching actions.
     """
 
-    def get_all_unitary_redispatch(self):
+    def get_all_unitary_redispatch(self, n_redispatch, verbose=False):
         """
 
         """
-
         actions = list()
         n_gen = len(self.action_space.gen_redispatchable)
 
@@ -319,6 +318,7 @@ class ActionSpaceGenerator(object):
                 ramps_up = np.linspace(
                     0.0, self.action_space.gen_max_ramp_up[gen_id], num=5
                 )
+                # print("ramps up", ramps_up)
                 ramps_up = ramps_up[1:]  # Exclude redispatch of 0MW
 
                 # Create evenly spaced negative interval
@@ -326,18 +326,20 @@ class ActionSpaceGenerator(object):
                     -self.action_space.gen_max_ramp_down[gen_id], 0.0, num=5
                 )
                 ramps_down = ramps_down[:-1]  # Exclude redispatch of 0MW
+                # print("ramps down", ramps_down)
 
                 # Merge intervals
                 ramps = np.append(ramps_up, ramps_down)
-
+                # print("ramps", ramps)
                 # Create ramp up actions
                 for ramp in ramps:
                     action = self.action_space({"redispatch": [(gen_id, ramp)]})
+                    # print(action)
                     actions.append(action)
             else:
                 print(f"Generator id {gen_id} is non-dispatchable.")
 
-        return actions
+        return actions, []
 
     """
     Filtering functions.

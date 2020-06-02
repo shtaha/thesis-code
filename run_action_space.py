@@ -25,7 +25,13 @@ def parse_arguments():
         type=int,
         help="Number of buses per substation. Tested only for 2.",
     )
-
+    parser.add_argument(
+        "--n_redispatch",
+        default=4,
+        type=int,
+        help="Number of redispatching actions per generator, the actual number "
+             "of actions is doubled - positive and negative.",
+    )
     parser.add_argument(
         "-v", "--verbose", help="Set verbosity level.", action="store_false"
     )
@@ -64,9 +70,10 @@ if __name__ == "__main__":
     grid2op_actions_topology_set = action_generator.grid2op_get_all_unitary_topologies_set()
     grid2op_actions_line_set = action_generator.grid2op_get_all_unitary_line_status_set()
     grid2op_actions_line_change = action_generator.grid2op_get_all_unitary_line_status_change()
-    # grid2op_actions_redispatch = action_generator.grid2op_get_all_unitary_redispatch()
+    grid2op_actions_redispatch = action_generator.grid2op_get_all_unitary_redispatch()
 
     # Custom Generator with Analysis and Action Information
+    actions_do_nothing = action_space({})
     (
         actions_topology_set,
         actions_topology_set_info,
@@ -85,7 +92,12 @@ if __name__ == "__main__":
         verbose=args.verbose
     )
 
+    actions_redispatch, actions_redispatch_info = action_generator.get_all_unitary_redispatch(
+        n_redispatch=args.n_redispatch, verbose=False)
+
     print("\n")
+    print("actions: 1 do-nothing action")
+
     print("Topology set actions:")
     print("{:<20}\t{}".format("grid2op", len(grid2op_actions_topology_set)))
     print("{:<20}\t{}".format("custom", len(actions_topology_set)))
@@ -99,22 +111,9 @@ if __name__ == "__main__":
     print("{:<20}\t{}".format("grid2op", len(grid2op_actions_line_change)))
     print("{:<20}\t{}".format("custom", len(actions_line_change)))
 
-    # actions_line_set = action_generator.get_all_unitary_line_status_set()
-    # actions_line_change = action_generator.get_all_unitary_line_status_change()
-    # actions_redispatch = action_generator.get_all_unitary_redispatch()
-
-    # for subid, n_elements in enumerate(env.sub_info):
-    #     print(f"\n\nSUBSTATION {subid} with {n_elements} elements")
-    #     describe_substation(subid, env)
-    #
-    #     own_actions, _ = action_generator.get_all_unitary_topologies_set_subid(
-    #         subid, n_elements, verbose=False
-    #     )
-    #
-    #     actions_sub = action_generator.grid2op_get_all_unitary_topologies_set_subid(
-    #         subid, n_elements
-    #     )
-    #     print(f"actions sub: grid2op {len(actions_sub)} vs own {len(own_actions)}")
+    print("Redispatching actions:")
+    print("{:<20}\t{}".format("grid2op", len(grid2op_actions_redispatch)))
+    print("{:<20}\t{}".format("custom", len(actions_redispatch)))
 
     obs = env.reset()
     render_and_save(env, save_dir, env_name)

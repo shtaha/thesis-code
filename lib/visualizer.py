@@ -1,7 +1,8 @@
+import itertools
 import json
 import os
 import warnings
-import itertools
+
 import numpy as np
 
 
@@ -39,17 +40,24 @@ def print_matrix(matrix, name=None, spacing=None, decimals=4):
     matrix = np.atleast_2d(matrix)
 
     max_value = np.max(np.abs(matrix))
-    if spacing:
-        spacing = int(np.log10(max_value)) + 2
+    if not spacing:
+        if max_value > 0 and not np.isinf(max_value):
+            spacing = max([int(np.log10(max_value)) + 5, 6])
+        else:
+            spacing = 6
 
     for row in matrix:
         line = ""
         for cell in row:
-            if cell == 0 or np.abs(int(cell) - cell) < 1e-12:
-                pattern = "{:>" + str(int(spacing)) + "}"
-                line = line + pattern.format(int(cell))
+            if not np.isinf(np.abs(cell)):
+                if cell == 0 or np.abs(int(cell) - cell) < 1e-12:
+                    pattern = "{:>" + str(int(spacing)) + "}"
+                    line = line + pattern.format(int(cell))
+                else:
+                    pattern = "{:>" + str(int(spacing)) + "." + str(int(decimals)) + "}"
+                    line = line + pattern.format(cell)
             else:
-                pattern = "{:>" + str(int(spacing)) + "." + str(int(decimals)) + "}"
+                pattern = "{:>" + str(int(spacing)) + "}"
                 line = line + pattern.format(cell)
 
         lines.append(line)
@@ -62,10 +70,20 @@ def print_trainable_variables(model):
         print(var.name, var.shape, np.linalg.norm(var.numpy()))
 
 
-def render_and_save(environment, save_dir, fig_title):
+def render_and_save(environment, save_dir=None, fig_title=None):
+    if save_dir and fig_title:
+        path = os.path.join(save_dir, fig_title)
+    else:
+        path = None
+
     fig = environment.render()
-    fig.suptitle(fig_title)
-    fig.savefig(os.path.join(save_dir, fig_title))
+
+    if fig_title:
+        fig.suptitle(fig_title)
+
+    if path:
+        fig.savefig(path)
+
     fig.show()
 
 
@@ -108,12 +126,12 @@ def get_load_topology(observation):
 
 
 def print_topology_changes(
-    observation,
-    observation_next,
-    p_line_status=False,
-    p_line_topology=False,
-    p_gen_topology=False,
-    p_load_topology=False,
+        observation,
+        observation_next,
+        p_line_status=False,
+        p_line_topology=False,
+        p_gen_topology=False,
+        p_load_topology=False,
 ):
     def before_after(inputs, inputs_next):
         changes = list()
@@ -200,6 +218,28 @@ def print_parameters(environment):
     print(json.dumps(environment.get_params_for_runner()["parameters_path"], indent=2))
 
 
+def print_topology_hot_line(topo_hot_vector, name):
+    print("{:<20} {}".format(name, " ".join(
+        ["{:<3}".format(pos) if pos else "{:<3}".format(0) for pos in topo_hot_vector])))
+
+
+def print_topology_line(topo_hot_vector, value_vector, name):
+    print("{:<20} {}".format(name, " ".join(
+        ["{:<3}".format(value) if topo_hot_vector[pos] else "{:<3}".format("-") for pos, value in
+         enumerate(value_vector)])))
+
+
+def get_topology_to_bus_ids(topology_vector, topology_to_sub_id, sub_to_bus_ids, verbose=False):
+    topology_to_bus_id = -np.ones(shape=(len(topology_vector),), dtype=np.int)
+    for pos, (sub_id, bus) in enumerate(zip(topology_to_sub_id, topology_vector)):
+        sub_bus_ids = sub_to_bus_ids[sub_id]
+        topology_to_bus_id[pos] = sub_bus_ids[bus - 1]
+
+    if verbose:
+        print_topology_line(np.ones((len(topology_vector),), dtype=np.bool), topology_to_bus_id, "topology bus ids")
+    return topology_to_bus_id
+
+
 def describe_substation(subid, environment):
     n_elements = environment.sub_info[subid]
     gens = [gen for gen, sub in enumerate(environment.gen_to_subid) if sub == subid]
@@ -266,4 +306,15 @@ def describe_environment(environment):
         ["{:>3}".format(subid) for subid in environment.line_ex_to_subid]
     )
     print(f"line_or_to_subid {line_or_to_subid}")
-    print(f"line_ex_to_subid {line_ex_to_subid}")
+    print(f"line_ex_to_subid {line_ex_to_subid}\n")
+
+
+class NumpyEncoder(json.JSONEncoder):
+    def default(self, obj):
+        if isinstance(obj, np.ndarray):
+            return obj.tolist()
+        return json.JSONEncoder.default(self, obj)
+
+
+def print_dict(dictionary):
+    print(json.dumps(dictionary, indent=1, cls=NumpyEncoder))

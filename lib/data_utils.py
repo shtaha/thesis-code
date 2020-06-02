@@ -1,5 +1,6 @@
 import datetime
 import os
+
 import numpy as np
 
 
@@ -20,7 +21,7 @@ def create_results_dir(results_dir_path):
     return results_dir
 
 
-def hot_vector(hot_indices, length, dtype=np.bool):
+def hot_vector(hot_indices: np.ndarray, length: np.int, dtype=np.bool) -> np.ndarray:
     vector = np.zeros((length,), dtype=dtype)
     vector[hot_indices] = np.True_
     return vector
