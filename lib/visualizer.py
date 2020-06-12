@@ -282,8 +282,10 @@ def describe_substation(subid, environment):
 
 
 def describe_environment(environment):
+    print("\n" + environment.name.upper())
     print(f"obs_space {environment.observation_space.size()}")
     print(f"action_space {environment.action_space.n}")
+    print("obs " + ", ".join(environment.get_obs().to_dict().keys()))
 
     print(f"n_gen {environment.n_gen}")
     print(f"n_load {environment.n_load}")

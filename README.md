@@ -4,6 +4,7 @@
     
     pip install grid2op
     pip install l2rpn-baselines
+    pip install imageio  # Visualization
     
     pip install numpy matplotlib tensorflow jupyter pygame
     pip install pyomo
