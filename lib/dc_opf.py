@@ -1,8 +1,11 @@
+import grid2op
 import numpy as np
 import pandapower as pp
 import pandas as pd
 import pyomo.environ as pyo
 import pyomo.opt as pyo_opt
+
+from lib.data_utils import update_backend
 
 
 class UnitConverter:
@@ -214,10 +217,12 @@ class StandardDCOPF(UnitConverter, PyomoMixin):
             ),
             within=pyo.NonNegativeReals,
         )
+
+        # Set minimum generator to 0 if negative value
         self.model.gen_p_min = pyo.Param(
             self.model.gen_set,
             initialize=self._create_map_ids_to_values(
-                self.gen.index.values, self.gen["min_p_pu"]
+                self.gen.index.values, np.maximum(0.0, self.gen["min_p_pu"].values)
             ),
             within=pyo.NonNegativeReals,
         )
@@ -846,6 +851,9 @@ class OPFCase6(UnitConverter):
 
 
 if __name__ == "__main__":
+    """
+    Test case and usage.
+    """
     case6 = OPFCase6()
     test_opf = StandardDCOPF(
         "CASE 6",
@@ -871,3 +879,15 @@ if __name__ == "__main__":
 
     # Compare with backend
     test_opf.solve_and_compare(verbose=True)
+
+    # TODO: DEVELOPMENT
+    # TODO: CORRECT GRID -> gen_p_min >= 0
+    # env = grid2op.make(dataset="l2rpn_2019")
+    # update_backend(env)
+    #
+    # test_opf = StandardDCOPF("L2RPN 2019", env.backend._grid, base_unit_p=1e6, base_unit_v=1e5)
+    # test_opf.build_model()
+    # test_opf.print_per_unit_grid()
+    #
+    # test_opf.solve_backend()
+    # test_opf.print_results_backend()

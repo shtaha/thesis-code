@@ -50,6 +50,16 @@ def update_backend(env, verbose=False):
         # grid.gen["gen_max_ramp_down"] = env.gen_max_ramp_down
         # grid.gen["gen_min_uptime"] = env.gen_min_uptime
         # grid.gen["gen_min_downtime"] = env.gen_min_downtime
+    elif env.name == "l2rpn_2019":
+        bus_names = [f"bus-{bus_id}-{sub_id}" for bus_id, sub_id in zip(grid.bus.index, grid.bus["name"])]
+        line_names = [f"line-{line_id}" for line_id in grid.line.index]
+        gen_names = [f"gen-{gen_id}" for gen_id in grid.gen.index]
+        load_names = [f"load-{load_id}" for load_id in grid.load.index]
+
+        grid.bus["name"] = bus_names
+        grid.line["name"] = line_names
+        grid.gen["name"] = gen_names
+        grid.load["name"] = load_names
 
     if verbose:
         print(env.name.upper())

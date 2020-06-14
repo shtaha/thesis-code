@@ -19,9 +19,10 @@ class TestDCOPF(unittest.TestCase):
         conditions = list()
         for i in range(n_tests):
             np.random.seed(i)
-            gen_cost = np.random.uniform(1.0, 5.0, (model.grid.gen.shape[0],))
+            gen_cost = np.random.uniform(1.0, 1.5, (model.grid.gen.shape[0],))
             model.set_gen_cost(gen_cost)
             model.build_model()
+            model.print_per_unit_grid()
             result = model.solve_and_compare(verbose=verbose)
 
             conditions.append({
@@ -83,3 +84,10 @@ class TestDCOPF(unittest.TestCase):
         model_opf = StandardDCOPF("RTE CASE 5", env.backend._grid, base_unit_p=1e6, base_unit_v=1e5)
 
         self.runner_opf(model_opf, n_tests=5)
+
+    def test_l2rpn2019(self):
+        env = grid2op.make(dataset="l2rpn_2019")
+        update_backend(env)
+        model_opf = StandardDCOPF("L2RPN 2019", env.backend._grid, base_unit_p=1e6, base_unit_v=1e5)
+
+        self.runner_opf(model_opf, n_tests=5, verbose=True)
