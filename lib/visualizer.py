@@ -126,12 +126,12 @@ def get_load_topology(observation):
 
 
 def print_topology_changes(
-        observation,
-        observation_next,
-        p_line_status=False,
-        p_line_topology=False,
-        p_gen_topology=False,
-        p_load_topology=False,
+    observation,
+    observation_next,
+    p_line_status=False,
+    p_line_topology=False,
+    p_gen_topology=False,
+    p_load_topology=False,
 ):
     def before_after(inputs, inputs_next):
         changes = list()
@@ -219,24 +219,49 @@ def print_parameters(environment):
 
 
 def print_topology_hot_line(topo_hot_vector, name):
-    print("{:<20} {}".format(name, " ".join(
-        ["{:<3}".format(pos) if pos else "{:<3}".format(0) for pos in topo_hot_vector])))
+    print(
+        "{:<20} {}".format(
+            name,
+            " ".join(
+                [
+                    "{:<3}".format(pos) if pos else "{:<3}".format(0)
+                    for pos in topo_hot_vector
+                ]
+            ),
+        )
+    )
 
 
 def print_topology_line(topo_hot_vector, value_vector, name):
-    print("{:<20} {}".format(name, " ".join(
-        ["{:<3}".format(value) if topo_hot_vector[pos] else "{:<3}".format("-") for pos, value in
-         enumerate(value_vector)])))
+    print(
+        "{:<20} {}".format(
+            name,
+            " ".join(
+                [
+                    "{:<3}".format(value)
+                    if topo_hot_vector[pos]
+                    else "{:<3}".format("-")
+                    for pos, value in enumerate(value_vector)
+                ]
+            ),
+        )
+    )
 
 
-def get_topology_to_bus_ids(topology_vector, topology_to_sub_id, sub_to_bus_ids, verbose=False):
+def get_topology_to_bus_ids(
+    topology_vector, topology_to_sub_id, sub_to_bus_ids, verbose=False
+):
     topology_to_bus_id = -np.ones(shape=(len(topology_vector),), dtype=np.int)
     for pos, (sub_id, bus) in enumerate(zip(topology_to_sub_id, topology_vector)):
         sub_bus_ids = sub_to_bus_ids[sub_id]
         topology_to_bus_id[pos] = sub_bus_ids[bus - 1]
 
     if verbose:
-        print_topology_line(np.ones((len(topology_vector),), dtype=np.bool), topology_to_bus_id, "topology bus ids")
+        print_topology_line(
+            np.ones((len(topology_vector),), dtype=np.bool),
+            topology_to_bus_id,
+            "topology bus ids",
+        )
     return topology_to_bus_id
 
 

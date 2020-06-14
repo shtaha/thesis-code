@@ -2,105 +2,84 @@ import time
 import unittest
 
 import numpy as np
-import pandapower as pp
+import grid2op
+import pandas as pd
+
+from lib.data_utils import update_backend
+from lib.dc_opf import OPFCase3, OPFCase6, StandardDCOPF
 
 
 class TestDCOPF(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        print("testing")
+        print("DC-OPF Tests.\n\n")
 
-    def test_dc_opf_pp(self):
-        """
-        Test case from http://research.iaun.ac.ir/pd/bahador.fani/pdfs/UploadFile_6990.pdf.
-        """
-        grid = pp.create_empty_network()
+    def runner_opf(self, model, n_tests=20, eps=1e-4, verbose=False):
+        conditions = list()
+        for i in range(n_tests):
+            np.random.seed(i)
+            gen_cost = np.random.uniform(1.0, 5.0, (model.grid.gen.shape[0],))
+            model.set_gen_cost(gen_cost)
+            model.build_model()
+            result = model.solve_and_compare(verbose=verbose)
 
-        # create buses
-        v_n = 110000.0  # Nominal voltage unit in V
-        s_n = 1e6  # Nominal power unit in W
-        z_n = v_n ** 2 / s_n  # Nominal impedance unit in Ohms
-        i_n = s_n / v_n  # Nominal current unit in Amperes
-        print(f"s_n = {s_n} W")
-        print(f"v_n = {v_n} V")
-        print(f"i_n = {i_n} A")
-        print(f"z_n = {z_n} Ohm")
+            conditions.append({
+                "cost": np.less_equal(result["res_cost"]["diff"], eps).all(),
+                "bus": np.less_equal(result["res_bus"]["diff"], eps).all(),
+                "line": np.less_equal(result["res_line"]["diff"], eps).all(),
+                "gen": np.less_equal(result["res_gen"]["diff"], eps).all()
+            })
 
-        bus1 = pp.create_bus(grid, vn_kv=v_n / 1000, name="bus-0")
-        bus2 = pp.create_bus(grid, vn_kv=v_n / 1000, name="bus-1")
-        bus3 = pp.create_bus(grid, vn_kv=v_n / 1000, name="bus-2")
+        conditions = pd.DataFrame(conditions)
+        conditions["passed"] = np.all(conditions.values, axis=-1)
 
-        pp.create_line_from_parameters(grid, bus1, bus2,
-                                       length_km=1.0,
-                                       r_ohm_per_km=0.01 * z_n,
-                                       x_ohm_per_km=1.0 / 3.0 * z_n,
-                                       c_nf_per_km=0.0001,
-                                       max_i_ka=i_n / 1000,
-                                       name="line-0",
-                                       type="ol",
-                                       max_loading_percent=100.0)
-
-        pp.create_line_from_parameters(grid, bus1, bus3,
-                                       length_km=1.0,
-                                       r_ohm_per_km=0.01 * z_n,
-                                       x_ohm_per_km=1.0 / 2.0 * z_n,
-                                       c_nf_per_km=0.0001,
-                                       max_i_ka=i_n / 1000,
-                                       name="line-1",
-                                       type="ol",
-                                       max_loading_percent=100.0)
-
-        pp.create_line_from_parameters(grid, bus2, bus3,
-                                       length_km=1.0,
-                                       r_ohm_per_km=0.01 * z_n,
-                                       x_ohm_per_km=1.0 / 2.0 * z_n,
-                                       c_nf_per_km=0.0001,
-                                       max_i_ka=i_n / 1000,
-                                       name="line-2",
-                                       type="ol",
-                                       max_loading_percent=100.0)
-
-        pp.create_load(grid, bus2, p_mw=0.5, name="load-0", controllable=False)
-        pp.create_load(grid, bus3, p_mw=1.0, name="load-1", controllable=False)
-        pp.create_gen(grid, bus1, p_mw=1.5, min_p_mw=0, max_p_mw=2.0, slack=True, name="gen-0")
-
-        pp.rundcpp(grid, verbose=True)
-
-        # Per unit conversions
-        # Buses
-        grid.bus["vn_pu"] = grid.bus["vn_kv"] * 1000 / v_n
-
-        # Power lines
-        grid.line["x_pu"] = grid.line["x_ohm_per_km"] * grid.line["length_km"] / z_n / grid.line["parallel"]
-        grid.line["r_pu"] = grid.line["r_ohm_per_km"] * grid.line["length_km"] / z_n / grid.line["parallel"]
-        grid.line["b_pu"] = 1 / grid.line["x_pu"]
-        grid.line["max_i_pu"] = grid.line["max_i_ka"] * 1000 / i_n
-        grid.line["max_p_pu"] = grid.line["max_i_pu"] * grid.bus["vn_pu"][grid.line["from_bus"].values].values
-
-        # Generators
-        grid.gen["p_pu"] = grid.gen["p_mw"]
-        grid.gen["max_p_pu"] = grid.gen["max_p_mw"]
-        grid.gen["min_p_pu"] = grid.gen["min_p_mw"]
-
-        # Loads
-        grid.load["p_pu"] = grid.load["p_mw"]
-
-        # Results
-        grid.res_bus["va_pu"] = grid.res_bus["va_degree"] * np.pi / 180.0
-        grid.res_line["p_pu"] = grid.res_line["p_from_mw"]
-        grid.res_line["i_pu"] = grid.res_line["i_from_ka"] / i_n
-        grid.res_gen["p_pu"] = grid.res_gen["p_mw"]
-
-        print("BUS\n" + grid.bus[["name", "vn_pu"]].to_string())
-        print("LINE\n" + grid.line[
-            ["name", "from_bus", "to_bus", "b_pu", "max_i_pu", "max_p_pu", "max_loading_percent"]].to_string())
-        print("GEN\n" + grid.gen[["name", "bus", "p_pu", "min_p_pu", "max_p_pu"]].to_string())
-        print("LOAD\n" + grid.load[["name", "bus", "p_pu"]].to_string())
-        print("RES BUS\n" + grid.res_bus[["va_pu"]].to_string())
-        print("RES LINE\n" + grid.res_line[["p_pu", "i_pu", "loading_percent"]].to_string())
-        print("RES GEN\n" + grid.res_gen[["p_pu"]].to_string())
+        print(f"\n\n{model.name}\n")
+        print(conditions.to_string())
 
         time.sleep(0.1)
         # Test DC Power Flow
-        self.assertTrue(np.equal(grid.res_bus["va_pu"].values, np.array([0.0, -0.250, -0.375])).all())
+        self.assertTrue(conditions["passed"].values.all())
+
+    def test_case6(self):
+        case6 = OPFCase6()
+        model_opf = StandardDCOPF(
+            "CASE 6", case6.grid, base_unit_p=case6.base_unit_p, base_unit_v=case6.base_unit_v
+        )
+
+        self.runner_opf(model_opf)
+
+    def test_case3(self):
+        case3 = OPFCase3()
+        model_opf = StandardDCOPF(
+            "CASE 3", case3.grid, base_unit_p=case3.base_unit_p, base_unit_v=case3.base_unit_v
+        )
+
+        self.runner_opf(model_opf)
+
+    def test_case3_by_value(self):
+        """
+        Test for power flow computation.
+        """
+
+        case3 = OPFCase3()
+        model_opf = StandardDCOPF(
+            "CASE 3 BY VALUE", case3.grid, base_unit_p=case3.base_unit_p, base_unit_v=case3.base_unit_v
+        )
+
+        model_opf.set_gen_cost(np.array([1.0]))
+        model_opf.build_model()
+
+        result = model_opf.solve()
+        model_opf.print_results()
+
+        time.sleep(0.1)
+        # Test DC Power Flow
+        self.assertTrue(np.equal(result["res_bus"]["delta_pu"].values, np.array([0.0, -0.250, -0.375])).all())
+
+    def test_rte_case5(self):
+        env = grid2op.make(dataset="rte_case5_example")
+        update_backend(env)
+        model_opf = StandardDCOPF("RTE CASE 5", env.backend._grid, base_unit_p=1e6, base_unit_v=1e5)
+
+        self.runner_opf(model_opf, n_tests=5)

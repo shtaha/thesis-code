@@ -5,29 +5,24 @@ import pyomo.environ as pyo
 import pyomo.opt as pyo_opt
 
 
-class PyomoMixin:
-    pass
-
-
 class UnitConverter:
-
     def __init__(self, base_unit_p=1e6, base_unit_v=1e5):
         # Base units
         self.base_unit_p = base_unit_p  # Base unit is 1 MVA or 1 MW or 1 MVar
         self.base_unit_v = base_unit_v  # Base unit is 100 kV
-        self.base_unit_a = self.base_unit_p / self.base_unit_v  # Base unit is 1 A
+        self.base_unit_i = self.base_unit_p / self.base_unit_v  # Base unit is 1 A
         self.base_unit_z = self.base_unit_v ** 2 / self.base_unit_p
 
         self.unit_p_mw = 1e6
         self.unit_a_ka = 1e3
         self.unit_v_kv = 1e3
 
-    def print_converted(self):
+    def print_base_units(self):
         print("base units")
-        print("{:<10}{}".format("unit p", self.base_unit_p))
-        print("{:<10}{}".format("unit v", self.base_unit_v))
-        print("{:<10}{}".format("unit a", self.base_unit_a))
-        print("{:<10}{}".format("unit z", self.base_unit_z))
+        print("{:<10}{} W".format("unit p", self.base_unit_p))
+        print("{:<10}{} V".format("unit v", self.base_unit_v))
+        print("{:<10}{} A".format("unit a", self.base_unit_i))
+        print("{:<10}{} Ohm".format("unit z", self.base_unit_z))
 
     def convert_mw_to_per_unit(self, p_mw):
         p_pu = p_mw * self.unit_p_mw / self.base_unit_p
@@ -38,370 +33,45 @@ class UnitConverter:
         return z_pu
 
     def convert_a_to_per_unit(self, i_a):
-        i_pu = i_a / self.base_unit_a
+        i_pu = i_a / self.base_unit_i
         return i_pu
 
     def convert_ka_to_per_unit(self, i_ka):
-        i_pu = i_ka * self.unit_a_ka / self.base_unit_a
+        i_pu = i_ka * self.unit_a_ka / self.base_unit_i
         return i_pu
 
     def convert_kv_to_per_unit(self, v_kv):
         v_pu = v_kv * self.unit_v_kv / self.base_unit_v
         return v_pu
 
+    def convert_per_unit_to_mw(self, p_pu):
+        p_mw = p_pu * self.base_unit_p / self.unit_p_mw
+        return p_mw
 
-class DCOptimalPowerFlow(object):
-    """
-    Constructor for DC-OPF given the environment and the observation.
-    """
-
-    def __init__(self, env, solver="gurobi", verbose=False):
-        """
-        Initialize DC-OPF Parameters given an environment: information on topology, generators, loads, and lines.
-        """
-        self.env = env
-        self.backend = env.backend
-        self.grid = env.backend._grid
-        self.unit_converter = UnitConverter(base_unit_v=self.grid.bus["vn_kv"].values[0] * 1000)  # TODO: Hack
-
-        self.bus = self.grid.bus
-        self.gen = self.grid.gen
-        self.load = self.grid.load
-        self.line = self.grid.line
-
-        # Grid parameters
-        self.n_bus = None
-        self.bus_ids = None
-        self.n_sub = None
-        self.sub_ids = None
-        self.bus_ids_to_sub_ids = None
-        self.bus_ids_to_sub_bus_ids = None
-
-        # Generator parameters
-        self.n_gen = None
-        self.gen_ids = None
-        self.gen_p_max = None  # In p.u.
-        self.gen_p_min = None  # In p.u.
-        self.gen_ids_to_bus_ids = None  # VARIABLE
-        self.bus_ids_to_gen_ids = None  # VARIABLE
-        self.gen_costs = None  # TEST VARIABLE
-
-        # Load parameters
-        self.n_load = None
-        self.load_ids = None
-        self.load_ids_to_bus_ids = None  # VARIABLE
-        self.load_p = None  # In p.u. # VARIABLE
-        self.bus_ids_to_load_ids = None  # VARIABLE
-
-        # Line parameters
-        self.n_line = None
-        self.line_ids = None
-        self.line_resistance = None  # In p.u.
-        self.line_reactance = None  # In p.u.
-        self.line_inverse_reactance = None  # In p.u.
-        self.line_i_max = None  # In p.u.
-        self.line_p_max = None  # In p.u.
-        self.line_ids_to_bus_ids = None  # VARIABLE
-        self.line_ids_to_or_bus_ids = None  # VARIABLE
-        self.line_ids_to_ex_bus_ids = None  # VARIABLE
-
-        # Initialize parameter values
-        self.initialize_grid(verbose=verbose)
-        self.initialize_generators(verbose=verbose)
-        self.initialize_loads(verbose=verbose)
-        self.initialize_lines(verbose=verbose)
-
-        # DC-OPF model
-        self.model = None
-
-        # Initialize DC-OPF model and solver
-        self.initialize_model()
-        self.solver = pyo_opt.SolverFactory(solver)
-
-        self.print_model(verbose=verbose)
-
-    def print_model(self, verbose=False):
-        if verbose:
-            print(self.model.pprint())
-
-    def initialize_model(self):
-        self.model = pyo.ConcreteModel("DC-OPF Model")
-        self.model.bus_set = pyo.Set(initialize=self.bus_ids, within=pyo.NonNegativeIntegers)
-        self.model.line_set = pyo.Set(initialize=self.line_ids, within=pyo.NonNegativeIntegers)
-        self.model.load_set = pyo.Set(initialize=self.load_ids, within=pyo.NonNegativeIntegers)
-        self.model.gen_set = pyo.Set(initialize=self.gen_ids, within=pyo.NonNegativeIntegers)
-
-        # FIXED Model parameters
-        self.model.gen_p_max = pyo.Param(self.model.gen_set,
-                                         initialize=self._create_map_ids_to_values(self.gen_ids, self.gen_p_max),
-                                         within=pyo.NonNegativeReals)
-        self.model.gen_p_min = pyo.Param(self.model.gen_set,
-                                         initialize=self._create_map_ids_to_values(self.gen_ids, self.gen_p_min),
-                                         within=pyo.NonNegativeReals)
-
-        self.model.gen_costs = pyo.Param(self.model.gen_set,
-                                         initialize=self._create_map_ids_to_values(
-                                             self.gen_ids, self.gen_costs),
-                                         within=pyo.NonNegativeReals)
-
-        self.model.line_p_max = pyo.Param(self.model.line_set,
-                                          initialize=self._create_map_ids_to_values(self.line_ids, self.line_p_max),
-                                          within=pyo.NonNegativeReals)
-        self.model.line_inverse_reactance = pyo.Param(self.model.line_set,
-                                                      initialize=self._create_map_ids_to_values(self.line_ids,
-                                                                                                self.line_inverse_reactance),
-                                                      within=pyo.NonNegativeReals)
-
-        # VARIABLE Model parameters
-        self.model.line_ids_to_bus_ids = pyo.Param(self.model.line_set,
-                                                   initialize=self._create_map_ids_to_values(self.line_ids,
-                                                                                             self.line_ids_to_bus_ids),
-                                                   within=self.model.bus_set * self.model.bus_set)
-        self.model.bus_ids_to_gen_ids = pyo.Param(self.model.bus_set,
-                                                  initialize=self._create_map_ids_to_values(self.bus_ids,
-                                                                                            self.bus_ids_to_gen_ids),
-                                                  within=pyo.Any)
-        # Load bus injections
-        self.model.bus_load_p = pyo.Param(self.model.bus_set,
-                                          initialize=self._create_map_ids_to_values_sum(self.bus_ids,
-                                                                                        self.bus_ids_to_load_ids,
-                                                                                        self.load_p),
-                                          within=pyo.NonNegativeReals)
-
-        # Variables
-        self.model.gen_p = pyo.Var(self.model.gen_set, domain=pyo.PositiveReals)
-        self.model.delta = pyo.Var(self.model.bus_set, domain=pyo.Reals)  # Voltage angle
-        self.model.line_p = pyo.Var(self.model.line_set, domain=pyo.Reals)  # Line flow
-        self.model.bus_gen_p = pyo.Var(self.model.bus_set, within=pyo.NonNegativeReals)  # Generator bus injections
-
-        # Constraints
-        # Bound generator output
-        self.model.constraint_gen_p = pyo.Constraint(self.model.gen_set, rule=self._constraint_gen_p)
-
-        # Bound line power flow
-        self.model.constraint_line_p = pyo.Constraint(self.model.line_set, rule=self._constraint_line_p)
-
-        # Define line power flow
-        self.model.constraint_line_p_def = pyo.Constraint(self.model.line_set, rule=self._constraint_line_p_def)
-
-        # Set delta[0] = 0
-        self.model.constraint_delta = pyo.Constraint(self.model.bus_set, rule=self._constraint_delta)
-
-        # Define bus generator injections
-        self.model.constrain_bus_gen_p = pyo.Constraint(self.model.bus_set, rule=self._constraint_bus_gen_p)
-
-        # Bus power balance constraints
-        self.model.constraint_bus_balance_p = pyo.Constraint(self.model.bus_set, rule=self._constraint_bus_balance_p)
-
-        # Objectives
-        self.model.objective = pyo.Objective(rule=self._objective_gen_p, sense=pyo.minimize)
-
-    def update(self, obs):
-        """
-        Update DC-OPF parameters given a new observation.
-
-        That is: grid topology,
-        """
-        pass
-
-    def set_gen_cost(self, gen_costs):
-        gen_costs = np.array(gen_costs).flatten()
-        assert gen_costs.size == self.gen_costs.size  # Check dimensions
-
-        self.gen_costs = gen_costs
-
-    def solve_dc_opf_backend(self, verbose=False, **kwargs):
-        for gen_id in self.gen_ids:
-            pp.create_poly_cost(self.grid, gen_id, "gen", cp1_eur_per_mw=self.gen_costs[gen_id])
-
-        pp.rundcopp(self.grid, verbose=verbose, **kwargs)
-
-        if not verbose:
-            print("\nDC-OPF solved by backend")
-            print("{:<10}{}".format("cost", self.grid.res_cost))
-            self._print_res_gen(self.grid.res_gen["p_mw"], self.gen_costs)
-
-    def solve_dc_opf(self, verbose=False):
-        _ = self.solver.solve(self.model, tee=verbose)
-
-        if verbose:
-            print(self.model.display())
-        else:
-            print("\nDC-OPF solved")
-            print("{:<10}{}".format("cost", pyo.value(self.model.objective)))
-            self._print_res_gen(self._access_pyomo_variable(self.model.gen_p), self.gen_costs)
-
-    def initialize_grid(self, verbose=False):
-        self.n_bus = self.bus.shape[0]
-        self.bus_ids = self.bus.index.values  # [0, 1, ..., n_bus-1] (n_bus, )
-
-        # self.n_sub = self.env.sub_info.shape[0]
-        self.n_sub = self.env.n_sub
-        self.sub_ids = np.arange(0, self.n_sub)  # [0, 1, ..., n_sub-1] (n_sub, )
-        self.bus_ids_to_sub_ids = np.tile(self.sub_ids, 2)  # [0, 1, ..., n_sub-1, 0, 1, ..., n_sub-1] (n_bus, )
-        self.bus_ids_to_sub_bus_ids = np.tile([1, 2], self.n_sub)  # [1, 2, 1, 2, ..., 1, 2] (n_sub, )
-
-        if verbose:
-            print("initializing grid ...")
-            print("{:<30}{}\t{}".format("sub", self.sub_ids, self.n_sub))
-            print("{:<30}{}\t{}".format("bus", self.bus_ids, self.n_bus))
-            print("{:<30}{}".format("bus_ids_to_sub_ids", self.bus_ids_to_sub_ids))
-            print("{:<30}{}\n".format("bus_ids_to_sub_bus_ids", self.bus_ids_to_sub_bus_ids))
-
-        assert self.n_bus == 2 * self.n_sub  # Each substation has 2 buses
-
-    def initialize_generators(self, verbose=False):
-        self.n_gen = self.env.n_gen
-        self.gen_ids = self.gen.index.values
-
-        self.gen_p_max = self.unit_converter.convert_mw_to_per_unit(self.env.gen_pmax)  # In p.u.
-        self.gen_p_min = self.unit_converter.convert_mw_to_per_unit(self.env.gen_pmin)  # In p.u.
-
-        self.gen_ids_to_bus_ids = self.gen["bus"].values
-
-        self.bus_ids_to_gen_ids = [list(np.equal(self.gen_ids_to_bus_ids, bus_id).nonzero()[0]) for bus_id in
-                                   self.bus_ids]
-
-        if verbose:
-            print("initializing generators ...")
-            print("{:<30}{}\t{}".format("gen", self.gen_ids, self.n_gen))
-            print("{:<30}{} p.u.".format("gen_p_max", self.gen_p_max))
-            print("{:<30}{} p.u.".format("gen_p_min", self.gen_p_min))
-            print("{:<30}{}".format("gen_ids_to_bus_ids", self.gen_ids_to_bus_ids))
-            print("{:<30}{}\n".format("bus_ids_to_gen_ids", self.bus_ids_to_gen_ids))
-
-        # Initial value
-        self.gen_costs = np.ones_like(self.gen_ids)
-
-        assert self.n_gen == self.gen.shape[0]  # Check number of generators
-        # assert np.equal(self.unit_converter.convert_mw_to_per_unit(self.gen["max_p_mw"]),
-        #                 self.gen_p_max).all()  # Check if grid.json and prods_char.csv match
-        # assert np.equal(self.unit_converter.convert_mw_to_per_unit(self.gen["min_p_mw"]),
-        #                 self.gen_p_min).all()  # Check if grid.json and prods_char.csv match
-
-    def initialize_loads(self, verbose=False):
-        self.n_load = self.env.n_load
-        self.load_ids = self.load.index.values
-
-        self.load_p = self.unit_converter.convert_mw_to_per_unit(self.load["p_mw"].values)  # In p.u.
-
-        self.load_ids_to_bus_ids = self.load["bus"].values
-
-        self.bus_ids_to_load_ids = [list(np.equal(self.load_ids_to_bus_ids, bus_id).nonzero()[0]) for bus_id in
-                                    self.bus_ids]
-
-        if verbose:
-            print("initializing loads ...")
-            print("{:<30}{}\t{}".format("load", self.load_ids, self.n_load))
-            print("{:<30}{}".format("load_p", self.load_p))
-            print("{:<30}{}".format("load_ids_to_bus_ids", self.load_ids_to_bus_ids))
-            print("{:<30}{}\n".format("bus_ids_to_load_ids", self.bus_ids_to_load_ids))
-
-        assert self.n_load == self.load.shape[0]  # Check number of loads
-        # assert np.equal(self.unit_converter.convert_mw_to_per_unit(self.env.get_obs().load_p),
-        #                 self.load_p).all()  # Check consistency between new obs and env
-
-    def initialize_lines(self, verbose=False):
-        self.n_line = self.env.n_line
-        self.line_ids = self.line.index.values
-
-        # [(bus_or, bus_ex), ..., (bus_or, bus_ex)] (n_line, )
-        self.line_ids_to_bus_ids = list(zip(self.line["from_bus"], self.line["to_bus"]))
-        self.line_ids_to_or_bus_ids = self.line["from_bus"].values
-        self.line_ids_to_ex_bus_ids = self.line["to_bus"].values
-
-        line_length = self.line["length_km"].values
-        line_parallel = self.line["parallel"].values
-
-        if "max_loading_percent" in self.line.columns:
-            line_max_loading = self.line["max_loading_percent"].values / 100.0
-        else:
-            line_max_loading = np.ones((self.n_line,))
-
-        self.line_resistance = np.divide(np.multiply(self.line["r_ohm_per_km"].values, line_length),
-                                         line_parallel)  # In Ohms
-        self.line_resistance = self.unit_converter.convert_ohm_to_per_unit(self.line_resistance)
-
-        self.line_reactance = np.divide(np.multiply(self.line["x_ohm_per_km"].values, line_length),
-                                        line_parallel)  # Reactance in Ohms
-        self.line_reactance = self.unit_converter.convert_ohm_to_per_unit(self.line_reactance)  # In p.u.
-
-        self.line_inverse_reactance = np.divide(1, self.line_reactance)  # Negative susceptance in p.u.
-
-        self.line_i_max = np.multiply(self.env.get_thermal_limit(), line_max_loading)  # Line current limit in Amperes
-        self.line_i_max = self.unit_converter.convert_a_to_per_unit(self.line_i_max)  # In p.u.
-
-        # TODO: HACK ONLY LINE OR!
-        self.line_p_max = self.line_i_max * self.unit_converter.convert_kv_to_per_unit(
-            self.bus["vn_kv"].values[self.line_ids_to_or_bus_ids])  # In p.u.
-
-        if verbose:
-            print("initializing lines ...")
-            print("{:<30}{}\t{}".format("line", self.line_ids, self.n_line))
-            print("{:<30}{}".format("line_resistance", self.line_resistance))
-            print("{:<30}{}".format("line_reactance", self.line_reactance))
-            print("{:<30}{}".format("line_inverse_reactance", self.line_inverse_reactance))
-            print("{:<30}{}".format("line_i_max", self.line_i_max))
-            print("{:<30}{}".format("line_p_max", self.line_p_max))
-            print("{:<30}{}\n".format("line_ids_to_bus_ids", self.line_ids_to_bus_ids))
-
-        assert self.n_line == self.line.shape[0]  # Check number of lines
-        # assert np.equal(self.unit_converter.convert_ka_to_per_unit(self.line["max_i_ka"]),
-        #                 self.line_i_max).all()  # Check consistency of thermal limits
-
-    """
-        Pyomo modeling functions.
-    """
+    def convert_per_unit_to_ka(self, i_pu):
+        i_ka = i_pu * self.base_unit_i / self.unit_a_ka
+        return i_ka
 
     @staticmethod
-    def _bounds_gen_p(model, gen_id):
-        return model.gen_p_min[gen_id], model.gen_p_max[gen_id]
+    def convert_degree_to_rad(deg):
+        rad = deg / 180.0 * np.pi
+        return rad
 
     @staticmethod
-    def _constraint_gen_p(model, gen_id):
-        return pyo.inequality(model.gen_p_min[gen_id], model.gen_p[gen_id], model.gen_p_max[gen_id])
+    def convert_rad_to_deg(rad):
+        deg = rad / np.pi * 180.0
+        return deg
+
+
+class PyomoMixin:
+    @staticmethod
+    def _dataframe_to_list_of_tuples(df):
+        return [tuple(row) for row in df.to_numpy()]
 
     @staticmethod
-    def _constraint_line_p(model, line_id):
-        return pyo.inequality(-model.line_p_max[line_id], model.line_p[line_id], model.line_p_max[line_id])
-
-    @staticmethod
-    def _constraint_line_p_def(model, line_id):
-        return model.line_p[line_id] == model.line_inverse_reactance[line_id] * (
-                model.delta[model.line_ids_to_bus_ids[line_id][0]] - model.delta[model.line_ids_to_bus_ids[line_id][1]])
-
-    @staticmethod
-    def _constraint_delta(model, bus_id):
-        if bus_id == 0:
-            return model.delta[bus_id] == 0
-        else:
-            return pyo.Constraint.Skip
-
-    @staticmethod
-    def _constraint_bus_gen_p(model, bus_id):
-        bus_gen_ids = model.bus_ids_to_gen_ids[bus_id]
-        bus_gen_p = [model.gen_p[gen_id] for gen_id in bus_gen_ids]
-        if len(bus_gen_p):
-            return model.bus_gen_p[bus_id] == sum(bus_gen_p)
-        else:
-            # If no generator bus injections
-            return model.bus_gen_p[bus_id] == 0
-
-    @staticmethod
-    def _constraint_bus_balance_p(model, bus_id):
-        return model.bus_gen_p[bus_id] - model.bus_load_p[bus_id] == \
-               sum([model.line_p[line_id] for line_id in model.line_set if
-                    bus_id == model.line_ids_to_bus_ids[line_id][0]]) - \
-               sum([model.line_p[line_id] for line_id in model.line_set if
-                    bus_id == model.line_ids_to_bus_ids[line_id][1]])
-
-    @staticmethod
-    def _objective_gen_p(model):
-        return sum([model.gen_p[gen_id] * model.gen_costs[gen_id] for gen_id in model.gen_set])
-
-    """
-        Pyomo helper functions.
-    """
+    def _reverse_index_map(indices_1, indices_2):
+        reverse_map = [list(np.equal(indices_1, idx).nonzero()[0]) for idx in indices_2]
+        return reverse_map
 
     @staticmethod
     def _create_map_ids_to_values_sum(ids, sum_ids, values):
@@ -415,13 +85,789 @@ class DCOptimalPowerFlow(object):
     def _access_pyomo_variable(var):
         return np.array([pyo.value(var[idx]) for idx in var])
 
+
+class StandardDCOPF(UnitConverter, PyomoMixin):
+    def __init__(self, name, grid, solver="gurobi", verbose=False, **kwargs):
+        UnitConverter.__init__(self, **kwargs)
+        if verbose:
+            self.print_base_units()
+
+        self.name = name
+        self.grid = grid
+
+        self.bus = grid.bus
+        self.line = grid.line
+        self.gen = grid.gen
+        self.load = grid.load
+
+        self.model = None
+        self.solver = pyo_opt.SolverFactory(solver)
+
+        # Results
+        self.res_cost = None
+        self.res_bus = None
+        self.res_line = None
+        self.res_gen = None
+
+        # DC-OPF Costs
+        self.gen["cost_pu"] = np.ones_like(self.gen.index)
+
+    def update_grid(self, grid):
+        self.grid = grid
+        self.bus = grid.bus
+        self.line = grid.line
+        self.gen = grid.gen
+        self.load = grid.load
+
+    def set_gen_cost(self, gen_costs):
+        gen_costs = np.array(gen_costs).flatten()
+        assert gen_costs.size == self.gen["cost_pu"].size  # Check dimensions
+
+        self.gen["cost_pu"] = gen_costs
+
+    def _build_per_unit_grid(self):
+        """
+        Note: DataFrames are passed-by-reference. self.grid.line == self.line
+        """
+        # Buses
+        self.bus["vn_pu"] = self.convert_kv_to_per_unit(self.bus["vn_kv"])
+
+        # Power lines
+        if "max_loading_percent" not in self.line.columns:
+            self.line["max_loading_percent"] = 100 * np.ones((self.line.shape[0],))
+
+        self.line["x_pu"] = self.convert_ohm_to_per_unit(
+            self.line["x_ohm_per_km"] * self.line["length_km"] / self.line["parallel"]
+        )
+        self.line["b_pu"] = 1 / self.line["x_pu"]
+        self.line["max_i_pu"] = self.convert_ka_to_per_unit(self.line["max_i_ka"])
+
+        # Assume a line connects buses with same voltage level
+        self.line["max_p_pu"] = (
+                self.line["max_i_pu"] * self.bus["vn_pu"][self.line["from_bus"]].values
+        )
+
+        # Generators
+        self.gen["p_pu"] = self.convert_mw_to_per_unit(self.gen["p_mw"])
+        self.grid.gen["max_p_pu"] = self.convert_mw_to_per_unit(self.gen["max_p_mw"])
+        self.grid.gen["min_p_pu"] = self.convert_mw_to_per_unit(self.gen["min_p_mw"])
+
+        # Loads
+        self.load["p_pu"] = self.convert_mw_to_per_unit(self.load["p_mw"])
+
+    def print_per_unit_grid(self):
+        print("\nGRID\n")
+        print("BUS\n" + self.bus[["name", "vn_pu"]].to_string())
+        print(
+            "LINE\n"
+            + self.line[
+                [
+                    "name",
+                    "from_bus",
+                    "to_bus",
+                    "b_pu",
+                    "max_i_pu",
+                    "max_p_pu",
+                    "max_loading_percent",
+                ]
+            ].to_string()
+        )
+        print(
+            "GEN\n"
+            + self.gen[
+                ["name", "bus", "p_pu", "min_p_pu", "max_p_pu", "cost_pu"]
+            ].to_string()
+        )
+        print("LOAD\n" + self.load[["name", "bus", "p_pu"]].to_string())
+
+    def print_model(self):
+        print(self.model.pprint())
+
+    def build_model(self):
+        self._build_per_unit_grid()
+
+        self.model = pyo.ConcreteModel("Standard DC-OPF Model")
+
+        """
+            DC-OPF INDEXED SETS.
+        """
+        self.model.bus_set = pyo.Set(
+            initialize=self.bus.index.values, within=pyo.NonNegativeIntegers
+        )
+        self.model.line_set = pyo.Set(
+            initialize=self.line.index.values, within=pyo.NonNegativeIntegers
+        )
+        self.model.load_set = pyo.Set(
+            initialize=self.load.index.values, within=pyo.NonNegativeIntegers
+        )
+        self.model.gen_set = pyo.Set(
+            initialize=self.gen.index.values, within=pyo.NonNegativeIntegers
+        )
+
+        """
+            DC-OPF PARAMETERS - FIXED.
+        """
+        self.model.gen_p_max = pyo.Param(
+            self.model.gen_set,
+            initialize=self._create_map_ids_to_values(
+                self.gen.index.values, self.gen["max_p_pu"]
+            ),
+            within=pyo.NonNegativeReals,
+        )
+        self.model.gen_p_min = pyo.Param(
+            self.model.gen_set,
+            initialize=self._create_map_ids_to_values(
+                self.gen.index.values, self.gen["min_p_pu"]
+            ),
+            within=pyo.NonNegativeReals,
+        )
+
+        self.model.line_flow_max = pyo.Param(
+            self.model.line_set,
+            initialize=self._create_map_ids_to_values(
+                self.line.index.values, self.line["max_p_pu"]
+            ),
+            within=pyo.NonNegativeReals,
+        )
+        self.model.line_b = pyo.Param(
+            self.model.line_set,
+            initialize=self._create_map_ids_to_values(
+                self.line.index.values, self.line["b_pu"]
+            ),
+            within=pyo.NonNegativeReals,
+        )
+
+        """
+            DC-OPF PARAMETERS - VARIABLE.
+        """
+        self.model.line_ids_to_bus_ids = pyo.Param(
+            self.model.line_set,
+            initialize=self._create_map_ids_to_values(
+                self.line.index.values,
+                self._dataframe_to_list_of_tuples(self.line[["from_bus", "to_bus"]]),
+            ),
+            within=self.model.bus_set * self.model.bus_set,
+        )
+
+        self.model.bus_ids_to_gen_ids = pyo.Param(
+            self.model.bus_set,
+            initialize=self._create_map_ids_to_values(
+                self.bus.index.values,
+                self._reverse_index_map(self.gen["bus"].values, self.bus.index.values),
+            ),
+            within=pyo.Any,
+        )
+
+        # Load bus injections
+        self.model.bus_load_p = pyo.Param(
+            self.model.bus_set,
+            initialize=self._create_map_ids_to_values_sum(
+                self.bus.index.values,
+                self._reverse_index_map(self.load["bus"].values, self.bus.index.values),
+                self.load["p_pu"],
+            ),
+            within=pyo.NonNegativeReals,
+        )
+
+        # Bus voltage angles
+        self.model.delta_max = pyo.Param(
+            initialize=np.pi / 2, within=pyo.NonNegativeReals
+        )
+
+        # Slack bus index
+        self.model.slack_bus_id = pyo.Param(
+            initialize=np.where(self.gen["slack"])[0][0].astype(int),
+            within=self.model.bus_set,
+        )
+
+        """
+            DC-OPF PARAMETERS - OBJECTIVE.        
+        """
+        self.model.gen_costs = pyo.Param(
+            self.model.gen_set,
+            initialize=self._create_map_ids_to_values(
+                self.gen.index.values, self.gen["cost_pu"]
+            ),
+            within=pyo.NonNegativeReals,
+        )
+
+        """
+            DC-OPF VARIABLES.
+        """
+        # Generator power productions
+        self.model.gen_p = pyo.Var(
+            self.model.gen_set,
+            domain=pyo.NonNegativeReals,
+            bounds=self._bounds_gen_p,
+            initialize=self._create_map_ids_to_values(
+                self.gen.index.values, self.gen["p_pu"]
+            ),
+        )
+
+        # Voltage angle
+        self.model.delta = pyo.Var(
+            self.model.bus_set,
+            domain=pyo.Reals,
+            bounds=self._bounds_delta,
+            initialize=self._create_map_ids_to_values(
+                self.bus.index.values, np.zeros_like(self.bus.index.values)
+            ),
+        )
+
+        # Line power flows
+        self.model.line_flow = pyo.Var(
+            self.model.line_set, domain=pyo.Reals, bounds=self._bounds_flow_max
+        )
+
+        """
+            DC-OPF CONSTRAINTS.            
+        """
+        # Power flow equation
+        self.model.constraint_line_flow = pyo.Constraint(
+            self.model.line_set, rule=self._constraint_line_flow
+        )
+
+        # Bus power balance constraints
+        self.model.constraint_bus_balance = pyo.Constraint(
+            self.model.bus_set, rule=self._constraint_bus_balance
+        )
+
+        # Objectives
+        self.model.objective = pyo.Objective(
+            rule=self._objective_gen_p, sense=pyo.minimize
+        )
+
+    def solve(self, verbose=False):
+        self.solver.solve(self.model, tee=verbose)
+
+        self.res_cost = pyo.value(self.model.objective)
+
+        self.res_bus = self.bus[["name", "vn_pu"]].copy()
+        self.res_bus["delta_pu"] = self._access_pyomo_variable(self.model.delta)
+        self.res_bus["delta_deg"] = self.convert_rad_to_deg(
+            self._access_pyomo_variable(self.model.delta)
+        )
+
+        self.res_gen = self.gen[["name", "min_p_pu", "max_p_pu"]].copy()
+        self.res_gen["p_pu"] = self._access_pyomo_variable(self.model.gen_p)
+
+        self.res_line = self.line[
+            ["name", "from_bus", "to_bus", "max_i_pu", "max_p_pu"]
+        ].copy()
+        self.res_line["p_pu"] = self._access_pyomo_variable(self.model.line_flow)
+        self.res_line["loading_percent"] = np.abs(
+            self.res_line["p_pu"] / self.line["max_p_pu"] * 100
+        )
+
+        if verbose:
+            self.model.display()
+
+        result = {
+            "res_cost": self.res_cost,
+            "res_bus": self.res_bus,
+            "res_line": self.res_line,
+            "res_gen": self.res_gen,
+        }
+        return result
+
+    def solve_backend(self, verbose=False):
+        for gen_id in self.gen.index.values:
+            pp.create_poly_cost(
+                self.grid,
+                gen_id,
+                "gen",
+                cp1_eur_per_mw=self.convert_per_unit_to_mw(self.gen["cost_pu"][gen_id]),
+            )
+
+        pp.rundcopp(self.grid, verbose=verbose)
+
+        # Convert NaNs of inactive buses to 0
+        self.grid.res_bus = self.grid.res_bus.fillna(0)
+
+        self.grid.res_bus["delta_pu"] = self.convert_degree_to_rad(
+            self.grid.res_bus["va_degree"]
+        )
+        self.grid.res_line["p_pu"] = self.convert_mw_to_per_unit(
+            self.grid.res_line["p_from_mw"]
+        )
+        self.grid.res_line["i_pu"] = self.convert_ka_to_per_unit(
+            self.grid.res_line["i_from_ka"]
+        )
+        self.grid.res_gen["p_pu"] = self.convert_mw_to_per_unit(
+            self.grid.res_gen["p_mw"]
+        )
+
+        result = {
+            "res_cost": self.grid.res_cost,
+            "res_bus": self.grid.res_bus,
+            "res_line": self.grid.res_line,
+            "res_gen": self.grid.res_gen,
+        }
+        return result
+
+    def print_results(self):
+        print("\nRESULTS\n")
+        print("{:<10}{}".format("OBJECTIVE", self.res_cost))
+        print("RES BUS\n" + self.res_bus.to_string())
+        print("RES LINE\n" + self.res_line.to_string())
+        print("RES GEN\n" + self.res_gen.to_string())
+
+    def print_results_backend(self):
+        print("\nRESULTS BACKEND\n")
+        print("{:<10}{}".format("OBJECTIVE", self.grid.res_cost))
+        print("RES BUS\n" + self.grid.res_bus[["delta_pu"]].to_string())
+        print(
+            "RES LINE\n"
+            + self.grid.res_line[["p_pu", "i_pu", "loading_percent"]].to_string()
+        )
+        print("RES GEN\n" + self.grid.res_gen[["p_pu"]].to_string())
+
+    def solve_and_compare(self, verbose=False):
+        result = self.solve()
+        result_backend = self.solve_backend()
+
+        res_cost = pd.DataFrame(
+            {
+                "objective": [result["res_cost"]],
+                "b_objective": [result_backend["res_cost"]],
+                "diff": np.abs(result["res_cost"] - result_backend["res_cost"]),
+            }
+        )
+
+        res_bus = pd.DataFrame(
+            {
+                "delta_pu": result["res_bus"]["delta_pu"],
+                "b_delta_pu": result_backend["res_bus"]["delta_pu"],
+                "diff": np.abs(
+                    result["res_bus"]["delta_pu"]
+                    - result_backend["res_bus"]["delta_pu"]
+                ),
+            }
+        )
+
+        res_line = pd.DataFrame(
+            {
+                "p_pu": result["res_line"]["p_pu"],
+                "b_p_pu": result_backend["res_line"]["p_pu"],
+                "diff": np.abs(
+                    result["res_line"]["p_pu"] - result_backend["res_line"]["p_pu"]
+                ),
+            }
+        )
+
+        res_gen = pd.DataFrame(
+            {
+                "gen_pu": result["res_gen"]["p_pu"],
+                "b_gen_pu": result_backend["res_gen"]["p_pu"],
+                "diff": np.abs(
+                    result["res_gen"]["p_pu"] - result_backend["res_gen"]["p_pu"]
+                ),
+                "gen_cost_pu": self.gen["cost_pu"],
+            }
+        )
+
+        if verbose:
+            print(res_cost.to_string())
+            print(res_bus.to_string())
+            print(res_line.to_string())
+            print(res_gen.to_string())
+
+        result = {
+            "res_cost": res_cost,
+            "res_bus": res_bus,
+            "res_line": res_line,
+            "res_gen": res_gen,
+        }
+        return result
+
     @staticmethod
-    def _print_res_gen(gen_p, gen_costs):
-        res_gen = pd.DataFrame()
-        res_gen["gen_p_mw"] = gen_p
-        res_gen["gen_cost_per_mw"] = gen_costs
-        print(res_gen.to_string())
+    def _bounds_gen_p(model, gen_id):
+        return model.gen_p_min[gen_id], model.gen_p_max[gen_id]
+
+    @staticmethod
+    def _bounds_delta(model, bus_id):
+        if bus_id == pyo.value(model.slack_bus_id):
+            return 0.0, 0.0
+        else:
+            return -model.delta_max, model.delta_max
+
+    @staticmethod
+    def _bounds_flow_max(model, line_id):
+        return -model.line_flow_max[line_id], model.line_flow_max[line_id]
+
+    @staticmethod
+    def _constraint_line_flow(model, line_id):
+        return model.line_flow[line_id] == model.line_b[line_id] * (
+                model.delta[model.line_ids_to_bus_ids[line_id][0]]
+                - model.delta[model.line_ids_to_bus_ids[line_id][1]]
+        )
+
+    @staticmethod
+    def _constraint_bus_balance(model, bus_id):
+        bus_gen_ids = model.bus_ids_to_gen_ids[bus_id]
+        bus_gen_p = [model.gen_p[gen_id] for gen_id in bus_gen_ids]
+
+        # Injections
+        sum_gen_p = 0
+        if len(bus_gen_p):
+            sum_gen_p = sum(bus_gen_p)
+
+        sum_load_p = float(model.bus_load_p[bus_id])
+
+        # Power line flows
+        flows_out = [
+            model.line_flow[line_id]
+            for line_id in model.line_set
+            if bus_id == model.line_ids_to_bus_ids[line_id][0]
+        ]
+
+        flows_in = [
+            model.line_flow[line_id]
+            for line_id in model.line_set
+            if bus_id == model.line_ids_to_bus_ids[line_id][1]
+        ]
+
+        if len(flows_in) == 0 and len(flows_out) == 0:
+            return pyo.Constraint.Skip
+
+        return sum_gen_p - sum_load_p == sum(flows_out) - sum(flows_in)
+
+    @staticmethod
+    def _objective_gen_p(model):
+        return sum(
+            [model.gen_p[gen_id] * model.gen_costs[gen_id] for gen_id in model.gen_set]
+        )
 
 
-class StandardDCOPF(object):
-    pass
+class OPFCase3(UnitConverter):
+    """
+    Test case for power flow computation.
+    Found in http://research.iaun.ac.ir/pd/bahador.fani/pdfs/UploadFile_6990.pdf.
+    """
+
+    def __init__(self):
+        UnitConverter.__init__(self, base_unit_p=1e6, base_unit_v=110000.0)
+
+        self.grid = self.build_case3_grid()
+
+    def build_case3_grid(self):
+        grid = pp.create_empty_network()
+
+        bus0 = pp.create_bus(grid, vn_kv=self.base_unit_v / 1000, name="bus-0")
+        bus1 = pp.create_bus(grid, vn_kv=self.base_unit_v / 1000, name="bus-1")
+        bus2 = pp.create_bus(grid, vn_kv=self.base_unit_v / 1000, name="bus-2")
+
+        pp.create_line_from_parameters(
+            grid,
+            bus0,
+            bus1,
+            length_km=1.0,
+            r_ohm_per_km=0.01 * self.base_unit_z,
+            x_ohm_per_km=1.0 / 3.0 * self.base_unit_z,
+            c_nf_per_km=0.0001,
+            max_i_ka=self.convert_per_unit_to_ka(1.0),
+            name="line-0",
+            type="ol",
+            max_loading_percent=100.0,
+        )
+
+        pp.create_line_from_parameters(
+            grid,
+            bus0,
+            bus2,
+            length_km=1.0,
+            r_ohm_per_km=0.01 * self.base_unit_z,
+            x_ohm_per_km=1.0 / 2.0 * self.base_unit_z,
+            c_nf_per_km=0.0001,
+            max_i_ka=self.convert_per_unit_to_ka(1.0),
+            name="line-1",
+            type="ol",
+            max_loading_percent=100.0,
+        )
+
+        pp.create_line_from_parameters(
+            grid,
+            bus1,
+            bus2,
+            length_km=1.0,
+            r_ohm_per_km=0.01 * self.base_unit_z,
+            x_ohm_per_km=1.0 / 2.0 * self.base_unit_z,
+            c_nf_per_km=0.0001,
+            max_i_ka=self.convert_per_unit_to_ka(1.0),
+            name="line-2",
+            type="ol",
+            max_loading_percent=100.0,
+        )
+
+        pp.create_load(
+            grid,
+            bus1,
+            p_mw=self.convert_per_unit_to_mw(0.5),
+            name="load-0",
+            controllable=False,
+        )
+        pp.create_load(
+            grid,
+            bus2,
+            p_mw=self.convert_per_unit_to_mw(1.0),
+            name="load-1",
+            controllable=False,
+        )
+        pp.create_gen(
+            grid,
+            bus0,
+            p_mw=self.convert_per_unit_to_mw(1.5),
+            min_p_mw=self.convert_per_unit_to_mw(0.0),
+            max_p_mw=self.convert_per_unit_to_mw(2.0),
+            slack=True,
+            name="gen-0",
+        )
+        return grid
+
+
+class OPFCase6(UnitConverter):
+    """
+    Test case for power flow computation.
+    Found in http://research.iaun.ac.ir/pd/bahador.fani/pdfs/UploadFile_6990.pdf.
+    """
+
+    def __init__(self):
+        UnitConverter.__init__(self, base_unit_p=1e6, base_unit_v=110000.0)
+
+        self.grid = self.build_case6_grid()
+
+    def build_case6_grid(self):
+        grid = pp.create_empty_network()
+
+        # Buses
+        bus0 = pp.create_bus(grid, vn_kv=self.base_unit_v / 1000, name="bus-0")
+        bus1 = pp.create_bus(grid, vn_kv=self.base_unit_v / 1000, name="bus-1")
+        bus2 = pp.create_bus(grid, vn_kv=self.base_unit_v / 1000, name="bus-2")
+        bus3 = pp.create_bus(grid, vn_kv=self.base_unit_v / 1000, name="bus-3")
+        bus4 = pp.create_bus(grid, vn_kv=self.base_unit_v / 1000, name="bus-4")
+        bus5 = pp.create_bus(grid, vn_kv=self.base_unit_v / 1000, name="bus-5")
+
+        # Lines
+        pp.create_line_from_parameters(
+            grid,
+            bus0,
+            bus1,
+            length_km=1.0,
+            r_ohm_per_km=1e-3 * self.base_unit_z,  # Dummy
+            x_ohm_per_km=1.0 / 4.0 * self.base_unit_z,
+            c_nf_per_km=1e-9,  # Dummy
+            max_i_ka=self.convert_per_unit_to_ka(2.0),
+            name="line-0",
+            type="ol",
+            max_loading_percent=100.0,
+        )
+        pp.create_line_from_parameters(
+            grid,
+            bus0,
+            bus3,
+            length_km=1.0,
+            r_ohm_per_km=1e-3 * self.base_unit_z,  # Dummy
+            x_ohm_per_km=1.0 / 4.706 * self.base_unit_z,
+            c_nf_per_km=1e-9,  # Dummy
+            max_i_ka=self.convert_per_unit_to_ka(2.0),
+            name="line-1",
+            type="ol",
+            max_loading_percent=100.0,
+        )
+        pp.create_line_from_parameters(
+            grid,
+            bus0,
+            bus4,
+            length_km=1.0,
+            r_ohm_per_km=1e-3 * self.base_unit_z,  # Dummy
+            x_ohm_per_km=1.0 / 3.102 * self.base_unit_z,
+            c_nf_per_km=1e-9,  # Dummy
+            max_i_ka=self.convert_per_unit_to_ka(2.0),
+            name="line-2",
+            type="ol",
+            max_loading_percent=100.0,
+        )
+        pp.create_line_from_parameters(
+            grid,
+            bus1,
+            bus2,
+            length_km=1.0,
+            r_ohm_per_km=1e-3 * self.base_unit_z,  # Dummy
+            x_ohm_per_km=1.0 / 3.846 * self.base_unit_z,
+            c_nf_per_km=1e-9,  # Dummy
+            max_i_ka=self.convert_per_unit_to_ka(2.0),
+            name="line-3",
+            type="ol",
+            max_loading_percent=100.0,
+        )
+        pp.create_line_from_parameters(
+            grid,
+            bus1,
+            bus3,
+            length_km=1.0,
+            r_ohm_per_km=1e-3 * self.base_unit_z,  # Dummy
+            x_ohm_per_km=1.0 / 8.001 * self.base_unit_z,
+            c_nf_per_km=1e-9,  # Dummy
+            max_i_ka=self.convert_per_unit_to_ka(2.0),
+            name="line-4",
+            type="ol",
+            max_loading_percent=100.0,
+        )
+        pp.create_line_from_parameters(
+            grid,
+            bus1,
+            bus4,
+            length_km=1.0,
+            r_ohm_per_km=1e-3 * self.base_unit_z,  # Dummy
+            x_ohm_per_km=1.0 / 3.0 * self.base_unit_z,
+            c_nf_per_km=1e-9,  # Dummy
+            max_i_ka=self.convert_per_unit_to_ka(2.0),
+            name="line-5",
+            type="ol",
+            max_loading_percent=100.0,
+        )
+        pp.create_line_from_parameters(
+            grid,
+            bus1,
+            bus5,
+            length_km=1.0,
+            r_ohm_per_km=1e-3 * self.base_unit_z,  # Dummy
+            x_ohm_per_km=1.0 / 1.454 * self.base_unit_z,
+            c_nf_per_km=1e-9,  # Dummy
+            max_i_ka=self.convert_per_unit_to_ka(2.0),
+            name="line-6",
+            type="ol",
+            max_loading_percent=100.0,
+        )
+        pp.create_line_from_parameters(
+            grid,
+            bus2,
+            bus4,
+            length_km=1.0,
+            r_ohm_per_km=1e-3 * self.base_unit_z,  # Dummy
+            x_ohm_per_km=1.0 / 3.175 * self.base_unit_z,
+            c_nf_per_km=1e-9,  # Dummy
+            max_i_ka=self.convert_per_unit_to_ka(2.0),
+            name="line-7",
+            type="ol",
+            max_loading_percent=100.0,
+        )
+        pp.create_line_from_parameters(
+            grid,
+            bus2,
+            bus5,
+            length_km=1.0,
+            r_ohm_per_km=1e-3 * self.base_unit_z,  # Dummy
+            x_ohm_per_km=1.0 / 9.6157 * self.base_unit_z,
+            c_nf_per_km=1e-9,  # Dummy
+            max_i_ka=self.convert_per_unit_to_ka(2.0),
+            name="line-8",
+            type="ol",
+            max_loading_percent=100.0,
+        )
+        pp.create_line_from_parameters(
+            grid,
+            bus3,
+            bus4,
+            length_km=1.0,
+            r_ohm_per_km=1e-3 * self.base_unit_z,  # Dummy
+            x_ohm_per_km=1.0 / 2.0 * self.base_unit_z,
+            c_nf_per_km=1e-9,  # Dummy
+            max_i_ka=self.convert_per_unit_to_ka(2.0),
+            name="line-9",
+            type="ol",
+            max_loading_percent=100.0,
+        )
+        pp.create_line_from_parameters(
+            grid,
+            bus4,
+            bus5,
+            length_km=1.0,
+            r_ohm_per_km=1e-3 * self.base_unit_z,  # Dummy
+            x_ohm_per_km=1.0 / 3.0 * self.base_unit_z,
+            c_nf_per_km=1e-9,  # Dummy
+            max_i_ka=self.convert_per_unit_to_ka(2.0),
+            name="line-10",
+            type="ol",
+            max_loading_percent=100.0,
+        )
+
+        # Loads
+        pp.create_load(
+            grid,
+            bus3,
+            p_mw=self.convert_per_unit_to_mw(0.9),
+            name="load-0",
+            controllable=False,
+        )
+        pp.create_load(
+            grid,
+            bus4,
+            p_mw=self.convert_per_unit_to_mw(1.0),
+            name="load-1",
+            controllable=False,
+        )
+        pp.create_load(
+            grid,
+            bus5,
+            p_mw=self.convert_per_unit_to_mw(0.9),
+            name="load-2",
+            controllable=False,
+        )
+
+        # Generators
+        pp.create_gen(
+            grid,
+            bus0,
+            p_mw=self.convert_per_unit_to_mw(1.0),
+            min_p_mw=self.convert_per_unit_to_mw(0.5),
+            max_p_mw=self.convert_per_unit_to_mw(1.5),
+            slack=True,
+            name="gen-0",
+        )
+        pp.create_gen(
+            grid,
+            bus1,
+            p_mw=self.convert_per_unit_to_mw(0.9),
+            min_p_mw=self.convert_per_unit_to_mw(0.5),
+            max_p_mw=self.convert_per_unit_to_mw(2.0),
+            name="gen-1",
+        )
+        pp.create_gen(
+            grid,
+            bus2,
+            p_mw=self.convert_per_unit_to_mw(0.9),
+            min_p_mw=self.convert_per_unit_to_mw(0.3),
+            max_p_mw=self.convert_per_unit_to_mw(1.0),
+            name="gen-2",
+        )
+
+        return grid
+
+
+if __name__ == "__main__":
+    case6 = OPFCase6()
+    test_opf = StandardDCOPF(
+        "CASE 6",
+        case6.grid,
+        base_unit_p=case6.base_unit_p,
+        base_unit_v=case6.base_unit_v,
+    )
+
+    # Set generator costs
+    gen_cost = np.random.uniform(1.0, 1.5, (case6.grid.gen.shape[0],))
+    test_opf.set_gen_cost(gen_cost)
+
+    test_opf.build_model()
+    test_opf.print_per_unit_grid()
+
+    # Solve OPFs
+    test_opf.solve()
+    test_opf.solve_backend()
+
+    # Print results
+    test_opf.print_results()
+    test_opf.print_results_backend()
+
+    # Compare with backend
+    test_opf.solve_and_compare(verbose=True)
