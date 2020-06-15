@@ -2,9 +2,9 @@ import grid2op
 import pandapower as pp
 import pandas as pd
 
-env_name = "rte_case5_example"
+# env_name = "rte_case5_example"
 # env_name = "rte_case14_realistic"
-# env_name = "l2rpn_2019"
+env_name = "l2rpn_2019"
 # env_name = "l2rpn_wcci_2020"
 
 env = grid2op.make(dataset=env_name)

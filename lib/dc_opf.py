@@ -1,11 +1,8 @@
-import grid2op
 import numpy as np
 import pandapower as pp
 import pandas as pd
 import pyomo.environ as pyo
 import pyomo.opt as pyo_opt
-
-from lib.data_utils import update_backend
 
 
 class UnitConverter:
@@ -115,13 +112,6 @@ class StandardDCOPF(UnitConverter, PyomoMixin):
         # DC-OPF Costs
         self.gen["cost_pu"] = np.ones_like(self.gen.index)
 
-    def update_grid(self, grid):
-        self.grid = grid
-        self.bus = grid.bus
-        self.line = grid.line
-        self.gen = grid.gen
-        self.load = grid.load
-
     def set_gen_cost(self, gen_costs):
         gen_costs = np.array(gen_costs).flatten()
         assert gen_costs.size == self.gen["cost_pu"].size  # Check dimensions
@@ -147,7 +137,7 @@ class StandardDCOPF(UnitConverter, PyomoMixin):
 
         # Assume a line connects buses with same voltage level
         self.line["max_p_pu"] = (
-                self.line["max_i_pu"] * self.bus["vn_pu"][self.line["from_bus"]].values
+            self.line["max_i_pu"] * self.bus["vn_pu"][self.line["from_bus"]].values
         )
 
         # Generators
@@ -194,57 +184,160 @@ class StandardDCOPF(UnitConverter, PyomoMixin):
         """
             DC-OPF INDEXED SETS.
         """
-        self.model.bus_set = pyo.Set(
-            initialize=self.bus.index.values, within=pyo.NonNegativeIntegers
-        )
-        self.model.line_set = pyo.Set(
-            initialize=self.line.index.values, within=pyo.NonNegativeIntegers
-        )
-        self.model.load_set = pyo.Set(
-            initialize=self.load.index.values, within=pyo.NonNegativeIntegers
-        )
-        self.model.gen_set = pyo.Set(
-            initialize=self.gen.index.values, within=pyo.NonNegativeIntegers
-        )
+        self._build_indexed_sets()  # Indexing over buses, lines, generators, and loads
 
         """
             DC-OPF PARAMETERS - FIXED.
         """
-        self.model.gen_p_max = pyo.Param(
-            self.model.gen_set,
-            initialize=self._create_map_ids_to_values(
-                self.gen.index.values, self.gen["max_p_pu"]
-            ),
-            within=pyo.NonNegativeReals,
-        )
-
-        # Set minimum generator to 0 if negative value
-        self.model.gen_p_min = pyo.Param(
-            self.model.gen_set,
-            initialize=self._create_map_ids_to_values(
-                self.gen.index.values, np.maximum(0.0, self.gen["min_p_pu"].values)
-            ),
-            within=pyo.NonNegativeReals,
-        )
-
-        self.model.line_flow_max = pyo.Param(
-            self.model.line_set,
-            initialize=self._create_map_ids_to_values(
-                self.line.index.values, self.line["max_p_pu"]
-            ),
-            within=pyo.NonNegativeReals,
-        )
-        self.model.line_b = pyo.Param(
-            self.model.line_set,
-            initialize=self._create_map_ids_to_values(
-                self.line.index.values, self.line["b_pu"]
-            ),
-            within=pyo.NonNegativeReals,
-        )
+        self._build_parameters_generators()  # Bounds on generator production
+        self._build_parameters_lines()  # Power line thermal limit and susceptance
+        self._build_parameters_objective()  # Objective parameters
 
         """
             DC-OPF PARAMETERS - VARIABLE.
         """
+        self._build_parameters_topology()  # Topology of generators and power lines
+        self._build_parameters_delta()  # Bus voltage angle bounds and reference node
+        self._build_parameters_loads()  # Bus load injections
+
+        """
+            DC-OPF VARIABLES.
+        """
+        self._build_variables_standard_generators()  # Generator productions and bounds
+        self._build_variable_standard_delta()  # Bus voltage angles and bounds
+        self._build_variable_standard_line()  # Power line flows and bounds
+
+        """
+            DC-OPF CONSTRAINTS.            
+        """
+        self._build_constraint_line_flows()  # Power flow definition
+        self._build_constraint_bus_balance()  # Bus power balance
+
+        """
+            DC-OPF OBJECTIVE.
+        """
+        self._build_objective()  # Objective to be optimized.
+
+    def _build_constraint_bus_balance(self):
+        # Bus power balance constraints
+        def _constraint_bus_balance(model, bus_id):
+            bus_gen_ids = model.bus_ids_to_gen_ids[bus_id]
+            bus_gen_p = [model.gen_p[gen_id] for gen_id in bus_gen_ids]
+
+            # Injections
+            sum_gen_p = 0
+            if len(bus_gen_p):
+                sum_gen_p = sum(bus_gen_p)
+
+            sum_load_p = float(model.bus_load_p[bus_id])
+
+            # Power line flows
+            flows_out = [
+                model.line_flow[line_id]
+                for line_id in model.line_set
+                if bus_id == model.line_ids_to_bus_ids[line_id][0]
+            ]
+
+            flows_in = [
+                model.line_flow[line_id]
+                for line_id in model.line_set
+                if bus_id == model.line_ids_to_bus_ids[line_id][1]
+            ]
+
+            if len(flows_in) == 0 and len(flows_out) == 0:
+                return pyo.Constraint.Skip
+
+            return sum_gen_p - sum_load_p == sum(flows_out) - sum(flows_in)
+
+        self.model.constraint_bus_balance = pyo.Constraint(
+            self.model.bus_set, rule=_constraint_bus_balance
+        )
+
+    def _build_constraint_line_flows(self):
+        # Power flow equation
+        def _constraint_line_flow(model, line_id):
+            return model.line_flow[line_id] == model.line_b[line_id] * (
+                model.delta[model.line_ids_to_bus_ids[line_id][0]]
+                - model.delta[model.line_ids_to_bus_ids[line_id][1]]
+            )
+
+        self.model.constraint_line_flow = pyo.Constraint(
+            self.model.line_set, rule=_constraint_line_flow
+        )
+
+    def _build_variable_standard_line(self):
+        # Line power flows
+        def _bounds_flow_max(model, line_id):
+            return -model.line_flow_max[line_id], model.line_flow_max[line_id]
+
+        self.model.line_flow = pyo.Var(
+            self.model.line_set, domain=pyo.Reals, bounds=_bounds_flow_max
+        )
+
+    def _build_variable_standard_delta(self):
+        # Bus voltage angle
+        def _bounds_delta(model, bus_id):
+            if bus_id == pyo.value(model.slack_bus_id):
+                return 0.0, 0.0
+            else:
+                return -model.delta_max, model.delta_max
+
+        self.model.delta = pyo.Var(
+            self.model.bus_set,
+            domain=pyo.Reals,
+            bounds=_bounds_delta,
+            initialize=self._create_map_ids_to_values(
+                self.bus.index.values, np.zeros_like(self.bus.index.values)
+            ),
+        )
+
+    def _build_variables_standard_generators(self):
+        def _bounds_gen_p(model, gen_id):
+            return model.gen_p_min[gen_id], model.gen_p_max[gen_id]
+
+        self.model.gen_p = pyo.Var(
+            self.model.gen_set,
+            domain=pyo.NonNegativeReals,
+            bounds=_bounds_gen_p,
+            initialize=self._create_map_ids_to_values(
+                self.gen.index.values, self.gen["p_pu"]
+            ),
+        )
+
+    def _build_parameters_objective(self):
+        self.model.gen_costs = pyo.Param(
+            self.model.gen_set,
+            initialize=self._create_map_ids_to_values(
+                self.gen.index.values, self.gen["cost_pu"]
+            ),
+            within=pyo.NonNegativeReals,
+        )
+
+    def _build_parameters_loads(self):
+        # Load bus injections
+        self.model.bus_load_p = pyo.Param(
+            self.model.bus_set,
+            initialize=self._create_map_ids_to_values_sum(
+                self.bus.index.values,
+                self._reverse_index_map(self.load["bus"].values, self.bus.index.values),
+                self.load["p_pu"],
+            ),
+            within=pyo.NonNegativeReals,
+        )
+
+    def _build_parameters_delta(self):
+        # Bus voltage angles
+        self.model.delta_max = pyo.Param(
+            initialize=np.pi / 2, within=pyo.NonNegativeReals
+        )
+
+        # Slack bus index
+        self.model.slack_bus_id = pyo.Param(
+            initialize=np.where(self.gen["slack"])[0][0].astype(int),
+            within=self.model.bus_set,
+        )
+
+    def _build_parameters_topology(self):
         self.model.line_ids_to_bus_ids = pyo.Param(
             self.model.line_set,
             initialize=self._create_map_ids_to_values(
@@ -263,84 +356,64 @@ class StandardDCOPF(UnitConverter, PyomoMixin):
             within=pyo.Any,
         )
 
-        # Load bus injections
-        self.model.bus_load_p = pyo.Param(
-            self.model.bus_set,
-            initialize=self._create_map_ids_to_values_sum(
-                self.bus.index.values,
-                self._reverse_index_map(self.load["bus"].values, self.bus.index.values),
-                self.load["p_pu"],
+    def _build_parameters_lines(self):
+        self.model.line_flow_max = pyo.Param(
+            self.model.line_set,
+            initialize=self._create_map_ids_to_values(
+                self.line.index.values, self.line["max_p_pu"]
+            ),
+            within=pyo.NonNegativeReals,
+        )
+        self.model.line_b = pyo.Param(
+            self.model.line_set,
+            initialize=self._create_map_ids_to_values(
+                self.line.index.values, self.line["b_pu"]
             ),
             within=pyo.NonNegativeReals,
         )
 
-        # Bus voltage angles
-        self.model.delta_max = pyo.Param(
-            initialize=np.pi / 2, within=pyo.NonNegativeReals
-        )
-
-        # Slack bus index
-        self.model.slack_bus_id = pyo.Param(
-            initialize=np.where(self.gen["slack"])[0][0].astype(int),
-            within=self.model.bus_set,
-        )
-
-        """
-            DC-OPF PARAMETERS - OBJECTIVE.        
-        """
-        self.model.gen_costs = pyo.Param(
+    def _build_parameters_generators(self):
+        self.model.gen_p_max = pyo.Param(
             self.model.gen_set,
             initialize=self._create_map_ids_to_values(
-                self.gen.index.values, self.gen["cost_pu"]
+                self.gen.index.values, self.gen["max_p_pu"]
             ),
             within=pyo.NonNegativeReals,
         )
 
-        """
-            DC-OPF VARIABLES.
-        """
-        # Generator power productions
-        self.model.gen_p = pyo.Var(
+        # Set minimum generator to 0 if negative value
+        self.model.gen_p_min = pyo.Param(
             self.model.gen_set,
-            domain=pyo.NonNegativeReals,
-            bounds=self._bounds_gen_p,
             initialize=self._create_map_ids_to_values(
-                self.gen.index.values, self.gen["p_pu"]
+                self.gen.index.values, np.maximum(0.0, self.gen["min_p_pu"].values)
             ),
+            within=pyo.NonNegativeReals,
         )
 
-        # Voltage angle
-        self.model.delta = pyo.Var(
-            self.model.bus_set,
-            domain=pyo.Reals,
-            bounds=self._bounds_delta,
-            initialize=self._create_map_ids_to_values(
-                self.bus.index.values, np.zeros_like(self.bus.index.values)
-            ),
+    def _build_indexed_sets(self):
+        self.model.bus_set = pyo.Set(
+            initialize=self.bus.index.values, within=pyo.NonNegativeIntegers
+        )
+        self.model.line_set = pyo.Set(
+            initialize=self.line.index.values, within=pyo.NonNegativeIntegers
+        )
+        self.model.load_set = pyo.Set(
+            initialize=self.load.index.values, within=pyo.NonNegativeIntegers
+        )
+        self.model.gen_set = pyo.Set(
+            initialize=self.gen.index.values, within=pyo.NonNegativeIntegers
         )
 
-        # Line power flows
-        self.model.line_flow = pyo.Var(
-            self.model.line_set, domain=pyo.Reals, bounds=self._bounds_flow_max
-        )
+    def _build_objective(self):
+        def _objective_gen_p(model):
+            return sum(
+                [
+                    model.gen_p[gen_id] * model.gen_costs[gen_id]
+                    for gen_id in model.gen_set
+                ]
+            )
 
-        """
-            DC-OPF CONSTRAINTS.            
-        """
-        # Power flow equation
-        self.model.constraint_line_flow = pyo.Constraint(
-            self.model.line_set, rule=self._constraint_line_flow
-        )
-
-        # Bus power balance constraints
-        self.model.constraint_bus_balance = pyo.Constraint(
-            self.model.bus_set, rule=self._constraint_bus_balance
-        )
-
-        # Objectives
-        self.model.objective = pyo.Objective(
-            rule=self._objective_gen_p, sense=pyo.minimize
-        )
+        self.model.objective = pyo.Objective(rule=_objective_gen_p, sense=pyo.minimize)
 
     def solve(self, verbose=False):
         self.solver.solve(self.model, tee=verbose)
@@ -428,7 +501,7 @@ class StandardDCOPF(UnitConverter, PyomoMixin):
         print("RES GEN\n" + self.grid.res_gen[["p_pu"]].to_string())
 
     def solve_and_compare(self, verbose=False):
-        result = self.solve()
+        result = self.solve(verbose=verbose)
         result_backend = self.solve_backend()
 
         res_cost = pd.DataFrame(
@@ -485,62 +558,173 @@ class StandardDCOPF(UnitConverter, PyomoMixin):
         }
         return result
 
-    @staticmethod
-    def _bounds_gen_p(model, gen_id):
-        return model.gen_p_min[gen_id], model.gen_p_max[gen_id]
 
-    @staticmethod
-    def _bounds_delta(model, bus_id):
-        if bus_id == pyo.value(model.slack_bus_id):
-            return 0.0, 0.0
-        else:
-            return -model.delta_max, model.delta_max
+class LineSwitchingDCOPF(StandardDCOPF):
+    def __init__(
+        self,
+        name,
+        grid,
+        n_line_status_changes=1,
+        solver="gurobi",
+        verbose=False,
+        **kwargs
+    ):
+        super().__init__(name, grid, solver, verbose, **kwargs)
 
-    @staticmethod
-    def _bounds_flow_max(model, line_id):
-        return -model.line_flow_max[line_id], model.line_flow_max[line_id]
+        self.n_line_status_changes = n_line_status_changes
 
-    @staticmethod
-    def _constraint_line_flow(model, line_id):
-        return model.line_flow[line_id] == model.line_b[line_id] * (
-                model.delta[model.line_ids_to_bus_ids[line_id][0]]
-                - model.delta[model.line_ids_to_bus_ids[line_id][1]]
+    def build_model(self, big_m=True):
+        self._build_per_unit_grid()
+
+        self.model = pyo.ConcreteModel("Standard DC-OPF Model")
+
+        """
+            DC-OPF INDEXED SETS.
+        """
+        self._build_indexed_sets()  # Indexing over buses, lines, generators, and loads
+
+        """
+            DC-OPF PARAMETERS - FIXED.
+        """
+        self._build_parameters_generators()  # Bounds on generator production
+        self._build_parameters_lines()  # Power line thermal limit and susceptance
+        self._build_parameters_objective()  # Objective parameters
+
+        """
+            DC-OPF PARAMETERS - VARIABLE.
+        """
+        self._build_parameters_topology()  # Topology of generators and power lines
+        self._build_parameters_delta()  # Bus voltage angle bounds and reference node
+        self._build_parameters_loads()  # Bus load injections
+
+        """
+            DC-OPF VARIABLES.
+        """
+        self._build_variables_standard_generators()  # Generator productions and bounds
+        self._build_variable_standard_delta()  # Bus voltage angles and bounds
+
+        # Line status
+        # x = 0: Line is disconnected.
+        # x = 1: Line is disconnected.
+        self.model.x = pyo.Var(
+            self.model.line_set,
+            domain=pyo.Binary,
+            initialize=self._create_map_ids_to_values(
+                self.line.index.values, self.line["in_service"].values.astype(int)
+            ),
         )
 
-    @staticmethod
-    def _constraint_bus_balance(model, bus_id):
-        bus_gen_ids = model.bus_ids_to_gen_ids[bus_id]
-        bus_gen_p = [model.gen_p[gen_id] for gen_id in bus_gen_ids]
+        self._build_variable_line()
 
-        # Injections
-        sum_gen_p = 0
-        if len(bus_gen_p):
-            sum_gen_p = sum(bus_gen_p)
+        """
+            DC-OPF CONSTRAINTS.            
+        """
+        # Power line flow definition
+        # big_m = False: F_l = F_ij = b_ij * (delta_i - delta_j) * x_l
+        # big_m = True: -M_l (1 - x_l) <= F_ij - b_ij * (delta_i - delta_j) <= M_l * (1 - x_l)
+        # M_l = b_l * (pi/2 - (- pi/2)) = b_l * pi
+        self._build_constraint_line_flows(big_m=big_m)  # Power flow definition
 
-        sum_load_p = float(model.bus_load_p[bus_id])
+        # Indicator constraints on power line flow
+        # -F_l^max * x_l <= F_l <= F_l^max * x_l
+        self._build_constraint_line_max_flow()
 
-        # Power line flows
-        flows_out = [
-            model.line_flow[line_id]
-            for line_id in model.line_set
-            if bus_id == model.line_ids_to_bus_ids[line_id][0]
-        ]
+        self._build_constraint_bus_balance()  # Bus power balance
 
-        flows_in = [
-            model.line_flow[line_id]
-            for line_id in model.line_set
-            if bus_id == model.line_ids_to_bus_ids[line_id][1]
-        ]
+        # Limit number of line status changes
+        self._build_constraint_max_line_status_changes()
 
-        if len(flows_in) == 0 and len(flows_out) == 0:
-            return pyo.Constraint.Skip
+        """
+            DC-OPF OBJECTIVE.
+        """
+        self._build_objective()  # Objective to be optimized.
 
-        return sum_gen_p - sum_load_p == sum(flows_out) - sum(flows_in)
+    def _build_variable_line(self):
+        self.model.line_flow = pyo.Var(self.model.line_set, domain=pyo.Reals)
 
-    @staticmethod
-    def _objective_gen_p(model):
-        return sum(
-            [model.gen_p[gen_id] * model.gen_costs[gen_id] for gen_id in model.gen_set]
+    def _build_constraint_line_max_flow(self):
+        def _constraint_max_flow_lower(model, line_id):
+            return (
+                -model.line_flow_max[line_id] * model.x[line_id]
+                <= model.line_flow[line_id]
+            )
+
+        def _constraint_max_flow_upper(model, line_id):
+            return (
+                model.line_flow[line_id]
+                <= model.line_flow_max[line_id] * model.x[line_id]
+            )
+
+        self.model.constraint_line_max_flow_lower = pyo.Constraint(
+            self.model.line_set, rule=_constraint_max_flow_lower
+        )
+        self.model.constraint_line_max_flow_upper = pyo.Constraint(
+            self.model.line_set, rule=_constraint_max_flow_upper
+        )
+
+    def _build_constraint_line_flows(self, big_m=True):
+        if big_m:
+            if big_m:
+                self.model.big_m = pyo.Param(
+                    self.model.line_set,
+                    initialize=self._create_map_ids_to_values(
+                        self.line.index.values, self.line["b_pu"] * np.pi
+                    ),
+                    within=pyo.PositiveReals,
+                )
+
+            # -M_l(1 - x_l) <= F_ij - b_ij * (delta_i - delta_j) <= M_l * (1 - x_l)
+            def _constraint_line_flow_upper(model, line_id):
+                return model.line_flow[line_id] - model.line_b[line_id] * (
+                    model.delta[model.line_ids_to_bus_ids[line_id][0]]
+                    - model.delta[model.line_ids_to_bus_ids[line_id][1]]
+                ) <= model.big_m[line_id] * (1 - model.x[line_id])
+
+            def _constraint_line_flow_lower(model, line_id):
+                return -model.big_m[line_id] * (
+                    1 - model.x[line_id]
+                ) <= model.line_flow[line_id] - model.line_b[line_id] * (
+                    model.delta[model.line_ids_to_bus_ids[line_id][0]]
+                    - model.delta[model.line_ids_to_bus_ids[line_id][1]]
+                )
+
+            self.model.constraint_line_flow_upper = pyo.Constraint(
+                self.model.line_set, rule=_constraint_line_flow_upper
+            )
+
+            self.model.constraint_line_flow_lower = pyo.Constraint(
+                self.model.line_set, rule=_constraint_line_flow_lower
+            )
+        else:
+
+            def _constraint_line_flow(model, line_id):
+                return (
+                    model.line_flow[line_id]
+                    == model.line_b[line_id]
+                    * (
+                        model.delta[model.line_ids_to_bus_ids[line_id][0]]
+                        - model.delta[model.line_ids_to_bus_ids[line_id][1]]
+                    )
+                    * model.x[line_id]
+                )
+
+            self.model.constraint_line_flow = pyo.Constraint(
+                self.model.line_set, rule=_constraint_line_flow
+            )
+
+    def _build_constraint_max_line_status_changes(self):
+        def _constraint_max_line_status_change(model):
+            line_status_change = [
+                1 - model.x[line_id]
+                if self.line["in_service"][line_id]
+                else model.x[line_id]
+                for line_id in model.line_set
+            ]
+
+            return sum(line_status_change) <= self.n_line_status_changes
+
+        self.model.constraint_max_line_status_changes = pyo.Constraint(
+            rule=_constraint_max_line_status_change
         )
 
 
@@ -854,10 +1038,35 @@ if __name__ == "__main__":
     """
     Test case and usage.
     """
+    # case3 = OPFCase3()
+    # test_opf = LineSwitchingDCOPF(
+    #     "CASE 3",
+    #     case3.grid,
+    #     base_unit_p=case3.base_unit_p,
+    #     base_unit_v=case3.base_unit_v,
+    # )
+    #
+    # # Set generator costs
+    # gen_cost = np.random.uniform(1.0, 1.5, (case3.grid.gen.shape[0],))
+    # test_opf.set_gen_cost(gen_cost)
+    #
+    # test_opf.build_model(big_m=False)
+    # test_opf.print_per_unit_grid()
+    # test_opf.print_model()
+    #
+    # # Solve OPFs
+    # test_opf.solve()
+    # test_opf.solve_backend()
+    #
+    # # Print results
+    # test_opf.print_results()
+    # test_opf.print_results_backend()
+
     case6 = OPFCase6()
-    test_opf = StandardDCOPF(
-        "CASE 6",
+    test_opf = LineSwitchingDCOPF(
+        "CASE 3",
         case6.grid,
+        n_line_status_changes=3,
         base_unit_p=case6.base_unit_p,
         base_unit_v=case6.base_unit_v,
     )
@@ -866,8 +1075,9 @@ if __name__ == "__main__":
     gen_cost = np.random.uniform(1.0, 1.5, (case6.grid.gen.shape[0],))
     test_opf.set_gen_cost(gen_cost)
 
-    test_opf.build_model()
+    test_opf.build_model(big_m=True)
     test_opf.print_per_unit_grid()
+    test_opf.print_model()
 
     # Solve OPFs
     test_opf.solve()
@@ -880,12 +1090,43 @@ if __name__ == "__main__":
     # Compare with backend
     test_opf.solve_and_compare(verbose=True)
 
+    # case6 = OPFCase6()
+    # test_opf = StandardDCOPF(
+    #     "CASE 6",
+    #     case6.grid,
+    #     base_unit_p=case6.base_unit_p,
+    #     base_unit_v=case6.base_unit_v,
+    # )
+    #
+    # # Set generator costs
+    # gen_cost = np.random.uniform(1.0, 1.5, (case6.grid.gen.shape[0],))
+    # test_opf.set_gen_cost(gen_cost)
+    #
+    # test_opf.build_model()
+    # test_opf.print_per_unit_grid()
+    # test_opf.print_model()
+    #
+    # # Solve OPFs
+    # test_opf.solve()
+    # test_opf.solve_backend()
+    #
+    # # Print results
+    # test_opf.print_results()
+    # test_opf.print_results_backend()
+    #
+    # # Compare with backend
+    # test_opf.solve_and_compare(verbose=True)
+
     # TODO: DEVELOPMENT
     # TODO: CORRECT GRID -> gen_p_min >= 0
     # env = grid2op.make(dataset="l2rpn_2019")
-    # update_backend(env)
+    # env = grid2op.make(dataset="rte_case5_example")
+    # grid = env.backend._grid
+    # print_environment_attributes(env)
     #
-    # test_opf = StandardDCOPF("L2RPN 2019", env.backend._grid, base_unit_p=1e6, base_unit_v=1e5)
+    # update_backend(env, verbose=True)
+
+    # test_opf = StandardDCOPF("L2RPN 2019", env.backend._grid, base_unit_p=1e6, base_unit_v=100000.0)
     # test_opf.build_model()
     # test_opf.print_per_unit_grid()
     #

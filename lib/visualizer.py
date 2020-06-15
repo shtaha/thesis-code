@@ -336,6 +336,20 @@ def describe_environment(environment):
     print(f"line_ex_to_subid {line_ex_to_subid}\n")
 
 
+def print_environment_attributes(env):
+    for attr in dir(env):
+        if str(attr)[:1] != "_":
+            if any(
+                name in str(attr)
+                for name in ["line", "gen", "bus", "sub", "load", "dim"]
+            ):
+                if not any(
+                    name in str(attr)
+                    for name in ["helper", "get", "opponent", "space", "action"]
+                ):
+                    print(f"env.{str(attr)} = {getattr(env, attr)}")
+
+
 class NumpyEncoder(json.JSONEncoder):
     def default(self, obj):
         if isinstance(obj, np.ndarray):
