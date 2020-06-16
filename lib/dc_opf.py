@@ -415,9 +415,7 @@ class StandardDCOPF(UnitConverter, PyomoMixin):
 
         self.model.objective = pyo.Objective(rule=_objective_gen_p, sense=pyo.minimize)
 
-    def solve(self, verbose=False):
-        self.solver.solve(self.model, tee=verbose)
-
+    def _solve_save(self):
         self.res_cost = pyo.value(self.model.objective)
 
         self.res_bus = self.bus[["name", "vn_pu"]].copy()
@@ -426,7 +424,7 @@ class StandardDCOPF(UnitConverter, PyomoMixin):
             self._access_pyomo_variable(self.model.delta)
         )
 
-        self.res_gen = self.gen[["name", "min_p_pu", "max_p_pu"]].copy()
+        self.res_gen = self.gen[["name", "min_p_pu", "max_p_pu", "cost_pu"]].copy()
         self.res_gen["p_pu"] = self._access_pyomo_variable(self.model.gen_p)
 
         self.res_line = self.line[
@@ -436,6 +434,12 @@ class StandardDCOPF(UnitConverter, PyomoMixin):
         self.res_line["loading_percent"] = np.abs(
             self.res_line["p_pu"] / self.line["max_p_pu"] * 100
         )
+
+    def solve(self, verbose=False):
+        self.solver.solve(self.model, tee=verbose)
+
+        # Save standard DC-OPF variable results
+        self._solve_save()
 
         if verbose:
             self.model.display()
@@ -457,10 +461,17 @@ class StandardDCOPF(UnitConverter, PyomoMixin):
                 cp1_eur_per_mw=self.convert_per_unit_to_mw(self.gen["cost_pu"][gen_id]),
             )
 
-        pp.rundcopp(self.grid, verbose=verbose)
+        try:
+            pp.rundcopp(self.grid, verbose=verbose)
+            valid = True
+        except pp.optimal_powerflow.OPFNotConverged as e:
+            valid = False
+            print(e)
 
         # Convert NaNs of inactive buses to 0
         self.grid.res_bus = self.grid.res_bus.fillna(0)
+        self.grid.res_line = self.grid.res_line.fillna(0)
+        self.grid.res_gen = self.grid.res_gen.fillna(0)
 
         self.grid.res_bus["delta_pu"] = self.convert_degree_to_rad(
             self.grid.res_bus["va_degree"]
@@ -474,12 +485,14 @@ class StandardDCOPF(UnitConverter, PyomoMixin):
         self.grid.res_gen["p_pu"] = self.convert_mw_to_per_unit(
             self.grid.res_gen["p_mw"]
         )
+        self.grid.res_gen["cost_pu"] = self.gen["cost_pu"]
 
         result = {
             "res_cost": self.grid.res_cost,
             "res_bus": self.grid.res_bus,
             "res_line": self.grid.res_line,
             "res_gen": self.grid.res_gen,
+            "valid": valid,
         }
         return result
 
@@ -571,7 +584,11 @@ class LineSwitchingDCOPF(StandardDCOPF):
     ):
         super().__init__(name, grid, solver, verbose, **kwargs)
 
+        # Limit on the number of line status changes
         self.n_line_status_changes = n_line_status_changes
+
+        # Optimal line status
+        self.x = None
 
     def build_model(self, big_m=True):
         self._build_per_unit_grid()
@@ -726,6 +743,52 @@ class LineSwitchingDCOPF(StandardDCOPF):
         self.model.constraint_max_line_status_changes = pyo.Constraint(
             rule=_constraint_max_line_status_change
         )
+
+    def _build_objective(self):
+        # Minimize generator costs
+        def _objective_gen_p(model):
+            return sum(
+                [
+                    model.gen_p[gen_id] * model.gen_costs[gen_id]
+                    for gen_id in model.gen_set
+                ]
+            )
+
+        # Maximize line margins
+        def _objective_line_margin(model):
+            return sum(
+                [
+                    model.line_flow[line_id] ** 2 / model.line_flow_max[line_id] ** 2
+                    for line_id in model.line_set
+                ]
+            )
+
+        def _objective(model):
+            return _objective_gen_p(model) + _objective_line_margin(model)
+
+        self.model.objective = pyo.Objective(rule=_objective, sense=pyo.minimize)
+
+    def solve(self, verbose=False):
+        self.solver.solve(self.model, tee=verbose)
+
+        # Save standard DC-OPF variable results
+        self._solve_save()
+
+        # Save line status variable
+        self.x = self._access_pyomo_variable(self.model.x)
+        self.res_line["line_status"] = self.x
+
+        if verbose:
+            self.model.display()
+
+        result = {
+            "res_cost": self.res_cost,
+            "res_bus": self.res_bus,
+            "res_line": self.res_line,
+            "res_gen": self.res_gen,
+            "res_x": self.x,
+        }
+        return result
 
 
 class OPFCase3(UnitConverter):

@@ -21,7 +21,9 @@ def create_results_dir(results_dir_path):
     return results_dir
 
 
-def indices_to_hot(hot_indices: np.ndarray, length: np.int, dtype=np.bool) -> np.ndarray:
+def indices_to_hot(
+    hot_indices: np.ndarray, length: np.int, dtype=np.bool
+) -> np.ndarray:
     """
     Only works for 1D-vector.
     """
@@ -88,5 +90,3 @@ def update_backend(env, verbose=False):
         print("gen\n" + grid.gen.to_string())
         print("load\n" + grid.load.to_string())
         print("line\n" + grid.line.to_string())
-
-
