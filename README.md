@@ -15,16 +15,7 @@
 
 [Units and conversion](https://pandapower.readthedocs.io/en/v2.2.2/elements/line.html)
 
-    self._info_to_units = {
-                "rho": "%",
-                "a": "A", (a_or, a_ex)
-                "p": "MW",
-                "q": "MVar",
-                "v":"kV"
-    }
-
-    S_N = 1 MVA
-    V_N is the nominal voltage at a bus in kV
+## Tests
     
-    Z_N = V_N^2/S_N
-    
+    python -m unittest discover <directory>
+    python -m unittest discover tests
