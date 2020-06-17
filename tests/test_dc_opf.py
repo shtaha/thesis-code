@@ -6,7 +6,8 @@ import numpy as np
 import pandas as pd
 
 from lib.data_utils import update_backend, indices_to_hot, hot_to_indices
-from lib.dc_opf import OPFCase3, OPFCase6, StandardDCOPF, LineSwitchingDCOPF
+from lib.dc_opf.models import StandardDCOPF, LineSwitchingDCOPF
+from lib.dc_opf.cases import OPFCase3, OPFCase6
 
 
 class TestDCOPF(unittest.TestCase):
