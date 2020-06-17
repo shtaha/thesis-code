@@ -116,6 +116,9 @@ class TestDCOPF(unittest.TestCase):
         model.set_gen_cost(gen_cost)
         model.build_model()
 
+        if verbose:
+            model.print_model()
+
         # Construct all possible configurations
         line_statuses = list()
         for i in range(
@@ -159,29 +162,32 @@ class TestDCOPF(unittest.TestCase):
             )
 
         # Solve for optimal line status configuration
-        result = model.solve()
-        optimal_status = result["res_line"]["line_status"].values
-        objective_opt = result["res_cost"]
+        result = model.solve(verbose=verbose)
+        result_status = result["res_x"]
+        result_objective = result["res_cost"]
+        result_gap = result["res_gap"]  # Gap for finding the optimal configuration
 
         if verbose:
             model.print_results()
 
         # Check with brute force solution
         objective_brute = results_backend["objective"][results_backend["valid"]].min()
-        indices_brute = hot_to_indices(
-            np.abs(results_backend["objective"].values - objective_brute) < 1e-6
+        hot_brute = (
+            np.abs(results_backend["objective"].values - objective_brute) < result_gap
         )
+        indices_brute = hot_to_indices(hot_brute)
         status_brute = results_backend["line_status"][indices_brute]
 
         match_idx = [
             idx
             for idx, line_status in zip(indices_brute, status_brute)
-            if np.equal(line_status, optimal_status).all()
+            if np.equal(line_status, result_status).all()
         ]
 
         # Compare
-        results_backend["objective_opt"] = np.nan
-        results_backend["objective_opt"][match_idx] = objective_opt
+        results_backend["candidates"] = hot_brute
+        results_backend["result_objective"] = np.nan
+        results_backend["result_objective"][match_idx] = result_objective
 
         results_backend["line_status"] = [
             " ".join(np.array(line_status).astype(int).astype(str))
@@ -206,7 +212,9 @@ class TestDCOPF(unittest.TestCase):
             base_unit_v=case3.base_unit_v,
         )
 
-        self.runner_opf_line_switching(model_opf, case3.grid, n_line_status_changes)
+        self.runner_opf_line_switching(
+            model_opf, case3.grid, n_line_status_changes, verbose=True
+        )
 
     def test_case6_line_switching(self):
         n_line_status_changes = 2
@@ -220,7 +228,28 @@ class TestDCOPF(unittest.TestCase):
             base_unit_v=case6.base_unit_v,
         )
 
-        self.runner_opf_line_switching(model_opf, case6.grid, n_line_status_changes)
+        self.runner_opf_line_switching(
+            model_opf, case6.grid, n_line_status_changes, verbose=True
+        )
+
+    def test_rte_case5_line_switching(self):
+        n_line_status_changes = 3
+
+        env = grid2op.make(dataset="rte_case5_example")
+        update_backend(env)
+        grid = env.backend._grid
+
+        model_opf = LineSwitchingDCOPF(
+            "RTE CASE 5 Line Switching",
+            grid,
+            n_line_status_changes=n_line_status_changes,
+            base_unit_p=1e6,
+            base_unit_v=1e5,
+        )
+
+        self.runner_opf_line_switching(
+            model_opf, grid, n_line_status_changes, verbose=True
+        )
 
     """
     Infeasible problem.

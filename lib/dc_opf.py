@@ -4,6 +4,8 @@ import pandas as pd
 import pyomo.environ as pyo
 import pyomo.opt as pyo_opt
 
+from lib.data_utils import parse_gurobi_log
+
 
 class UnitConverter:
     def __init__(self, base_unit_p=1e6, base_unit_v=1e5):
@@ -771,6 +773,11 @@ class LineSwitchingDCOPF(StandardDCOPF):
     def solve(self, verbose=False):
         self.solver.solve(self.model, tee=verbose)
 
+        # Parse Gurobi log for additional information
+        gap = parse_gurobi_log(self.solver._log)["gap"]
+        if gap < 1e-6:
+            gap = 1e-6
+
         # Save standard DC-OPF variable results
         self._solve_save()
 
@@ -787,6 +794,7 @@ class LineSwitchingDCOPF(StandardDCOPF):
             "res_line": self.res_line,
             "res_gen": self.res_gen,
             "res_x": self.x,
+            "res_gap": gap,
         }
         return result
 

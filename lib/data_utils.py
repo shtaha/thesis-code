@@ -90,3 +90,12 @@ def update_backend(env, verbose=False):
         print("gen\n" + grid.gen.to_string())
         print("load\n" + grid.load.to_string())
         print("line\n" + grid.line.to_string())
+
+
+def parse_gurobi_log(log):
+    gap = 0.0
+    for line in log.split("\n")[-5:]:
+        if "Best objective" in line:
+            gap = float(line.strip().split()[-1].replace("%", ""))
+
+    return {"gap": gap}
