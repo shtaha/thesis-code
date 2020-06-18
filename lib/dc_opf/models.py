@@ -139,7 +139,7 @@ class StandardDCOPF(UnitConverter, PyomoMixin):
 
         # Assume a line connects buses with same voltage level
         self.line["max_p_pu"] = (
-                self.line["max_i_pu"] * self.bus["vn_pu"][self.line["from_bus"]].values
+            self.line["max_i_pu"] * self.bus["vn_pu"][self.line["from_bus"]].values
         )
 
         # Generators
@@ -259,8 +259,8 @@ class StandardDCOPF(UnitConverter, PyomoMixin):
         # Power flow equation
         def _constraint_line_flow(model, line_id):
             return model.line_flow[line_id] == model.line_b[line_id] * (
-                    model.delta[model.line_ids_to_bus_ids[line_id][0]]
-                    - model.delta[model.line_ids_to_bus_ids[line_id][1]]
+                model.delta[model.line_ids_to_bus_ids[line_id][0]]
+                - model.delta[model.line_ids_to_bus_ids[line_id][1]]
             )
 
         self.model.constraint_line_flow = pyo.Constraint(
@@ -437,8 +437,20 @@ class StandardDCOPF(UnitConverter, PyomoMixin):
             self.res_line["p_pu"] / self.line["max_p_pu"] * 100
         )
 
-    def solve(self, verbose=False):
-        self.solver.solve(self.model, tee=verbose)
+    def _solve(self, verbose=False, tol=1e-9):
+        """
+        Set options to solver and solve the MIP.
+        Gurobi parameters: https://www.gurobi.com/documentation/9.0/refman/parameters.html
+        """
+        options = {
+            "OptimalityTol": tol,
+            "MIPGap": tol,
+        }
+
+        self.solver.solve(self.model, tee=verbose, options=options)
+
+    def solve(self, verbose=False, tol=1e-9):
+        self._solve(verbose=verbose, tol=tol)
 
         # Save standard DC-OPF variable results
         self._solve_save()
@@ -515,8 +527,8 @@ class StandardDCOPF(UnitConverter, PyomoMixin):
         )
         print("RES GEN\n" + self.grid.res_gen[["p_pu"]].to_string())
 
-    def solve_and_compare(self, verbose=False):
-        result = self.solve(verbose=verbose)
+    def solve_and_compare(self, verbose=False, tol=1e-9):
+        result = self.solve(verbose=verbose, tol=tol)
         result_backend = self.solve_backend()
 
         res_cost = pd.DataFrame(
@@ -576,13 +588,13 @@ class StandardDCOPF(UnitConverter, PyomoMixin):
 
 class LineSwitchingDCOPF(StandardDCOPF):
     def __init__(
-            self,
-            name,
-            grid,
-            n_line_status_changes=1,
-            solver="gurobi",
-            verbose=False,
-            **kwargs
+        self,
+        name,
+        grid,
+        n_line_status_changes=1,
+        solver="gurobi",
+        verbose=False,
+        **kwargs
     ):
         super().__init__(name, grid, solver, verbose, **kwargs)
 
@@ -664,14 +676,14 @@ class LineSwitchingDCOPF(StandardDCOPF):
     def _build_constraint_line_max_flow(self):
         def _constraint_max_flow_lower(model, line_id):
             return (
-                    -model.line_flow_max[line_id] * model.x[line_id]
-                    <= model.line_flow[line_id]
+                -model.line_flow_max[line_id] * model.x[line_id]
+                <= model.line_flow[line_id]
             )
 
         def _constraint_max_flow_upper(model, line_id):
             return (
-                    model.line_flow[line_id]
-                    <= model.line_flow_max[line_id] * model.x[line_id]
+                model.line_flow[line_id]
+                <= model.line_flow_max[line_id] * model.x[line_id]
             )
 
         self.model.constraint_line_max_flow_lower = pyo.Constraint(
@@ -695,17 +707,17 @@ class LineSwitchingDCOPF(StandardDCOPF):
             # -M_l(1 - x_l) <= F_ij - b_ij * (delta_i - delta_j) <= M_l * (1 - x_l)
             def _constraint_line_flow_upper(model, line_id):
                 return model.line_flow[line_id] - model.line_b[line_id] * (
-                        model.delta[model.line_ids_to_bus_ids[line_id][0]]
-                        - model.delta[model.line_ids_to_bus_ids[line_id][1]]
+                    model.delta[model.line_ids_to_bus_ids[line_id][0]]
+                    - model.delta[model.line_ids_to_bus_ids[line_id][1]]
                 ) <= model.big_m[line_id] * (1 - model.x[line_id])
 
             def _constraint_line_flow_lower(model, line_id):
                 return -model.big_m[line_id] * (
-                        1 - model.x[line_id]
+                    1 - model.x[line_id]
                 ) <= model.line_flow[line_id] - model.line_b[line_id] * (
-                               model.delta[model.line_ids_to_bus_ids[line_id][0]]
-                               - model.delta[model.line_ids_to_bus_ids[line_id][1]]
-                       )
+                    model.delta[model.line_ids_to_bus_ids[line_id][0]]
+                    - model.delta[model.line_ids_to_bus_ids[line_id][1]]
+                )
 
             self.model.constraint_line_flow_upper = pyo.Constraint(
                 self.model.line_set, rule=_constraint_line_flow_upper
@@ -718,13 +730,13 @@ class LineSwitchingDCOPF(StandardDCOPF):
 
             def _constraint_line_flow(model, line_id):
                 return (
-                        model.line_flow[line_id]
-                        == model.line_b[line_id]
-                        * (
-                                model.delta[model.line_ids_to_bus_ids[line_id][0]]
-                                - model.delta[model.line_ids_to_bus_ids[line_id][1]]
-                        )
-                        * model.x[line_id]
+                    model.line_flow[line_id]
+                    == model.line_b[line_id]
+                    * (
+                        model.delta[model.line_ids_to_bus_ids[line_id][0]]
+                        - model.delta[model.line_ids_to_bus_ids[line_id][1]]
+                    )
+                    * model.x[line_id]
                 )
 
             self.model.constraint_line_flow = pyo.Constraint(
@@ -770,8 +782,8 @@ class LineSwitchingDCOPF(StandardDCOPF):
 
         self.model.objective = pyo.Objective(rule=_objective, sense=pyo.minimize)
 
-    def solve(self, verbose=False):
-        self.solver.solve(self.model, tee=verbose)
+    def solve(self, verbose=False, tol=1e-9):
+        self._solve(verbose=verbose, tol=tol)
 
         # Parse Gurobi log for additional information
         gap = parse_gurobi_log(self.solver._log)["gap"]
@@ -782,7 +794,7 @@ class LineSwitchingDCOPF(StandardDCOPF):
         self._solve_save()
 
         # Save line status variable
-        self.x = self._access_pyomo_variable(self.model.x)
+        self.x = self._round_solution(self._access_pyomo_variable(self.model.x))
         self.res_line["line_status"] = self.x
 
         if verbose:
@@ -798,16 +810,21 @@ class LineSwitchingDCOPF(StandardDCOPF):
         }
         return result
 
+    @staticmethod
+    def _round_solution(x):
+        x = np.round(x)
+        return x
+
 
 class TopologyReconfigurationDCOPF(StandardDCOPF):
     def __init__(
-            self,
-            name,
-            grid,
-            n_line_status_changes=1,
-            solver="gurobi",
-            verbose=False,
-            **kwargs
+        self,
+        name,
+        grid,
+        n_line_status_changes=1,
+        solver="gurobi",
+        verbose=False,
+        **kwargs
     ):
         super().__init__(name, grid, solver, verbose, **kwargs)
 
@@ -889,14 +906,14 @@ class TopologyReconfigurationDCOPF(StandardDCOPF):
     def _build_constraint_line_max_flow(self):
         def _constraint_max_flow_lower(model, line_id):
             return (
-                    -model.line_flow_max[line_id] * model.x[line_id]
-                    <= model.line_flow[line_id]
+                -model.line_flow_max[line_id] * model.x[line_id]
+                <= model.line_flow[line_id]
             )
 
         def _constraint_max_flow_upper(model, line_id):
             return (
-                    model.line_flow[line_id]
-                    <= model.line_flow_max[line_id] * model.x[line_id]
+                model.line_flow[line_id]
+                <= model.line_flow_max[line_id] * model.x[line_id]
             )
 
         self.model.constraint_line_max_flow_lower = pyo.Constraint(
@@ -920,17 +937,17 @@ class TopologyReconfigurationDCOPF(StandardDCOPF):
             # -M_l(1 - x_l) <= F_ij - b_ij * (delta_i - delta_j) <= M_l * (1 - x_l)
             def _constraint_line_flow_upper(model, line_id):
                 return model.line_flow[line_id] - model.line_b[line_id] * (
-                        model.delta[model.line_ids_to_bus_ids[line_id][0]]
-                        - model.delta[model.line_ids_to_bus_ids[line_id][1]]
+                    model.delta[model.line_ids_to_bus_ids[line_id][0]]
+                    - model.delta[model.line_ids_to_bus_ids[line_id][1]]
                 ) <= model.big_m[line_id] * (1 - model.x[line_id])
 
             def _constraint_line_flow_lower(model, line_id):
                 return -model.big_m[line_id] * (
-                        1 - model.x[line_id]
+                    1 - model.x[line_id]
                 ) <= model.line_flow[line_id] - model.line_b[line_id] * (
-                               model.delta[model.line_ids_to_bus_ids[line_id][0]]
-                               - model.delta[model.line_ids_to_bus_ids[line_id][1]]
-                       )
+                    model.delta[model.line_ids_to_bus_ids[line_id][0]]
+                    - model.delta[model.line_ids_to_bus_ids[line_id][1]]
+                )
 
             self.model.constraint_line_flow_upper = pyo.Constraint(
                 self.model.line_set, rule=_constraint_line_flow_upper
@@ -943,13 +960,13 @@ class TopologyReconfigurationDCOPF(StandardDCOPF):
 
             def _constraint_line_flow(model, line_id):
                 return (
-                        model.line_flow[line_id]
-                        == model.line_b[line_id]
-                        * (
-                                model.delta[model.line_ids_to_bus_ids[line_id][0]]
-                                - model.delta[model.line_ids_to_bus_ids[line_id][1]]
-                        )
-                        * model.x[line_id]
+                    model.line_flow[line_id]
+                    == model.line_b[line_id]
+                    * (
+                        model.delta[model.line_ids_to_bus_ids[line_id][0]]
+                        - model.delta[model.line_ids_to_bus_ids[line_id][1]]
+                    )
+                    * model.x[line_id]
                 )
 
             self.model.constraint_line_flow = pyo.Constraint(
@@ -995,8 +1012,8 @@ class TopologyReconfigurationDCOPF(StandardDCOPF):
 
         self.model.objective = pyo.Objective(rule=_objective, sense=pyo.minimize)
 
-    def solve(self, verbose=False):
-        self.solver.solve(self.model, tee=verbose)
+    def solve(self, verbose=False, tol=1e-9):
+        self._solve(verbose=verbose, tol=tol)
 
         # Parse Gurobi log for additional information
         gap = parse_gurobi_log(self.solver._log)["gap"]

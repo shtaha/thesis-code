@@ -15,14 +15,14 @@ class TestDCOPF(unittest.TestCase):
     def setUpClass(cls):
         print("DC-OPF Tests.\n\n")
 
-    def runner_opf(self, model, n_tests=20, eps=1e-4, verbose=False):
+    def runner_opf(self, model, n_tests=20, eps=1e-4, verbose=False, tol=1e-9):
         conditions = list()
         for i in range(n_tests):
             np.random.seed(i)
             gen_cost = np.random.uniform(1.0, 5.0, (model.grid.gen.shape[0],))
             model.set_gen_cost(gen_cost)
             model.build_model()
-            result = model.solve_and_compare(verbose=verbose)
+            result = model.solve_and_compare(verbose=verbose, tol=tol)
 
             conditions.append(
                 {
@@ -85,7 +85,7 @@ class TestDCOPF(unittest.TestCase):
         model_opf.set_gen_cost(np.array([1.0]))
         model_opf.build_model()
 
-        result = model_opf.solve()
+        result = model_opf.solve(verbose=True, tol=1e-9)
         model_opf.print_results()
 
         time.sleep(0.1)
@@ -110,7 +110,7 @@ class TestDCOPF(unittest.TestCase):
     """
 
     def runner_opf_line_switching(
-        self, model, grid, n_line_status_changes, verbose=False
+        self, model, grid, n_line_status_changes, verbose=False, tol=1e-9
     ):
         np.random.seed(0)
         gen_cost = np.random.uniform(1.0, 5.0, (model.grid.gen.shape[0],))
@@ -163,7 +163,7 @@ class TestDCOPF(unittest.TestCase):
             )
 
         # Solve for optimal line status configuration
-        result = model.solve(verbose=verbose)
+        result = model.solve(verbose=verbose, tol=tol)
         result_status = result["res_x"]
         result_objective = result["res_cost"]
         result_gap = result["res_gap"]  # Gap for finding the optimal configuration
@@ -249,7 +249,7 @@ class TestDCOPF(unittest.TestCase):
         )
 
         self.runner_opf_line_switching(
-            model_opf, grid, n_line_status_changes, verbose=True
+            model_opf, grid, n_line_status_changes, verbose=True,
         )
 
     """
