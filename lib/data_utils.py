@@ -99,3 +99,8 @@ def parse_gurobi_log(log):
             gap = float(line.strip().split()[-1].replace("%", ""))
 
     return {"gap": gap}
+
+
+def bus_names_to_sub_ids(bus_names):
+    sub_ids = [int(bus_name.split("-")[-1]) for bus_name in bus_names]
+    return sub_ids

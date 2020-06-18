@@ -10,10 +10,10 @@ from lib.dc_opf.models import StandardDCOPF, LineSwitchingDCOPF
 from lib.dc_opf.cases import OPFCase3, OPFCase6
 
 
-class TestDCOPF(unittest.TestCase):
+class TestStandardDCOPF(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        print("DC-OPF Tests.\n\n")
+        print("Standard DC-OPF tests.\n\n")
 
     def runner_opf(self, model, n_tests=20, eps=1e-4, verbose=False, tol=1e-9):
         conditions = list()
@@ -92,7 +92,7 @@ class TestDCOPF(unittest.TestCase):
         # Test DC Power Flow
         self.assertTrue(
             np.equal(
-                result["res_bus"]["delta_pu"].values, np.array([0.0, -0.250, -0.375])
+                result["res_bus"]["delta_pu"].values, np.array([0.0, -0.250, -0.375, 0.0, 0.0, 0.0])
             ).all()
         )
 
@@ -105,12 +105,18 @@ class TestDCOPF(unittest.TestCase):
 
         self.runner_opf(model_opf, n_tests=5)
 
+
+class TestLineSwitchingDCOPF(unittest.TestCase):
     """
         Test DC-OPF with line status switching implementation.
     """
 
+    @classmethod
+    def setUpClass(cls):
+        print("DC-OPF with line switching tests.\n\n")
+
     def runner_opf_line_switching(
-        self, model, grid, n_line_status_changes, verbose=False, tol=1e-9
+            self, model, grid, n_line_status_changes, verbose=False, tol=1e-9
     ):
         np.random.seed(0)
         gen_cost = np.random.uniform(1.0, 5.0, (model.grid.gen.shape[0],))
@@ -123,7 +129,7 @@ class TestDCOPF(unittest.TestCase):
         # Construct all possible configurations
         line_statuses = list()
         for i in range(
-            n_line_status_changes + 1
+                n_line_status_changes + 1
         ):  # Number of line disconnection 0, 1, ..., n
             line_statuses.extend(
                 [
@@ -142,10 +148,10 @@ class TestDCOPF(unittest.TestCase):
             result_backend = model.solve_backend()
 
             objective = (
-                result_backend["res_cost"]
-                + np.square(
-                    result_backend["res_line"]["p_pu"] / model.line["max_p_pu"]
-                ).sum()
+                    result_backend["res_cost"]
+                    + np.square(
+                result_backend["res_line"]["p_pu"] / model.line["max_p_pu"]
+            ).sum()
             )
             loads_p = grid.load["p_pu"].sum()
             generators_p = result_backend["res_gen"]["p_pu"].sum()
@@ -174,7 +180,7 @@ class TestDCOPF(unittest.TestCase):
         # Check with brute force solution
         objective_brute = results_backend["objective"][results_backend["valid"]].min()
         hot_brute = (
-            np.abs(results_backend["objective"].values - objective_brute) < result_gap
+                np.abs(results_backend["objective"].values - objective_brute) < result_gap
         )
         indices_brute = hot_to_indices(hot_brute)
         status_brute = results_backend["line_status"][indices_brute]

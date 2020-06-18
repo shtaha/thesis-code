@@ -1,6 +1,7 @@
 import pandapower as pp
 
 from lib.dc_opf.models import UnitConverter
+from lib.data_utils import bus_names_to_sub_ids
 
 
 class OPFCase3(UnitConverter):
@@ -12,14 +13,21 @@ class OPFCase3(UnitConverter):
     def __init__(self):
         UnitConverter.__init__(self, base_unit_p=1e6, base_unit_v=110000.0)
 
+        self.name = "OPF Case 3"
         self.grid = self.build_case3_grid()
 
     def build_case3_grid(self):
         grid = pp.create_empty_network()
 
-        bus0 = pp.create_bus(grid, vn_kv=self.base_unit_v / 1000, name="bus-0")
-        bus1 = pp.create_bus(grid, vn_kv=self.base_unit_v / 1000, name="bus-1")
-        bus2 = pp.create_bus(grid, vn_kv=self.base_unit_v / 1000, name="bus-2")
+        # Substation bus 1
+        bus0 = pp.create_bus(grid, vn_kv=self.base_unit_v / 1000, name="bus-0-0")
+        bus1 = pp.create_bus(grid, vn_kv=self.base_unit_v / 1000, name="bus-1-1")
+        bus2 = pp.create_bus(grid, vn_kv=self.base_unit_v / 1000, name="bus-2-2")
+
+        # Substation bus 2
+        bus3 = pp.create_bus(grid, vn_kv=self.base_unit_v / 1000, name="bus-3-0")
+        bus4 = pp.create_bus(grid, vn_kv=self.base_unit_v / 1000, name="bus-4-1")
+        bus5 = pp.create_bus(grid, vn_kv=self.base_unit_v / 1000, name="bus-5-2")
 
         pp.create_line_from_parameters(
             grid,
@@ -98,18 +106,30 @@ class OPFCase6(UnitConverter):
     def __init__(self):
         UnitConverter.__init__(self, base_unit_p=1e6, base_unit_v=110000.0)
 
+        self.name = "OPF Case 6"
         self.grid = self.build_case6_grid()
 
     def build_case6_grid(self):
         grid = pp.create_empty_network()
 
         # Buses
-        bus0 = pp.create_bus(grid, vn_kv=self.base_unit_v / 1000, name="bus-0")
-        bus1 = pp.create_bus(grid, vn_kv=self.base_unit_v / 1000, name="bus-1")
-        bus2 = pp.create_bus(grid, vn_kv=self.base_unit_v / 1000, name="bus-2")
-        bus3 = pp.create_bus(grid, vn_kv=self.base_unit_v / 1000, name="bus-3")
-        bus4 = pp.create_bus(grid, vn_kv=self.base_unit_v / 1000, name="bus-4")
-        bus5 = pp.create_bus(grid, vn_kv=self.base_unit_v / 1000, name="bus-5")
+        # Substation bus 1
+        bus0 = pp.create_bus(grid, vn_kv=self.base_unit_v / 1000, name="bus-0-0")
+        bus1 = pp.create_bus(grid, vn_kv=self.base_unit_v / 1000, name="bus-1-1")
+        bus2 = pp.create_bus(grid, vn_kv=self.base_unit_v / 1000, name="bus-2-2")
+        bus3 = pp.create_bus(grid, vn_kv=self.base_unit_v / 1000, name="bus-3-3")
+        bus4 = pp.create_bus(grid, vn_kv=self.base_unit_v / 1000, name="bus-4-4")
+        bus5 = pp.create_bus(grid, vn_kv=self.base_unit_v / 1000, name="bus-5-5")
+
+        # Substation bus 2
+        bus6 = pp.create_bus(grid, vn_kv=self.base_unit_v / 1000, name="bus-6-0")
+        bus7 = pp.create_bus(grid, vn_kv=self.base_unit_v / 1000, name="bus-7-1")
+        bus8 = pp.create_bus(grid, vn_kv=self.base_unit_v / 1000, name="bus-8-2")
+        bus9 = pp.create_bus(grid, vn_kv=self.base_unit_v / 1000, name="bus-9-3")
+        bus10 = pp.create_bus(grid, vn_kv=self.base_unit_v / 1000, name="bus-10-4")
+        bus11 = pp.create_bus(grid, vn_kv=self.base_unit_v / 1000, name="bus-11-5")
+
+        grid.bus["sub_id"] = bus_names_to_sub_ids(grid.bus["name"])
 
         # Lines
         pp.create_line_from_parameters(
@@ -306,4 +326,9 @@ class OPFCase6(UnitConverter):
             name="gen-2",
         )
 
+        print(grid.bus.to_string())
+
         return grid
+
+
+
