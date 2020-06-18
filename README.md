@@ -9,7 +9,13 @@
     pip install numpy matplotlib tensorflow jupyter pygame
     pip install pyomo
     
-    pip freeze > requirements.txt
+    pip freeze > requirements-win-10.txt
+    pip freeze > requirements-ubuntu-20-04-LTS.txt
+
+## WSL
+    
+    git clone https://github.com/roksikonja/thesis-code.git
+
 
 ## Units
 
