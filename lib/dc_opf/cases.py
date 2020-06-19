@@ -1,4 +1,5 @@
 import pandapower as pp
+import numpy as np
 
 from lib.dc_opf.models import UnitConverter
 from lib.data_utils import bus_names_to_sub_ids
@@ -128,8 +129,6 @@ class OPFCase6(UnitConverter):
         bus9 = pp.create_bus(grid, vn_kv=self.base_unit_v / 1000, name="bus-9-3")
         bus10 = pp.create_bus(grid, vn_kv=self.base_unit_v / 1000, name="bus-10-4")
         bus11 = pp.create_bus(grid, vn_kv=self.base_unit_v / 1000, name="bus-11-5")
-
-        grid.bus["sub_id"] = bus_names_to_sub_ids(grid.bus["name"])
 
         # Lines
         pp.create_line_from_parameters(
@@ -326,9 +325,22 @@ class OPFCase6(UnitConverter):
             name="gen-2",
         )
 
-        print(grid.bus.to_string())
+        # Substations
+        grid.bus["sub_id"] = bus_names_to_sub_ids(grid.bus["name"])
+        sub_ids = sorted(grid.bus["sub_id"].unique())
+        grid.bus["sub_bus_id"] = np.nan
+
+        bus_to_sub_ids = np.empty_like(grid.bus.index.values)
+        for sub_id in sub_ids:
+            sub_id_mask = grid.bus["sub_id"] == sub_id
+            bus_to_sub_ids[sub_id_mask] = np.arange(1, np.sum(sub_id_mask) + 1)
+
+        grid.bus["sub_bus_id"] = bus_to_sub_ids
+
+        # Substations
+        grid.line["from_sub"] = grid.bus["sub_id"].values[grid.line["from_bus"].values.astype(int)]
+        grid.line["to_sub"] = grid.bus["sub_id"].values[grid.line["to_bus"].values.astype(int)]
+        grid.gen["sub"] = grid.bus["sub_id"].values[grid.gen["bus"].values.astype(int)]
+        grid.load["sub"] = grid.bus["sub_id"].values[grid.load["bus"].values.astype(int)]
 
         return grid
-
-
-
