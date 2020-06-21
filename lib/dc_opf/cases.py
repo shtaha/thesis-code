@@ -1,11 +1,39 @@
 import pandapower as pp
 import numpy as np
+import grid2op
 
 from lib.dc_opf.models import UnitConverter
-from lib.data_utils import bus_names_to_sub_ids
+from lib.data_utils import bus_names_to_sub_ids, update_backend
 
 
-class OPFCase3(UnitConverter):
+class SubstationMixin:
+    @staticmethod
+    def update_grid_with_substation_info(grid):
+        grid.bus["sub_id"] = bus_names_to_sub_ids(grid.bus["name"])
+        sub_ids = sorted(grid.bus["sub_id"].unique())
+        grid.bus["sub_bus_id"] = np.nan
+
+        bus_to_sub_ids = np.empty_like(grid.bus.index.values)
+        for sub_id in sub_ids:
+            sub_id_mask = grid.bus["sub_id"] == sub_id
+            bus_to_sub_ids[sub_id_mask] = np.arange(1, np.sum(sub_id_mask) + 1)
+
+        grid.bus["sub_bus_id"] = bus_to_sub_ids
+
+        # Substations
+        grid.line["from_sub"] = grid.bus["sub_id"].values[
+            grid.line["from_bus"].values.astype(int)
+        ]
+        grid.line["to_sub"] = grid.bus["sub_id"].values[
+            grid.line["to_bus"].values.astype(int)
+        ]
+        grid.gen["sub"] = grid.bus["sub_id"].values[grid.gen["bus"].values.astype(int)]
+        grid.load["sub"] = grid.bus["sub_id"].values[
+            grid.load["bus"].values.astype(int)
+        ]
+
+
+class OPFCase3(UnitConverter, SubstationMixin):
     """
     Test case for power flow computation.
     Found in http://research.iaun.ac.ir/pd/bahador.fani/pdfs/UploadFile_6990.pdf.
@@ -14,7 +42,8 @@ class OPFCase3(UnitConverter):
     def __init__(self):
         UnitConverter.__init__(self, base_unit_p=1e6, base_unit_v=110000.0)
 
-        self.name = "OPF Case 3"
+        self.name = "Case 3"
+
         self.grid = self.build_case3_grid()
 
     def build_case3_grid(self):
@@ -26,9 +55,9 @@ class OPFCase3(UnitConverter):
         bus2 = pp.create_bus(grid, vn_kv=self.base_unit_v / 1000, name="bus-2-2")
 
         # Substation bus 2
-        bus3 = pp.create_bus(grid, vn_kv=self.base_unit_v / 1000, name="bus-3-0")
-        bus4 = pp.create_bus(grid, vn_kv=self.base_unit_v / 1000, name="bus-4-1")
-        bus5 = pp.create_bus(grid, vn_kv=self.base_unit_v / 1000, name="bus-5-2")
+        pp.create_bus(grid, vn_kv=self.base_unit_v / 1000, name="bus-3-0")
+        pp.create_bus(grid, vn_kv=self.base_unit_v / 1000, name="bus-4-1")
+        pp.create_bus(grid, vn_kv=self.base_unit_v / 1000, name="bus-5-2")
 
         pp.create_line_from_parameters(
             grid,
@@ -95,10 +124,14 @@ class OPFCase3(UnitConverter):
             slack=True,
             name="gen-0",
         )
+
+        # Substations
+        self.update_grid_with_substation_info(grid)
+
         return grid
 
 
-class OPFCase6(UnitConverter):
+class OPFCase6(UnitConverter, SubstationMixin):
     """
     Test case for power flow computation.
     Found in http://research.iaun.ac.ir/pd/bahador.fani/pdfs/UploadFile_6990.pdf.
@@ -107,7 +140,8 @@ class OPFCase6(UnitConverter):
     def __init__(self):
         UnitConverter.__init__(self, base_unit_p=1e6, base_unit_v=110000.0)
 
-        self.name = "OPF Case 6"
+        self.name = "Case 6"
+
         self.grid = self.build_case6_grid()
 
     def build_case6_grid(self):
@@ -123,12 +157,12 @@ class OPFCase6(UnitConverter):
         bus5 = pp.create_bus(grid, vn_kv=self.base_unit_v / 1000, name="bus-5-5")
 
         # Substation bus 2
-        bus6 = pp.create_bus(grid, vn_kv=self.base_unit_v / 1000, name="bus-6-0")
-        bus7 = pp.create_bus(grid, vn_kv=self.base_unit_v / 1000, name="bus-7-1")
-        bus8 = pp.create_bus(grid, vn_kv=self.base_unit_v / 1000, name="bus-8-2")
-        bus9 = pp.create_bus(grid, vn_kv=self.base_unit_v / 1000, name="bus-9-3")
-        bus10 = pp.create_bus(grid, vn_kv=self.base_unit_v / 1000, name="bus-10-4")
-        bus11 = pp.create_bus(grid, vn_kv=self.base_unit_v / 1000, name="bus-11-5")
+        pp.create_bus(grid, vn_kv=self.base_unit_v / 1000, name="bus-6-0")
+        pp.create_bus(grid, vn_kv=self.base_unit_v / 1000, name="bus-7-1")
+        pp.create_bus(grid, vn_kv=self.base_unit_v / 1000, name="bus-8-2")
+        pp.create_bus(grid, vn_kv=self.base_unit_v / 1000, name="bus-9-3")
+        pp.create_bus(grid, vn_kv=self.base_unit_v / 1000, name="bus-10-4")
+        pp.create_bus(grid, vn_kv=self.base_unit_v / 1000, name="bus-11-5")
 
         # Lines
         pp.create_line_from_parameters(
@@ -326,21 +360,36 @@ class OPFCase6(UnitConverter):
         )
 
         # Substations
-        grid.bus["sub_id"] = bus_names_to_sub_ids(grid.bus["name"])
-        sub_ids = sorted(grid.bus["sub_id"].unique())
-        grid.bus["sub_bus_id"] = np.nan
-
-        bus_to_sub_ids = np.empty_like(grid.bus.index.values)
-        for sub_id in sub_ids:
-            sub_id_mask = grid.bus["sub_id"] == sub_id
-            bus_to_sub_ids[sub_id_mask] = np.arange(1, np.sum(sub_id_mask) + 1)
-
-        grid.bus["sub_bus_id"] = bus_to_sub_ids
-
-        # Substations
-        grid.line["from_sub"] = grid.bus["sub_id"].values[grid.line["from_bus"].values.astype(int)]
-        grid.line["to_sub"] = grid.bus["sub_id"].values[grid.line["to_bus"].values.astype(int)]
-        grid.gen["sub"] = grid.bus["sub_id"].values[grid.gen["bus"].values.astype(int)]
-        grid.load["sub"] = grid.bus["sub_id"].values[grid.load["bus"].values.astype(int)]
+        self.update_grid_with_substation_info(grid)
 
         return grid
+
+
+class OPFRTECase5(UnitConverter, SubstationMixin):
+    def __init__(self):
+        UnitConverter.__init__(self, base_unit_p=1e6, base_unit_v=1e5)
+
+        self.name = "Case RTE 5"
+
+        env = grid2op.make(dataset="rte_case5_example")
+        update_backend(env)
+
+        self.grid = env.backend._grid
+
+        # Substations
+        self.update_grid_with_substation_info(self.grid)
+
+
+class OPFL2RPN2019(UnitConverter, SubstationMixin):
+    def __init__(self):
+        UnitConverter.__init__(self, base_unit_p=1e6, base_unit_v=1e5)
+
+        self.name = "Case L2RPN 2019"
+
+        env = grid2op.make(dataset="l2rpn_2019")
+        update_backend(env)
+
+        self.grid = env.backend._grid
+
+        # Substations
+        self.update_grid_with_substation_info(self.grid)
