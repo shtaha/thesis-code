@@ -7,7 +7,7 @@ import pandas as pd
 
 from lib.data_utils import indices_to_hot, hot_to_indices
 from lib.dc_opf.cases import OPFCase3, OPFCase6, OPFRTECase5
-from lib.dc_opf.models import StandardDCOPF, LineSwitchingDCOPF
+from lib.dc_opf.models import StandardDCOPF, LineSwitchingDCOPF, TopologyOptimizationDCOPF
 
 
 class TestStandardDCOPF(unittest.TestCase):
@@ -305,4 +305,25 @@ class TestTopologyOptimizationDCOPF(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        print("DC-OPF with line switching tests.\n\n")
+        print("DC-OPF with topology optimization tests.\n\n")
+
+    def test_case3_topology(self):
+        case = OPFCase3()
+        model_opf = TopologyOptimizationDCOPF(
+            f"{case.name} Topology Optimization",
+            case.grid,
+            base_unit_p=case.base_unit_p,
+            base_unit_v=case.base_unit_v,
+        )
+
+        verbose = True
+
+        np.random.seed(0)
+        gen_cost = np.random.uniform(1.0, 5.0, (model_opf.grid.gen.shape[0],))
+        model_opf.set_gen_cost(gen_cost)
+        model_opf.build_model()
+        model_opf.print_model()
+
+        # Solve for optimal line status configuration
+        result = model_opf.solve(verbose=verbose)
+        model_opf.print_results()

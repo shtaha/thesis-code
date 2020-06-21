@@ -4,7 +4,7 @@ from lib.dc_opf.models import TopologyOptimizationDCOPF
 if __name__ == "__main__":
     case = OPFCase3()
     model_opf = TopologyOptimizationDCOPF(
-        case.name,
+        f"{case.name} with topology optimization",
         case.grid,
         base_unit_p=case.base_unit_p,
         base_unit_v=case.base_unit_v,

@@ -1037,6 +1037,8 @@ class TopologyOptimizationDCOPF(StandardDCOPF):
         CONSTRAINTS.
     """
 
+    # TODO: Constraints on variables, symmetry, line disconnections
+
     def _build_constraints(self):
         self._build_constraint_line_flows()  # Power flow definition
         self._build_constraint_bus_balance()  # Bus power balance
@@ -1108,7 +1110,7 @@ class TopologyOptimizationDCOPF(StandardDCOPF):
                 if model.sub_bus_ids[bus_id] == 1
                 else model.line_flow[line_id] * model.x_line_ex_2[line_id]
                 for line_id in model.line_set
-                if bus_id == model.line_ids_to_sub_ids[line_id][1]
+                if sub_id == model.line_ids_to_sub_ids[line_id][1]
             ]
 
             if len(flows_in) == 0 and len(flows_out) == 0:
