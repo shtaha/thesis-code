@@ -27,14 +27,5 @@ class TestDataUtils(unittest.TestCase):
         print(bus_names)
         print(sub_ids)
 
+        time.sleep(0.1)
         self.assertTrue(np.equal(sub_ids, bus_names_to_sub_ids(bus_names)).all())
-
-    # def test_indexing_2D(self):
-    #     length = 10
-    #
-    #     indices = np.array([[3, 6, 8], [2, 4, 5]])
-    #     print("input", indices)
-    #     print("hot output", indices_to_hot(indices, length))
-    #     print("indices output", hot_to_indices(indices_to_hot(indices, length)))
-    #
-    #     self.assertTrue(np.equal(indices, hot_to_indices(indices_to_hot(indices, length))).all())

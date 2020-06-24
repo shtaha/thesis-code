@@ -7,7 +7,7 @@ import pandapower as pp
 import pandas as pd
 
 from lib.data_utils import indices_to_hot, hot_to_indices
-from lib.dc_opf import OPFCase3, OPFCase6, OPFRTECase5, OPFL2RPN2019
+from lib.dc_opf import OPFCase3, OPFCase6, OPFRTECase5
 from lib.dc_opf import (
     StandardDCOPF,
     LineSwitchingDCOPF,
@@ -471,7 +471,6 @@ class TestTopologyOptimizationDCOPF(unittest.TestCase):
                     pp.rundcopp(grid_tmp)
                     valid = True
                 except (pp.optimal_powerflow.OPFNotConverged, IndexError) as e:
-                    valid = False
                     grid_tmp.res_cost = 0.0
                     print(e)
                     continue
@@ -568,21 +567,21 @@ class TestTopologyOptimizationDCOPF(unittest.TestCase):
 
         self.runner_opf_topology_optimization(model, case)
 
-    def test_case6_topology(self):
-        case = OPFCase6()
-        model = TopologyOptimizationDCOPF(
-            f"{case.name} Topology Optimization",
-            case.grid,
-            base_unit_p=case.base_unit_p,
-            base_unit_v=case.base_unit_v,
-        )
-
-        self.runner_opf_topology_optimization(model, case, verbose=True)
-
     """
         INTRACTABLE.
     """
 
+    # def test_case6_topology(self):
+    #     case = OPFCase6()
+    #     model = TopologyOptimizationDCOPF(
+    #         f"{case.name} Topology Optimization",
+    #         case.grid,
+    #         base_unit_p=case.base_unit_p,
+    #         base_unit_v=case.base_unit_v,
+    #     )
+    #
+    #     self.runner_opf_topology_optimization(model, case, verbose=True)
+    #
     # def test_rte_case5_topology(self):
     #     case = OPFRTECase5()
     #     model = TopologyOptimizationDCOPF(
