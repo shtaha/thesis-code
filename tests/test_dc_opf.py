@@ -172,12 +172,13 @@ class TestLineSwitchingDCOPF(unittest.TestCase):
             model.grid.line["in_service"] = line_status
             result_backend = model.solve_backend()
 
-            objective = (
-                result_backend["res_cost"]
-                + np.square(
+            objective = result_backend["res_cost"]
+
+            if model.solver_name == "gurobi":
+                objective = objective + np.square(
                     result_backend["res_line"]["p_pu"] / model.line["max_p_pu"]
                 ).sum()
-            )
+
             loads_p = grid.load["p_pu"].sum()
             generators_p = result_backend["res_gen"]["p_pu"].sum()
             valid = generators_p > loads_p - 1e-6 and result_backend["valid"]
@@ -479,13 +480,13 @@ class TestTopologyOptimizationDCOPF(unittest.TestCase):
                 gen_p = case.convert_mw_to_per_unit(grid_tmp.res_gen["p_mw"].sum())
                 valid = valid and np.abs(gen_p - load_p) < 1e-6
 
-                objective = (
-                    grid_tmp.res_cost
-                    + np.square(
+                objective = grid_tmp.res_cost
+
+                if model.solver_name == "gurobi":
+                    objective = objective + + np.square(
                         case.convert_mw_to_per_unit(grid_tmp.res_line["p_from_mw"])
                         / grid_tmp.line["max_p_pu"]
                     ).sum()
-                )
 
                 results_backend.append(
                     {

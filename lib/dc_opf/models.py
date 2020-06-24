@@ -639,11 +639,11 @@ class LineSwitchingDCOPF(StandardDCOPF):
         name,
         grid,
         n_line_status_changes=1,
-        solver="gurobi",
+        solver_name="glpk",
         verbose=False,
         **kwargs,
     ):
-        super().__init__(name, grid, solver, verbose, **kwargs)
+        super().__init__(name, grid, solver_name, verbose, **kwargs)
 
         # Limit on the number of line status changes
         self.n_line_status_changes = n_line_status_changes
@@ -800,8 +800,12 @@ class LineSwitchingDCOPF(StandardDCOPF):
                 ]
             )
 
-        def _objective(model):
-            return _objective_gen_p(model) + _objective_line_margin(model)
+        if self.solver_name == "gurobi":
+            def _objective(model):
+                return _objective_gen_p(model) + _objective_line_margin(model)
+        else:
+            def _objective(model):
+                return _objective_gen_p(model)
 
         self.model.objective = pyo.Objective(rule=_objective, sense=pyo.minimize)
 
@@ -861,8 +865,8 @@ class LineSwitchingDCOPF(StandardDCOPF):
 
 
 class TopologyOptimizationDCOPF(StandardDCOPF):
-    def __init__(self, name, grid, solver="gurobi", verbose=False, **kwargs):
-        super().__init__(name, grid, solver, verbose, **kwargs)
+    def __init__(self, name, grid, solver_name="glpk", verbose=False, **kwargs):
+        super().__init__(name, grid, solver_name, verbose, **kwargs)
 
         # Optimal switching status
         self.x_gen = None
@@ -1188,8 +1192,12 @@ class TopologyOptimizationDCOPF(StandardDCOPF):
                 ]
             )
 
-        def _objective(model):
-            return _objective_gen_p(model) + _objective_line_margin(model)
+        if self.solver_name == "gurobi":
+            def _objective(model):
+                return _objective_gen_p(model) + _objective_line_margin(model)
+        else:
+            def _objective(model):
+                return _objective_gen_p(model) + _objective_line_margin(model)
 
         self.model.objective = pyo.Objective(rule=_objective, sense=pyo.minimize)
 
