@@ -3,6 +3,7 @@ import pandapower as pp
 import pandas as pd
 import pyomo.environ as pyo
 import pyomo.opt as pyo_opt
+import sys
 
 from lib.data_utils import parse_gurobi_log
 
@@ -94,7 +95,7 @@ class PyomoMixin:
 
 
 class StandardDCOPF(UnitConverter, PyomoMixin):
-    def __init__(self, name, grid, solver="gurobi", verbose=False, **kwargs):
+    def __init__(self, name, grid, solver_name="glpk", verbose=False, **kwargs):
         UnitConverter.__init__(self, **kwargs)
         if verbose:
             self.print_base_units()
@@ -108,7 +109,12 @@ class StandardDCOPF(UnitConverter, PyomoMixin):
         self.load = grid.load
 
         self.model = None
-        self.solver = pyo_opt.SolverFactory(solver)
+
+        if sys.platform != "win32":
+            solver_name = "glpk"
+
+        self.solver_name = solver_name
+        self.solver = pyo_opt.SolverFactory(solver_name)
 
         # Results
         self.res_cost = None
@@ -436,10 +442,13 @@ class StandardDCOPF(UnitConverter, PyomoMixin):
         Set options to solver and solve the MIP.
         Gurobi parameters: https://www.gurobi.com/documentation/9.0/refman/parameters.html
         """
-        options = {
-            "OptimalityTol": tol,
-            "MIPGap": tol,
-        }
+        if self.solver_name == "gurobi":
+            options = {
+                "OptimalityTol": tol,
+                "MIPGap": tol,
+            }
+        else:
+            options = {}
 
         self.solver.solve(self.model, tee=verbose, options=options)
 

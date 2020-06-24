@@ -26,12 +26,21 @@ class TestSystem(unittest.TestCase):
         return model
 
     def test_solver_gurobi(self):
-        model = self.create_pyomo_instance()
-        solver = pyo_opt.SolverFactory("gurobi")
+        if sys.platform == "win32":
+            model = self.create_pyomo_instance()
+            solver = pyo_opt.SolverFactory("gurobi")
 
-        print(solver)
-        solver.solve(model, tee=True)
-        print(model.display())
+            print(solver)
+            solver.solve(model, tee=True)
+            print(model.display())
+
+            time.sleep(0.1)
+            self.assertTrue(True)
+        else:
+            print("Gurobi not installed.")
+
+            time.sleep(0.1)
+            self.assertTrue(False)
 
     def test_solver_glpk(self):
         model = self.create_pyomo_instance()
@@ -40,3 +49,6 @@ class TestSystem(unittest.TestCase):
         print(solver)
         solver.solve(model, tee=True)
         print(model.display())
+
+        time.sleep(0.1)
+        self.assertTrue(True)

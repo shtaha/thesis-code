@@ -52,8 +52,8 @@ class TestStandardDCOPF(unittest.TestCase):
     Test standard DC-OPF implementation.
     """
 
-    def test_case6(self):
-        case = OPFCase6()
+    def test_case3(self):
+        case = OPFCase3()
         model = StandardDCOPF(
             case.name,
             case.grid,
@@ -61,10 +61,10 @@ class TestStandardDCOPF(unittest.TestCase):
             base_unit_v=case.base_unit_v,
         )
 
-        self.runner_opf(model)
+        self.runner_opf(model, verbose=True)
 
-    def test_case3(self):
-        case = OPFCase3()
+    def test_case6(self):
+        case = OPFCase6()
         model = StandardDCOPF(
             case.name,
             case.grid,
