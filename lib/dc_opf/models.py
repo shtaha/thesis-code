@@ -856,12 +856,14 @@ class TopologyOptimizationDCOPF(StandardDCOPF):
         super().__init__(name, grid, solver, verbose, **kwargs)
 
         # Optimal switching status
-        self.x_line_or = None
-        self.x_line_ex = None
         self.x_gen = None
         self.x_load = None
+        self.x_line_or_1 = None
+        self.x_line_or_2 = None
+        self.x_line_ex_1 = None
+        self.x_line_ex_2 = None
 
-    def build_model(self):
+    def build_model(self, line_disconnection=True):
         self._build_per_unit_grid()
 
         # Model
@@ -883,7 +885,7 @@ class TopologyOptimizationDCOPF(StandardDCOPF):
         self._build_variables()
 
         # Constraints
-        self._build_constraints()
+        self._build_constraints(line_disconnection=line_disconnection)
 
         # Objective
         self._build_objective()  # Objective to be optimized.
@@ -965,8 +967,8 @@ class TopologyOptimizationDCOPF(StandardDCOPF):
         )
 
     """
-            VARIABLES.
-        """
+        VARIABLES.
+    """
 
     def _build_variables(self):
         self._build_variables_standard_generators()  # Generator productions and bounds
@@ -1039,9 +1041,14 @@ class TopologyOptimizationDCOPF(StandardDCOPF):
 
     # TODO: Constraints on variables, symmetry, line disconnections
 
-    def _build_constraints(self):
+    def _build_constraints(self, line_disconnection=True):
         self._build_constraint_line_flows()  # Power flow definition
         self._build_constraint_bus_balance()  # Bus power balance
+        self._build_constraint_line_or()
+        self._build_constraint_line_ex()
+
+        if line_disconnection:
+            self._build_constraint_line_disconnection()
 
     def _build_constraint_line_flows(self):
         # Power flow equation with topology switching
@@ -1122,6 +1129,33 @@ class TopologyOptimizationDCOPF(StandardDCOPF):
             self.model.bus_set, rule=_constraint_bus_balance
         )
 
+    def _build_constraint_line_or(self):
+        def _constraint_line_or(model, line_id):
+            return model.x_line_or_1[line_id] + model.x_line_or_2[line_id] <= 1
+
+        self.model.constraint_line_or = pyo.Constraint(
+            self.model.line_set, rule=_constraint_line_or
+        )
+
+    def _build_constraint_line_ex(self):
+        def _constraint_line_ex(model, line_id):
+            return model.x_line_ex_1[line_id] + model.x_line_ex_2[line_id] <= 1
+
+        self.model.constraint_line_ex = pyo.Constraint(
+            self.model.line_set, rule=_constraint_line_ex
+        )
+
+    def _build_constraint_line_disconnection(self):
+        def _constraint_line_disconnection(model, line_id):
+            return (
+                model.x_line_or_1[line_id] + model.x_line_or_2[line_id]
+                == model.x_line_ex_1[line_id] + model.x_line_ex_2[line_id]
+            )
+
+        self.model.constraint_line_disconnection = pyo.Constraint(
+            self.model.line_set, rule=_constraint_line_disconnection
+        )
+
     """
         OBJECTIVE.
     """
@@ -1149,3 +1183,64 @@ class TopologyOptimizationDCOPF(StandardDCOPF):
             return _objective_gen_p(model) + _objective_line_margin(model)
 
         self.model.objective = pyo.Objective(rule=_objective, sense=pyo.minimize)
+
+    """
+        SOLVE FUNCTIONS.
+    """
+
+    def solve(self, verbose=False, tol=1e-9):
+        self._solve(verbose=verbose, tol=tol)
+
+        # Parse Gurobi log for additional information
+        gap = parse_gurobi_log(self.solver._log)["gap"]
+        if gap < 1e-6:
+            gap = 1e-6
+
+        # Save standard DC-OPF variable results
+        self._solve_save()
+
+        # Save line status variable
+        self.x_gen = self._round_solution(self._access_pyomo_variable(self.model.x_gen))
+        self.x_load = self._round_solution(
+            self._access_pyomo_variable(self.model.x_load)
+        )
+        self.x_line_or_1 = self._round_solution(
+            self._access_pyomo_variable(self.model.x_line_or_1)
+        )
+        self.x_line_or_2 = self._round_solution(
+            self._access_pyomo_variable(self.model.x_line_or_2)
+        )
+        self.x_line_ex_1 = self._round_solution(
+            self._access_pyomo_variable(self.model.x_line_ex_1)
+        )
+        self.x_line_ex_2 = self._round_solution(
+            self._access_pyomo_variable(self.model.x_line_ex_2)
+        )
+
+        if verbose:
+            self.model.display()
+
+        result = {
+            "res_cost": self.res_cost,
+            "res_bus": self.res_bus,
+            "res_line": self.res_line,
+            "res_gen": self.res_gen,
+            "res_x": np.concatenate(
+                (
+                    self.x_gen,
+                    self.x_load,
+                    self.x_line_or_1,
+                    self.x_line_or_2,
+                    self.x_line_ex_1,
+                    self.x_line_ex_2,
+                )
+            ),
+            "res_x_gen": self.x_gen,
+            "res_x_load": self.x_load,
+            "res_x_line_or_1": self.x_line_or_1,
+            "res_x_line_or_2": self.x_line_or_2,
+            "res_x_line_ex_1": self.x_line_ex_1,
+            "res_x_line_ex_2": self.x_line_ex_2,
+            "res_gap": gap,
+        }
+        return result

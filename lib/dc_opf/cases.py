@@ -1,4 +1,5 @@
 import pandapower as pp
+import pandas as pd
 import numpy as np
 import grid2op
 
@@ -30,6 +31,32 @@ class SubstationMixin:
         grid.gen["sub"] = grid.bus["sub_id"].values[grid.gen["bus"].values.astype(int)]
         grid.load["sub"] = grid.bus["sub_id"].values[
             grid.load["bus"].values.astype(int)
+        ]
+
+        grid.sub = pd.DataFrame(index=sub_ids)
+        grid.sub["bus"] = [
+            tuple(grid.bus.index.values[grid.bus["sub_id"] == sub_id])
+            for sub_id in sub_ids
+        ]
+        grid.sub["sub_bus"] = [
+            tuple(grid.bus["sub_bus_id"][grid.bus["sub_id"] == sub_id])
+            for sub_id in sub_ids
+        ]
+        grid.sub["gen"] = [
+            tuple(grid.gen.index.values[grid.gen["sub"] == sub_id])
+            for sub_id in sub_ids
+        ]
+        grid.sub["load"] = [
+            tuple(grid.load.index.values[grid.load["sub"] == sub_id])
+            for sub_id in sub_ids
+        ]
+        grid.sub["line_or"] = [
+            tuple(grid.line.index.values[grid.line["from_sub"] == sub_id])
+            for sub_id in sub_ids
+        ]
+        grid.sub["line_ex"] = [
+            tuple(grid.line.index.values[grid.line["to_sub"] == sub_id])
+            for sub_id in sub_ids
         ]
 
 
