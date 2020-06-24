@@ -95,7 +95,7 @@ class PyomoMixin:
 
 
 class StandardDCOPF(UnitConverter, PyomoMixin):
-    def __init__(self, name, grid, solver_name="glpk", verbose=False, **kwargs):
+    def __init__(self, name, grid, solver_name="gurobi", verbose=False, **kwargs):
         UnitConverter.__init__(self, **kwargs)
         if verbose:
             self.print_base_units()
@@ -639,7 +639,7 @@ class LineSwitchingDCOPF(StandardDCOPF):
         name,
         grid,
         n_line_status_changes=1,
-        solver_name="glpk",
+        solver_name="gurobi",
         verbose=False,
         **kwargs,
     ):
@@ -865,7 +865,7 @@ class LineSwitchingDCOPF(StandardDCOPF):
 
 
 class TopologyOptimizationDCOPF(StandardDCOPF):
-    def __init__(self, name, grid, solver_name="glpk", verbose=False, **kwargs):
+    def __init__(self, name, grid, solver_name="gurobi", verbose=False, **kwargs):
         super().__init__(name, grid, solver_name, verbose, **kwargs)
 
         # Optimal switching status
@@ -1197,7 +1197,7 @@ class TopologyOptimizationDCOPF(StandardDCOPF):
                 return _objective_gen_p(model) + _objective_line_margin(model)
         else:
             def _objective(model):
-                return _objective_gen_p(model) + _objective_line_margin(model)
+                return _objective_gen_p(model)
 
         self.model.objective = pyo.Objective(rule=_objective, sense=pyo.minimize)
 
