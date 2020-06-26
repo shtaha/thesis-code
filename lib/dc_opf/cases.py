@@ -5,62 +5,218 @@ import grid2op
 
 from lib.dc_opf.models import UnitConverter
 from lib.data_utils import bus_names_to_sub_ids, update_backend
+from lib.visualizer import describe_environment
 
 
-class SubstationMixin:
-    @staticmethod
-    def update_grid_with_substation_info(grid):
-        grid.bus["sub_id"] = bus_names_to_sub_ids(grid.bus["name"])
-        sub_ids = sorted(grid.bus["sub_id"].unique())
-        grid.bus["sub_bus_id"] = np.nan
+class GridDCOPF(UnitConverter):
+    def __init__(self, case, base_unit_v, base_unit_p=1e6):
+        UnitConverter.__init__(self, base_unit_v=base_unit_v, base_unit_p=base_unit_p)
+        self.case = case
 
-        bus_to_sub_ids = np.empty_like(grid.bus.index.values)
-        for sub_id in sub_ids:
-            sub_id_mask = grid.bus["sub_id"] == sub_id
-            bus_to_sub_ids[sub_id_mask] = np.arange(1, np.sum(sub_id_mask) + 1)
+        # Initialize grid elements
+        self.sub = pd.DataFrame(
+            columns=["id", "bus", "line_or", "line_ex", "gen", "load", "ext_grid"]
+        )
+        self.bus = pd.DataFrame(
+            columns=[
+                "id",
+                "sub",
+                "sub_bus",
+                "v_pu",
+                "line_or",
+                "line_ex",
+                "gen",
+                "load",
+                "ext_grid",
+            ]
+        )
+        self.line = pd.DataFrame(
+            columns=[
+                "id",
+                "sub_or",
+                "sub_ex",
+                "bus_or",
+                "bus_ex",
+                "b_pu",
+                "p_pu",
+                "max_p_pu",
+                "status",
+            ]
+        )
+        self.gen = pd.DataFrame(
+            columns=["id", "sub", "bus", "p_pu", "min_p_pu", "max_p_pu", "cost_pu"]
+        )
+        self.load = pd.DataFrame(columns=["id", "sub", "bus", "p_pu"])
 
-        grid.bus["sub_bus_id"] = bus_to_sub_ids
+        # External grid
+        self.ext_grid = pd.DataFrame(
+            columns=["id", "sub", "bus", "p_pu", "min_p_pu", "max_p_pu"]
+        )
 
-        # Substations
-        grid.line["from_sub"] = grid.bus["sub_id"].values[
-            grid.line["from_bus"].values.astype(int)
-        ]
-        grid.line["to_sub"] = grid.bus["sub_id"].values[
-            grid.line["to_bus"].values.astype(int)
-        ]
-        grid.gen["sub"] = grid.bus["sub_id"].values[grid.gen["bus"].values.astype(int)]
-        grid.load["sub"] = grid.bus["sub_id"].values[
-            grid.load["bus"].values.astype(int)
-        ]
+        self.slack_bus = None
+        self.delta_max = None
 
-        grid.sub = pd.DataFrame(index=sub_ids)
-        grid.sub["bus"] = [
-            tuple(grid.bus.index.values[grid.bus["sub_id"] == sub_id])
-            for sub_id in sub_ids
-        ]
-        grid.sub["sub_bus"] = [
-            tuple(grid.bus["sub_bus_id"][grid.bus["sub_id"] == sub_id])
-            for sub_id in sub_ids
-        ]
-        grid.sub["gen"] = [
-            tuple(grid.gen.index.values[grid.gen["sub"] == sub_id])
-            for sub_id in sub_ids
-        ]
-        grid.sub["load"] = [
-            tuple(grid.load.index.values[grid.load["sub"] == sub_id])
-            for sub_id in sub_ids
-        ]
-        grid.sub["line_or"] = [
-            tuple(grid.line.index.values[grid.line["from_sub"] == sub_id])
-            for sub_id in sub_ids
-        ]
-        grid.sub["line_ex"] = [
-            tuple(grid.line.index.values[grid.line["to_sub"] == sub_id])
-            for sub_id in sub_ids
-        ]
+        self.build_grid()
+
+    def build_grid(self):
+        """
+            Buses.
+        """
+        self.bus["id"] = self.case.grid.bus.index
+        self.bus["sub"] = bus_names_to_sub_ids(self.case.grid.bus["name"])
+        self.bus["v_pu"] = self.convert_kv_to_per_unit(self.case.grid.bus["vn_kv"])
+
+        """
+            Substations.
+        """
+        self.sub["id"] = sorted(self.bus["sub"].unique())
+
+        """
+            Power lines.
+        """
+        self.line["id"] = self.case.grid.line.index
+
+        # Inverse line reactance
+        x_pu = self.convert_ohm_to_per_unit(
+            self.case.grid.line["x_ohm_per_km"]
+            * self.case.grid.line["length_km"]
+            / self.case.grid.line["parallel"]
+        )
+        self.line["b_pu"] = 1 / x_pu
+
+        # Power line flow thermal limit
+        # P_l_max = I_l_max * V_l
+        line_max_i_pu = self.convert_ka_to_per_unit(self.case.grid.line["max_i_ka"])
+        self.line["max_p_pu"] = (
+            np.sqrt(3)
+            * line_max_i_pu
+            * self.bus["v_pu"].values[self.case.grid.line["from_bus"].values]
+        )
+
+        # Line status
+        self.line["status"] = self.case.grid.line["in_service"]
+
+        """
+            Generators.
+        """
+        self.gen["id"] = self.case.grid.gen.index
+        self.gen["p_pu"] = self.convert_mw_to_per_unit(self.case.grid.gen["p_mw"])
+        self.gen["max_p_pu"] = self.convert_mw_to_per_unit(
+            self.case.grid.gen["max_p_mw"]
+        )
+        self.gen["min_p_pu"] = self.convert_mw_to_per_unit(
+            self.case.grid.gen["min_p_mw"]
+        )
+        self.gen["min_p_pu"] = np.maximum(0.0, self.gen["min_p_pu"].values)
+        self.gen["cost_pu"] = 1.0
+
+        """
+            Loads.
+        """
+        self.load["id"] = self.case.grid.load.index
+        self.load["p_pu"] = self.convert_mw_to_per_unit(self.case.grid.load["p_mw"])
+
+        """
+            External grids.
+        """
+        self.ext_grid["id"] = self.case.grid.ext_grid.index
+        self.ext_grid["p_pu"] = self.convert_mw_to_per_unit(
+            self.case.grid.res_ext_grid["p_mw"]
+        )
+        if "min_p_mw" in self.case.grid.ext_grid.columns:
+            self.ext_grid["min_p_pu"] = self.convert_mw_to_per_unit(
+                self.case.grid.ext_grid["min_p_mw"]
+            )
+
+        if "max_p_mw" in self.case.grid.ext_grid.columns:
+            self.ext_grid["max_p_pu"] = self.convert_mw_to_per_unit(
+                self.case.grid.ext_grid["max_p_mw"]
+            )
+
+        # Reindex
+        self.sub.set_index("id", inplace=True)
+        self.bus.set_index("id", inplace=True)
+        self.line.set_index("id", inplace=True)
+        self.gen.set_index("id", inplace=True)
+        self.load.set_index("id", inplace=True)
+        self.ext_grid.set_index("id", inplace=True)
+
+        """
+            Topology.
+        """
+        # Generators
+        self.gen["bus"] = self.case.grid.gen["bus"]
+        self.gen["sub"] = self.sub.index.values[self.gen["bus"]]
+
+        # Loads
+        self.load["bus"] = self.case.grid.load["bus"]
+        self.load["sub"] = self.sub.index.values[self.load["bus"]]
+
+        # Power lines
+        self.line["bus_or"] = self.case.grid.line["from_bus"]
+        self.line["bus_ex"] = self.case.grid.line["to_bus"]
+        self.line["sub_or"] = self.sub.index.values[self.line["bus_or"]]
+        self.line["sub_ex"] = self.sub.index.values[self.line["bus_ex"]]
+
+        # External grids
+        self.ext_grid["bus"] = self.case.grid.ext_grid["bus"]
+        self.ext_grid["sub"] = self.sub.index.values[self.ext_grid["bus"]]
+
+        sub_bus = np.empty_like(self.bus.index)
+        for sub_id in self.sub.index:
+            bus_mask = self.bus["sub"] == sub_id
+            gen_mask = self.gen["sub"] == sub_id
+            load_mask = self.load["sub"] == sub_id
+            line_or_mask = self.line["sub_or"] == sub_id
+            line_ex_mask = self.line["sub_ex"] == sub_id
+            ext_grid_mask = self.ext_grid["sub"] == sub_id
+
+            sub_bus[bus_mask] = np.arange(1, np.sum(bus_mask) + 1)
+
+            self.sub["bus"][sub_id] = tuple(np.flatnonzero(bus_mask))
+            self.sub["gen"][sub_id] = tuple(np.flatnonzero(gen_mask))
+            self.sub["load"][sub_id] = tuple(np.flatnonzero(load_mask))
+            self.sub["line_or"][sub_id] = tuple(np.flatnonzero(line_or_mask))
+            self.sub["line_ex"][sub_id] = tuple(np.flatnonzero(line_ex_mask))
+            self.sub["ext_grid"][sub_id] = tuple(np.flatnonzero(ext_grid_mask))
+
+        self.bus["sub_bus"] = sub_bus
+
+        for bus_id in self.bus.index:
+            gen_mask = self.gen["bus"] == bus_id
+            load_mask = self.load["bus"] == bus_id
+            line_or_mask = self.line["bus_or"] == bus_id
+            line_ex_mask = self.line["bus_ex"] == bus_id
+            ext_grid_mask = self.ext_grid["bus"] == bus_id
+
+            self.bus["gen"][bus_id] = tuple(np.flatnonzero(gen_mask))
+            self.bus["load"][bus_id] = tuple(np.flatnonzero(load_mask))
+            self.bus["line_or"][bus_id] = tuple(np.flatnonzero(line_or_mask))
+            self.bus["line_ex"][bus_id] = tuple(np.flatnonzero(line_ex_mask))
+            self.bus["ext_grid"][bus_id] = tuple(np.flatnonzero(ext_grid_mask))
+
+        self.line["p_pu"] = self.convert_mw_to_per_unit(
+            self.case.grid.res_line["p_from_mw"]
+        )
+        self.gen["p_pu"] = self.convert_mw_to_per_unit(self.case.grid.gen["p_mw"])
+
+        # Fill with 0 if no value
+        self.line["p_pu"] = self.line["p_pu"].fillna(0)
+        self.gen["p_pu"] = self.gen["p_pu"].fillna(0)
+        self.ext_grid["p_pu"] = self.ext_grid["p_pu"].fillna(0)
+
+        # Grid and computation parameters
+        self.slack_bus = self.gen.bus[np.flatnonzero(self.case.grid.gen["slack"])[0]]
+        self.delta_max = np.pi / 2
+
+    def set_gen_cost(self, gen_costs):
+        gen_costs = np.array(gen_costs).flatten()
+        assert gen_costs.size == self.gen["cost_pu"].size  # Check dimensions
+
+        self.gen["cost_pu"] = gen_costs
 
 
-class OPFCase3(UnitConverter, SubstationMixin):
+class OPFCase3(UnitConverter):
     """
     Test case for power flow computation.
     Found in http://research.iaun.ac.ir/pd/bahador.fani/pdfs/UploadFile_6990.pdf.
@@ -152,13 +308,10 @@ class OPFCase3(UnitConverter, SubstationMixin):
             name="gen-0",
         )
 
-        # Substations
-        self.update_grid_with_substation_info(grid)
-
         return grid
 
 
-class OPFCase6(UnitConverter, SubstationMixin):
+class OPFCase6(UnitConverter):
     """
     Test case for power flow computation.
     Found in http://research.iaun.ac.ir/pd/bahador.fani/pdfs/UploadFile_6990.pdf.
@@ -386,13 +539,10 @@ class OPFCase6(UnitConverter, SubstationMixin):
             name="gen-2",
         )
 
-        # Substations
-        self.update_grid_with_substation_info(grid)
-
         return grid
 
 
-class OPFRTECase5(UnitConverter, SubstationMixin):
+class OPFRTECase5(UnitConverter):
     def __init__(self):
         UnitConverter.__init__(self, base_unit_p=1e6, base_unit_v=1e5)
 
@@ -403,11 +553,8 @@ class OPFRTECase5(UnitConverter, SubstationMixin):
 
         self.grid = env.backend._grid
 
-        # Substations
-        self.update_grid_with_substation_info(self.grid)
 
-
-class OPFL2RPN2019(UnitConverter, SubstationMixin):
+class OPFL2RPN2019(UnitConverter):
     def __init__(self):
         UnitConverter.__init__(self, base_unit_p=1e6, base_unit_v=1e5)
 
@@ -418,5 +565,15 @@ class OPFL2RPN2019(UnitConverter, SubstationMixin):
 
         self.grid = env.backend._grid
 
-        # Substations
-        self.update_grid_with_substation_info(self.grid)
+
+class OPFL2RPN2020(UnitConverter):
+    def __init__(self):
+        UnitConverter.__init__(self, base_unit_p=1e6, base_unit_v=138000)
+
+        self.name = "Case L2RPN 2020 WCCI"
+
+        env = grid2op.make(dataset="l2rpn_wcci_2020")
+        describe_environment(env)
+        update_backend(env, verbose=True)
+
+        self.grid = env.backend._grid

@@ -3,19 +3,27 @@ import time
 import unittest
 
 import numpy as np
-import pandapower as pp
 import pandas as pd
+import pandapower as pp
 
-from lib.data_utils import indices_to_hot, hot_to_indices
-from lib.dc_opf import OPFCase3, OPFCase6, OPFRTECase5
 from lib.dc_opf import (
     StandardDCOPF,
     LineSwitchingDCOPF,
     TopologyOptimizationDCOPF,
+    GridDCOPF,
+    OPFCase3,
+    OPFCase6,
+    OPFRTECase5,
+    OPFL2RPN2019,
 )
+from lib.data_utils import indices_to_hot, hot_to_indices
 
 
 class TestStandardDCOPF(unittest.TestCase):
+    """
+    Test standard DC-OPF implementation.
+    """
+
     @classmethod
     def setUpClass(cls):
         print("\nStandard DC-OPF tests.\n")
@@ -24,8 +32,10 @@ class TestStandardDCOPF(unittest.TestCase):
         conditions = list()
         for i in range(n_tests):
             np.random.seed(i)
-            gen_cost = np.random.uniform(1.0, 5.0, (model.grid.gen.shape[0],))
-            model.set_gen_cost(gen_cost)
+            model.gen["cost_pu"] = np.random.uniform(
+                1.0, 5.0, (model.grid.gen.shape[0],)
+            )
+
             model.build_model()
             result = model.solve_and_compare(verbose=verbose, tol=tol)
 
@@ -48,47 +58,56 @@ class TestStandardDCOPF(unittest.TestCase):
         # Test DC Power Flow
         self.assertTrue(conditions["passed"].values.all())
 
-    """
-    Test standard DC-OPF implementation.
-    """
-
     def test_case3(self):
         case = OPFCase3()
+        grid = GridDCOPF(
+            case, base_unit_v=case.base_unit_v, base_unit_p=case.base_unit_p
+        )
+
         model = StandardDCOPF(
-            case.name,
-            case.grid,
+            f"{case.name} Standard DC OPF",
+            grid=grid,
+            grid_backend=case.grid,
             base_unit_p=case.base_unit_p,
             base_unit_v=case.base_unit_v,
         )
 
-        self.runner_opf(model, verbose=True)
+        self.runner_opf(model, verbose=False)
 
     def test_case6(self):
         case = OPFCase6()
+        grid = GridDCOPF(
+            case, base_unit_v=case.base_unit_v, base_unit_p=case.base_unit_p
+        )
+
         model = StandardDCOPF(
-            case.name,
-            case.grid,
+            f"{case.name} Standard DC OPF",
+            grid=grid,
+            grid_backend=case.grid,
             base_unit_p=case.base_unit_p,
             base_unit_v=case.base_unit_v,
         )
 
-        self.runner_opf(model)
+        self.runner_opf(model, verbose=False)
 
     def test_case3_by_value(self):
         """
         Test for power flow computation.
         """
         case = OPFCase3()
+        grid = GridDCOPF(
+            case, base_unit_v=case.base_unit_v, base_unit_p=case.base_unit_p
+        )
+
         model = StandardDCOPF(
-            f"{case.name} BY VALUE",
-            case.grid,
+            f"{case.name} Standard DC OPF",
+            grid=grid,
+            grid_backend=case.grid,
             base_unit_p=case.base_unit_p,
             base_unit_v=case.base_unit_v,
         )
 
-        model.set_gen_cost(np.array([1.0]))
         model.build_model()
-
         result = model.solve(verbose=True, tol=1e-9)
         model.print_results()
 
@@ -103,32 +122,35 @@ class TestStandardDCOPF(unittest.TestCase):
 
     def test_rte_case5(self):
         case = OPFRTECase5()
+        grid = GridDCOPF(
+            case, base_unit_v=case.base_unit_v, base_unit_p=case.base_unit_p
+        )
+
         model = StandardDCOPF(
-            case.name,
-            case.grid,
+            f"{case.name} Standard DC OPF",
+            grid=grid,
+            grid_backend=case.grid,
             base_unit_p=case.base_unit_p,
             base_unit_v=case.base_unit_v,
         )
 
-        self.runner_opf(model, n_tests=5)
+        self.runner_opf(model, verbose=False)
 
-    """
-        Infeasible problem.
-    """
+    def test_l2rpn2019(self):
+        case = OPFL2RPN2019()
+        grid = GridDCOPF(
+            case, base_unit_v=case.base_unit_v, base_unit_p=case.base_unit_p
+        )
 
-    # TODO: Resolve.
-    #
-    # def test_l2rpn2019(self):
-    #     case = OPFL2RPN2019()
-    #
-    #     model = StandardDCOPF(
-    #             case.name,
-    #             case.grid,
-    #             base_unit_p=case.base_unit_p,
-    #             base_unit_v=case.base_unit_v,
-    #         )
-    #
-    #     self.runner_opf(model, n_tests=5)
+        model = StandardDCOPF(
+            f"{case.name} Standard DC OPF",
+            grid=grid,
+            grid_backend=case.grid,
+            base_unit_p=case.base_unit_p,
+            base_unit_v=case.base_unit_v,
+        )
+
+        self.runner_opf(model, verbose=False)
 
 
 class TestLineSwitchingDCOPF(unittest.TestCase):
@@ -141,12 +163,19 @@ class TestLineSwitchingDCOPF(unittest.TestCase):
         print("\nDC-OPF with line switching tests.\n")
 
     def runner_opf_line_switching(
-        self, model, grid, n_line_status_changes, verbose=False, tol=1e-9
+        self,
+        model,
+        grid,
+        n_line_status_changes,
+        big_m=True,
+        gen_cost=True,
+        line_margin=True,
+        verbose=False,
+        tol=1e-9,
     ):
         np.random.seed(0)
-        gen_cost = np.random.uniform(1.0, 5.0, (model.grid.gen.shape[0],))
-        model.set_gen_cost(gen_cost)
-        model.build_model()
+        model.gen["cost_pu"] = np.random.uniform(1.0, 5.0, (model.grid.gen.shape[0],))
+        model.build_model(big_m=big_m, gen_cost=gen_cost, line_margin=line_margin)
 
         if verbose:
             model.print_model()
@@ -168,25 +197,33 @@ class TestLineSwitchingDCOPF(unittest.TestCase):
         results_backend = pd.DataFrame(
             columns=["line_status", "objective", "loads_p", "generators_p", "valid"]
         )
-        for line_status in line_statuses:
-            model.grid.line["in_service"] = line_status
+        # for line_status in line_statuses:
+        for idx, line_status in enumerate(line_statuses):
+            model.grid_backend.line["in_service"] = line_status
             result_backend = model.solve_backend()
 
-            objective = result_backend["res_cost"]
-
-            if model.solver_name == "gurobi":
-                objective = objective + np.square(
+            if gen_cost and line_margin and model.solver_name == "gurobi":
+                objective = (
+                    result_backend["res_cost"]
+                    + np.square(
+                        result_backend["res_line"]["p_pu"] / model.line["max_p_pu"]
+                    ).sum()
+                )
+            elif line_margin and model.solver_name == "gurobi":
+                objective = np.square(
                     result_backend["res_line"]["p_pu"] / model.line["max_p_pu"]
                 ).sum()
+            else:
+                objective = result_backend["res_cost"]
 
             loads_p = grid.load["p_pu"].sum()
             generators_p = result_backend["res_gen"]["p_pu"].sum()
-            valid = generators_p > loads_p - 1e-6 and result_backend["valid"]
+            valid = result_backend["valid"]
 
             results_backend = results_backend.append(
                 {
                     "line_status": tuple(line_status),
-                    "objective": np.round(objective, 2),
+                    "objective": objective,
                     "loads_p": loads_p,
                     "generators_p": generators_p,
                     "valid": valid,
@@ -205,9 +242,8 @@ class TestLineSwitchingDCOPF(unittest.TestCase):
 
         # Check with brute force solution
         objective_brute = results_backend["objective"][results_backend["valid"]].min()
-        hot_brute = (
-            np.abs(results_backend["objective"].values - objective_brute) < result_gap
-        )
+
+        hot_brute = results_backend["objective"].values < result_gap + objective_brute
         indices_brute = hot_to_indices(hot_brute)
         status_brute = results_backend["line_status"][indices_brute]
 
@@ -220,7 +256,17 @@ class TestLineSwitchingDCOPF(unittest.TestCase):
         # Compare
         results_backend["candidates"] = hot_brute
         results_backend["result_objective"] = np.nan
-        results_backend["result_objective"][match_idx] = np.round(result_objective, 2)
+        results_backend["result_objective"][match_idx] = result_objective
+
+        solution_idx = [
+            idx
+            for idx, line_status in zip(
+                results_backend.index, results_backend["line_status"]
+            )
+            if np.equal(line_status, result_status).all()
+        ]
+        results_backend["solution"] = 0
+        results_backend["solution"][solution_idx] = 1
 
         results_backend["line_status"] = [
             " ".join(np.array(line_status).astype(int).astype(str))
@@ -237,71 +283,78 @@ class TestLineSwitchingDCOPF(unittest.TestCase):
         n_line_status_changes = 2
 
         case = OPFCase3()
+        grid = GridDCOPF(
+            case, base_unit_v=case.base_unit_v, base_unit_p=case.base_unit_p
+        )
+
         model = LineSwitchingDCOPF(
-            f"{case.name} Line Switching",
-            case.grid,
+            f"{case.name} DC OPF Line Switching",
+            grid=grid,
+            grid_backend=case.grid,
             n_line_status_changes=n_line_status_changes,
             base_unit_p=case.base_unit_p,
             base_unit_v=case.base_unit_v,
         )
 
-        self.runner_opf_line_switching(
-            model, case.grid, n_line_status_changes, verbose=True
-        )
+        self.runner_opf_line_switching(model, grid, n_line_status_changes, verbose=True)
 
     def test_case6_line_switching(self):
         n_line_status_changes = 2
 
         case = OPFCase6()
+        grid = GridDCOPF(
+            case, base_unit_v=case.base_unit_v, base_unit_p=case.base_unit_p
+        )
+
         model = LineSwitchingDCOPF(
-            f"{case.name} Line Switching",
-            case.grid,
+            f"{case.name} DC OPF Line Switching",
+            grid=grid,
+            grid_backend=case.grid,
             n_line_status_changes=n_line_status_changes,
             base_unit_p=case.base_unit_p,
             base_unit_v=case.base_unit_v,
         )
 
-        self.runner_opf_line_switching(
-            model, case.grid, n_line_status_changes, verbose=True
-        )
+        self.runner_opf_line_switching(model, grid, n_line_status_changes, verbose=True)
 
     def test_rte_case5_line_switching(self):
         n_line_status_changes = 3
 
         case = OPFRTECase5()
+        grid = GridDCOPF(
+            case, base_unit_v=case.base_unit_v, base_unit_p=case.base_unit_p
+        )
+
         model = LineSwitchingDCOPF(
-            f"{case.name} Line Switching",
-            case.grid,
+            f"{case.name} DC OPF Line Switching",
+            grid=grid,
+            grid_backend=case.grid,
+            n_line_status_changes=n_line_status_changes,
+            base_unit_p=case.base_unit_p,
+            base_unit_v=case.base_unit_v,
+        )
+        self.runner_opf_line_switching(
+            model, grid, n_line_status_changes, verbose=True,
+        )
+
+    def test_l2rpn2019_line_switching(self):
+        n_line_status_changes = 2
+
+        case = OPFL2RPN2019()
+        grid = GridDCOPF(
+            case, base_unit_v=case.base_unit_v, base_unit_p=case.base_unit_p
+        )
+
+        model = LineSwitchingDCOPF(
+            f"{case.name} DC OPF Line Switching",
+            grid=grid,
+            grid_backend=case.grid,
             n_line_status_changes=n_line_status_changes,
             base_unit_p=case.base_unit_p,
             base_unit_v=case.base_unit_v,
         )
 
-        self.runner_opf_line_switching(
-            model, case.grid, n_line_status_changes, verbose=True,
-        )
-
-    """
-    Infeasible problem.
-    """
-
-    # TODO: Resolve.
-    #
-    # def test_l2rpn2019_line_switching(self):
-    #     n_line_status_changes = 2
-    #
-    #     case = OPFL2RPN2019()
-    #     model = LineSwitchingDCOPF(
-    #             f"{case.name} Line Switching",
-    #             case.grid,
-    #             n_line_status_changes=n_line_status_changes,
-    #             base_unit_p=case.base_unit_p,
-    #             base_unit_v=case.base_unit_v,
-    #     )
-    #
-    #     self.runner_opf_line_switching(
-    #         model, case.grid, n_line_status_changes, verbose=True
-    #     )
+        self.runner_opf_line_switching(model, grid, n_line_status_changes, verbose=True)
 
 
 class TestTopologyOptimizationDCOPF(unittest.TestCase):
@@ -346,14 +399,12 @@ class TestTopologyOptimizationDCOPF(unittest.TestCase):
 
         return cond_line_or and cond_line_ex and cond_line_disconnected
 
-    def runner_opf_topology_optimization(self, model, case, verbose=False, tol=1e-2):
-        """
-            SOLUTION.
-        """
+    def runner_opf_topology_optimization(
+        self, model, gen_cost=True, line_margin=True, verbose=False, tol=1e-2
+    ):
         np.random.seed(0)
-        gen_cost = np.random.uniform(1.0, 5.0, (model.grid.gen.shape[0],))
-        model.set_gen_cost(gen_cost)
-        model.build_model()
+        model.gen["cost_pu"] = np.random.uniform(1.0, 5.0, (model.grid.gen.shape[0],))
+        model.build_model(gen_cost=gen_cost, line_margin=line_margin)
 
         if verbose:
             model.print_model()
@@ -371,9 +422,9 @@ class TestTopologyOptimizationDCOPF(unittest.TestCase):
         if verbose:
             model.print_results()
 
-        n_gen = model.grid.gen.shape[0]
-        n_load = model.grid.load.shape[0]
-        n_line = model.grid.line.shape[0]
+        n_gen = model.grid_backend.gen.shape[0]
+        n_load = model.grid_backend.load.shape[0]
+        n_line = model.grid_backend.line.shape[0]
 
         """
             BACKEND BRUTE FORCE.
@@ -399,23 +450,19 @@ class TestTopologyOptimizationDCOPF(unittest.TestCase):
             # Check valid topology
             if self.is_valid_topology(x_topology, n_gen, n_load, n_line):
                 # Generator bus
-                gen_sub_bus = np.ones_like(x_gen)
+                gen_sub_bus = np.ones_like(x_gen, dtype=np.int)
                 gen_sub_bus[x_gen.astype(np.bool)] = 2
                 gen_bus = [
-                    case.grid.sub["bus"][sub_id][
-                        list(case.grid.sub["sub_bus"][sub_id]).index(sub_bus)
-                    ]
-                    for sub_bus, sub_id in zip(gen_sub_bus, case.grid.gen["sub"])
+                    model.grid.sub["bus"][sub_id][sub_bus - 1]
+                    for sub_bus, sub_id in zip(gen_sub_bus, model.grid.gen["sub"])
                 ]
 
                 # Load bus
-                load_sub_bus = np.ones_like(x_load)
+                load_sub_bus = np.ones_like(x_load, dtype=np.int)
                 load_sub_bus[x_load.astype(np.bool)] = 2
                 load_bus = [
-                    case.grid.sub["bus"][sub_id][
-                        list(case.grid.sub["sub_bus"][sub_id]).index(sub_bus)
-                    ]
-                    for sub_bus, sub_id in zip(load_sub_bus, case.grid.load["sub"])
+                    model.grid.sub["bus"][sub_id][sub_bus - 1]
+                    for sub_bus, sub_id in zip(load_sub_bus, model.grid.load["sub"])
                 ]
 
                 # Power line status
@@ -425,37 +472,33 @@ class TestTopologyOptimizationDCOPF(unittest.TestCase):
                 )
 
                 # Power line - Origin bus
-                line_or_sub_bus = -np.ones_like(x_line_or_1)
+                line_or_sub_bus = -np.ones_like(x_line_or_1, dtype=np.int)
                 line_or_sub_bus[x_line_or_1.astype(np.bool)] = 1
                 line_or_sub_bus[x_line_or_2.astype(np.bool)] = 2
                 line_or_bus = [
-                    case.grid.sub["bus"][sub_id][
-                        list(case.grid.sub["sub_bus"][sub_id]).index(sub_bus)
-                    ]
+                    model.grid.sub["bus"][sub_id][sub_bus - 1]
                     if sub_bus != -1
-                    else case.grid.sub["bus"][sub_id][0]
+                    else model.grid.sub["bus"][sub_id][0]
                     for sub_bus, sub_id in zip(
-                        line_or_sub_bus, case.grid.line["from_sub"]
+                        line_or_sub_bus, model.grid.line["sub_or"]
                     )
                 ]
 
                 # Power line - Extremity bus
-                line_ex_sub_bus = -np.ones_like(x_line_ex_1)
+                line_ex_sub_bus = -np.ones_like(x_line_ex_1, dtype=np.int)
                 line_ex_sub_bus[x_line_ex_1.astype(np.bool)] = 1
                 line_ex_sub_bus[x_line_ex_2.astype(np.bool)] = 2
                 line_ex_bus = [
-                    case.grid.sub["bus"][sub_id][
-                        list(case.grid.sub["sub_bus"][sub_id]).index(sub_bus)
-                    ]
+                    model.grid.sub["bus"][sub_id][sub_bus - 1]
                     if sub_bus != -1
-                    else case.grid.sub["bus"][sub_id][0]
+                    else model.grid.sub["bus"][sub_id][0]
                     for sub_bus, sub_id in zip(
-                        line_ex_sub_bus, case.grid.line["to_sub"]
+                        line_ex_sub_bus, model.grid.line["sub_ex"]
                     )
                 ]
 
                 # Construct grid for backend
-                grid_tmp = case.grid.deepcopy()
+                grid_tmp = model.grid_backend.deepcopy()
                 grid_tmp.line["in_service"] = line_status
                 grid_tmp.gen["bus"] = gen_bus
                 grid_tmp.load["bus"] = load_bus
@@ -467,8 +510,8 @@ class TestTopologyOptimizationDCOPF(unittest.TestCase):
                         grid_tmp,
                         gen_id,
                         "gen",
-                        cp1_eur_per_mw=case.convert_per_unit_to_mw(
-                            grid_tmp.gen["cost_pu"][gen_id]
+                        cp1_eur_per_mw=model.convert_per_unit_to_mw(
+                            model.grid.gen["cost_pu"][gen_id]
                         ),
                     )
 
@@ -481,17 +524,25 @@ class TestTopologyOptimizationDCOPF(unittest.TestCase):
                     print(e)
                     continue
 
-                load_p = case.convert_mw_to_per_unit(grid_tmp.load["p_mw"].sum())
-                gen_p = case.convert_mw_to_per_unit(grid_tmp.res_gen["p_mw"].sum())
+                load_p = model.convert_mw_to_per_unit(grid_tmp.load["p_mw"].sum())
+                gen_p = model.convert_mw_to_per_unit(grid_tmp.res_gen["p_mw"].sum())
                 valid = valid and np.abs(gen_p - load_p) < 1e-6
 
-                objective = grid_tmp.res_cost
-
-                if model.solver_name == "gurobi":
-                    objective = objective + + np.square(
-                        case.convert_mw_to_per_unit(grid_tmp.res_line["p_from_mw"])
-                        / grid_tmp.line["max_p_pu"]
+                if gen_cost and line_margin and model.solver_name == "gurobi":
+                    objective = (
+                        grid_tmp.res_cost
+                        + np.square(
+                            model.convert_mw_to_per_unit(grid_tmp.res_line["p_from_mw"])
+                            / model.grid.line["max_p_pu"]
+                        ).sum()
+                    )
+                elif line_margin and model.solver_name == "gurobi":
+                    objective = +np.square(
+                        model.convert_mw_to_per_unit(grid_tmp.res_line["p_from_mw"])
+                        / model.grid.line["max_p_pu"]
                     ).sum()
+                else:
+                    objective = grid_tmp.res_cost
 
                 results_backend.append(
                     {
@@ -564,37 +615,16 @@ class TestTopologyOptimizationDCOPF(unittest.TestCase):
 
     def test_case3_topology(self):
         case = OPFCase3()
+        grid = GridDCOPF(
+            case, base_unit_v=case.base_unit_v, base_unit_p=case.base_unit_p
+        )
+
         model = TopologyOptimizationDCOPF(
-            f"{case.name} Topology Optimization",
-            case.grid,
+            f"{case.name} DC OPF Topology Optimization",
+            grid=grid,
+            grid_backend=case.grid,
             base_unit_p=case.base_unit_p,
             base_unit_v=case.base_unit_v,
         )
 
-        self.runner_opf_topology_optimization(model, case)
-
-    """
-        INTRACTABLE.
-    """
-
-    # def test_case6_topology(self):
-    #     case = OPFCase6()
-    #     model = TopologyOptimizationDCOPF(
-    #         f"{case.name} Topology Optimization",
-    #         case.grid,
-    #         base_unit_p=case.base_unit_p,
-    #         base_unit_v=case.base_unit_v,
-    #     )
-    #
-    #     self.runner_opf_topology_optimization(model, case, verbose=True)
-    #
-    # def test_rte_case5_topology(self):
-    #     case = OPFRTECase5()
-    #     model = TopologyOptimizationDCOPF(
-    #         f"{case.name} Topology Optimization",
-    #         case.grid,
-    #         base_unit_p=case.base_unit_p,
-    #         base_unit_v=case.base_unit_v,
-    #     )
-    #
-    #     self.runner_opf_topology_optimization(model, case, verbose=True)
+        self.runner_opf_topology_optimization(model, grid)

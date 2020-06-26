@@ -2,6 +2,7 @@ import datetime
 import os
 
 import numpy as np
+import pandas as pd
 
 
 def make_dir(directory):
@@ -73,6 +74,8 @@ def update_backend(env, verbose=False):
         grid.line["name"] = env.name_line
         grid.gen["name"] = env.name_gen
         grid.load["name"] = env.name_load
+    elif env.name == "l2rpn_wcci_2020":
+        pass
 
     # Environment and backend inconsistency
     grid.gen["min_p_mw"] = env.gen_pmin

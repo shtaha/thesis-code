@@ -77,13 +77,8 @@ class PyomoMixin:
         return [tuple(row) for row in df.to_numpy()]
 
     @staticmethod
-    def _reverse_index_map(indices_1, indices_2):
-        reverse_map = [list(np.equal(indices_1, idx).nonzero()[0]) for idx in indices_2]
-        return reverse_map
-
-    @staticmethod
     def _create_map_ids_to_values_sum(ids, sum_ids, values):
-        return {idx: values[sum_ids[idx]].sum() for idx in ids}
+        return {idx: values[list(sum_ids[idx])].sum() for idx in ids}
 
     @staticmethod
     def _create_map_ids_to_values(ids, values):
@@ -95,18 +90,23 @@ class PyomoMixin:
 
 
 class StandardDCOPF(UnitConverter, PyomoMixin):
-    def __init__(self, name, grid, solver_name="gurobi", verbose=False, **kwargs):
+    def __init__(
+        self, name, grid, grid_backend, solver_name="gurobi", verbose=False, **kwargs
+    ):
         UnitConverter.__init__(self, **kwargs)
         if verbose:
             self.print_base_units()
 
         self.name = name
         self.grid = grid
+        self.grid_backend = grid_backend
 
+        self.sub = grid.sub
         self.bus = grid.bus
         self.line = grid.line
         self.gen = grid.gen
         self.load = grid.load
+        self.ext_grid = grid.ext_grid
 
         self.model = None
 
@@ -122,14 +122,9 @@ class StandardDCOPF(UnitConverter, PyomoMixin):
         self.res_line = None
         self.res_gen = None
 
-        # DC-OPF Costs
-        self.gen["cost_pu"] = np.ones_like(self.gen.index)
-
     def build_model(self):
-        self._build_per_unit_grid()
-
         # Model
-        self.model = pyo.ConcreteModel(f"{self.name} Model")
+        self.model = pyo.ConcreteModel(f"{self.name}")
 
         # Indexed sets
         self._build_indexed_sets()  # Indexing over buses, lines, generators, and loads
@@ -146,53 +141,28 @@ class StandardDCOPF(UnitConverter, PyomoMixin):
         # Objective
         self._build_objective()  # Objective to be optimized.
 
-    def _build_per_unit_grid(self):
-        """
-        Note: DataFrames are passed-by-reference. self.grid.line == self.line
-        """
-        # Buses
-        self.bus["vn_pu"] = self.convert_kv_to_per_unit(self.bus["vn_kv"])
-
-        # Power lines
-        if "max_loading_percent" not in self.line.columns:
-            self.line["max_loading_percent"] = 100 * np.ones((self.line.shape[0],))
-
-        self.line["x_pu"] = self.convert_ohm_to_per_unit(
-            self.line["x_ohm_per_km"] * self.line["length_km"] / self.line["parallel"]
-        )
-        self.line["b_pu"] = 1 / self.line["x_pu"]
-        self.line["max_i_pu"] = self.convert_ka_to_per_unit(self.line["max_i_ka"])
-
-        # Assume a line connects buses with same voltage level
-        self.line["max_p_pu"] = (
-            self.line["max_i_pu"] * self.bus["vn_pu"][self.line["from_bus"]].values
-        )
-
-        # Generators
-        self.gen["p_pu"] = self.convert_mw_to_per_unit(self.gen["p_mw"])
-        self.grid.gen["max_p_pu"] = self.convert_mw_to_per_unit(self.gen["max_p_mw"])
-        self.grid.gen["min_p_pu"] = self.convert_mw_to_per_unit(self.gen["min_p_mw"])
-
-        # Loads
-        self.load["p_pu"] = self.convert_mw_to_per_unit(self.load["p_mw"])
-
     """
         INDEXED SETS.
     """
 
     def _build_indexed_sets(self):
         self.model.bus_set = pyo.Set(
-            initialize=self.bus.index.values, within=pyo.NonNegativeIntegers
+            initialize=self.bus.index, within=pyo.NonNegativeIntegers
         )
         self.model.line_set = pyo.Set(
-            initialize=self.line.index.values, within=pyo.NonNegativeIntegers
-        )
-        self.model.load_set = pyo.Set(
-            initialize=self.load.index.values, within=pyo.NonNegativeIntegers
+            initialize=self.line.index, within=pyo.NonNegativeIntegers
         )
         self.model.gen_set = pyo.Set(
-            initialize=self.gen.index.values, within=pyo.NonNegativeIntegers
+            initialize=self.gen.index, within=pyo.NonNegativeIntegers
         )
+        self.model.load_set = pyo.Set(
+            initialize=self.load.index, within=pyo.NonNegativeIntegers
+        )
+
+        if len(self.ext_grid.index):
+            self.model.ext_grid_set = pyo.Set(
+                initialize=self.ext_grid.index, within=pyo.NonNegativeIntegers
+            )
 
     """
         PARAMETERS.
@@ -200,118 +170,146 @@ class StandardDCOPF(UnitConverter, PyomoMixin):
 
     def _build_parameters(self):
         # Fixed
+        self._build_parameters_delta()  # Bus voltage angle bounds and reference node
         self._build_parameters_generators()  # Bounds on generator production
         self._build_parameters_lines()  # Power line thermal limit and susceptance
         self._build_parameters_objective()  # Objective parameters
+        self._build_parameters_ext_grids()  # External grid power limits
 
-        # Variable
+        # # Variable
         self._build_parameters_topology()  # Topology of generators and power lines
-        self._build_parameters_delta()  # Bus voltage angle bounds and reference node
         self._build_parameters_loads()  # Bus load injections
 
-    def _build_parameters_objective(self):
-        self.model.gen_costs = pyo.Param(
+    def _build_parameters_delta(self):
+        # Bus voltage angles
+        self.model.delta_max = pyo.Param(
+            initialize=self.grid.delta_max, within=pyo.NonNegativeReals
+        )
+
+        # Slack bus index
+        self.model.slack_bus_id = pyo.Param(
+            initialize=self.grid.slack_bus, within=self.model.bus_set,
+        )
+
+    def _build_parameters_generators(self):
+        """
+        Initialize generator parameters: lower and upper limits on generator power production.
+        """
+        self.model.gen_p_max = pyo.Param(
             self.model.gen_set,
             initialize=self._create_map_ids_to_values(
-                self.gen.index.values, self.gen["cost_pu"]
+                self.gen.index, self.gen.max_p_pu
             ),
             within=pyo.NonNegativeReals,
         )
+
+        self.model.gen_p_min = pyo.Param(
+            self.model.gen_set,
+            initialize=self._create_map_ids_to_values(
+                self.gen.index, self.gen.min_p_pu
+            ),
+            within=pyo.NonNegativeReals,
+        )
+
+    def _build_parameters_lines(self):
+        """
+        Initialize power line parameters: power line flow thermal limits, susceptances, and line statuses.
+        """
+        self.model.line_flow_max = pyo.Param(
+            self.model.line_set,
+            initialize=self._create_map_ids_to_values(
+                self.line.index, self.line.max_p_pu
+            ),
+            within=pyo.NonNegativeReals,
+        )
+        self.model.line_b = pyo.Param(
+            self.model.line_set,
+            initialize=self._create_map_ids_to_values(self.line.index, self.line.b_pu),
+            within=pyo.NonNegativeReals,
+        )
+
+        self.model.line_status = pyo.Param(
+            self.model.line_set,
+            initialize=self._create_map_ids_to_values(
+                self.line.index, self.line.status
+            ),
+            within=pyo.Boolean,
+        )
+
+    def _build_parameters_objective(self):
+        """
+        Initialize objective parameters: generator costs.
+        """
+
+        self.model.gen_costs = pyo.Param(
+            self.model.gen_set,
+            initialize=self._create_map_ids_to_values(self.gen.index, self.gen.cost_pu),
+            within=pyo.NonNegativeReals,
+        )
+
+    def _build_parameters_ext_grids(self):
+        if len(self.ext_grid.index):
+            self.model.ext_grid_p_max = pyo.Param(
+                self.model.ext_grid_set,
+                initialize=self._create_map_ids_to_values(
+                    self.ext_grid.index, self.ext_grid.max_p_pu
+                ),
+                within=pyo.NonNegativeReals,
+            )
+            self.model.ext_grid_p_min = pyo.Param(
+                self.model.ext_grid_set,
+                initialize=self._create_map_ids_to_values(
+                    self.ext_grid.index, self.ext_grid.min_p_pu
+                ),
+                within=pyo.NonNegativeReals,
+            )
 
     def _build_parameters_loads(self):
         # Load bus injections
         self.model.bus_load_p = pyo.Param(
             self.model.bus_set,
             initialize=self._create_map_ids_to_values_sum(
-                self.bus.index.values,
-                self._reverse_index_map(self.load["bus"].values, self.bus.index.values),
-                self.load["p_pu"],
+                self.bus.index, self.bus.load, self.load.p_pu,
             ),
             within=pyo.NonNegativeReals,
-        )
-
-    def _build_parameters_delta(self):
-        # Bus voltage angles
-        self.model.delta_max = pyo.Param(
-            initialize=np.pi / 2, within=pyo.NonNegativeReals
-        )
-
-        # Slack bus index
-        self.model.slack_bus_id = pyo.Param(
-            initialize=np.where(self.gen["slack"])[0][0].astype(int),
-            within=self.model.bus_set,
         )
 
     def _build_parameters_topology(self):
         self.model.line_ids_to_bus_ids = pyo.Param(
             self.model.line_set,
             initialize=self._create_map_ids_to_values(
-                self.line.index.values,
-                self._dataframe_to_list_of_tuples(self.line[["from_bus", "to_bus"]]),
+                self.line.index,
+                self._dataframe_to_list_of_tuples(self.line[["bus_or", "bus_ex"]]),
             ),
             within=self.model.bus_set * self.model.bus_set,
         )
 
         self.model.bus_ids_to_gen_ids = pyo.Param(
             self.model.bus_set,
-            initialize=self._create_map_ids_to_values(
-                self.bus.index.values,
-                self._reverse_index_map(self.gen["bus"].values, self.bus.index.values),
-            ),
+            initialize=self._create_map_ids_to_values(self.bus.index, self.bus.gen),
             within=pyo.Any,
         )
 
-    def _build_parameters_lines(self):
-        self.model.line_flow_max = pyo.Param(
-            self.model.line_set,
-            initialize=self._create_map_ids_to_values(
-                self.line.index.values, self.line["max_p_pu"]
-            ),
-            within=pyo.NonNegativeReals,
-        )
-        self.model.line_b = pyo.Param(
-            self.model.line_set,
-            initialize=self._create_map_ids_to_values(
-                self.line.index.values, self.line["b_pu"]
-            ),
-            within=pyo.NonNegativeReals,
-        )
-
-    def _build_parameters_generators(self):
-        self.model.gen_p_max = pyo.Param(
-            self.model.gen_set,
-            initialize=self._create_map_ids_to_values(
-                self.gen.index.values, self.gen["max_p_pu"]
-            ),
-            within=pyo.NonNegativeReals,
-        )
-
-        # Set minimum generator to 0 if negative value
-        self.model.gen_p_min = pyo.Param(
-            self.model.gen_set,
-            initialize=self._create_map_ids_to_values(
-                self.gen.index.values, np.maximum(0.0, self.gen["min_p_pu"].values)
-            ),
-            within=pyo.NonNegativeReals,
-        )
+        if len(self.ext_grid.index):
+            self.model.bus_ids_to_ext_grid_ids = pyo.Param(
+                self.model.bus_set,
+                initialize=self._create_map_ids_to_values(
+                    self.bus.index, self.bus.ext_grid
+                ),
+                within=pyo.Any,
+            )
 
     """
         VARIABLES.
     """
 
     def _build_variables(self):
-        self._build_variables_standard_generators()  # Generator productions and bounds
         self._build_variable_standard_delta()  # Bus voltage angles and bounds
         self._build_variable_standard_line()  # Power line flows and bounds
+        self._build_variables_standard_generators()  # Generator productions and bounds
 
-    def _build_variable_standard_line(self):
-        # Line power flows
-        def _bounds_flow_max(model, line_id):
-            return -model.line_flow_max[line_id], model.line_flow_max[line_id]
-
-        self.model.line_flow = pyo.Var(
-            self.model.line_set, domain=pyo.Reals, bounds=_bounds_flow_max
-        )
+        if len(self.ext_grid.index):
+            self._build_variables_standard_ext_grids()
 
     def _build_variable_standard_delta(self):
         # Bus voltage angle
@@ -326,8 +324,23 @@ class StandardDCOPF(UnitConverter, PyomoMixin):
             domain=pyo.Reals,
             bounds=_bounds_delta,
             initialize=self._create_map_ids_to_values(
-                self.bus.index.values, np.zeros_like(self.bus.index.values)
+                self.bus.index, np.zeros_like(self.bus.index.values)
             ),
+        )
+
+    def _build_variable_standard_line(self):
+        # Line power flows
+        def _bounds_flow_max(model, line_id):
+            if model.line_status[line_id]:
+                return -model.line_flow_max[line_id], model.line_flow_max[line_id]
+            else:
+                return 0.0, 0.0
+
+        self.model.line_flow = pyo.Var(
+            self.model.line_set,
+            domain=pyo.Reals,
+            bounds=_bounds_flow_max,
+            initialize=self._create_map_ids_to_values(self.line.index, self.line.p_pu),
         )
 
     def _build_variables_standard_generators(self):
@@ -338,10 +351,22 @@ class StandardDCOPF(UnitConverter, PyomoMixin):
             self.model.gen_set,
             domain=pyo.NonNegativeReals,
             bounds=_bounds_gen_p,
-            initialize=self._create_map_ids_to_values(
-                self.gen.index.values, self.gen["p_pu"]
-            ),
+            initialize=self._create_map_ids_to_values(self.gen.index, self.gen.p_pu),
         )
+
+    def _build_variables_standard_ext_grids(self):
+        def _bounds_ext_grid_p(model, ext_grid_id):
+            return model.ext_grid_p_min[ext_grid_id], model.ext_grid_p_max[ext_grid_id]
+
+        if len(self.ext_grid.index):
+            self.model.ext_grid_p = pyo.Var(
+                self.model.ext_grid_set,
+                domain=pyo.NonNegativeReals,
+                bounds=_bounds_ext_grid_p,
+                initialize=self._create_map_ids_to_values(
+                    self.ext_grid.index, self.ext_grid.p_pu
+                ),
+            )
 
     """
         CONSTRAINTS.
@@ -361,6 +386,14 @@ class StandardDCOPF(UnitConverter, PyomoMixin):
             sum_gen_p = 0
             if len(bus_gen_p):
                 sum_gen_p = sum(bus_gen_p)
+
+            # Add external grids to generator injections
+            if len(self.ext_grid.index):
+                bus_ext_grid_ids = model.bus_ids_to_ext_grid_ids[bus_id]
+                bus_ext_grids_p = [
+                    model.ext_grid_p[ext_grid_id] for ext_grid_id in bus_ext_grid_ids
+                ]
+                sum_gen_p = sum_gen_p + sum(bus_ext_grids_p)
 
             sum_load_p = float(model.bus_load_p[bus_id])
 
@@ -402,7 +435,8 @@ class StandardDCOPF(UnitConverter, PyomoMixin):
         OBJECTIVE.
     """
 
-    def _build_objective(self):
+    def _build_objective(self, gen_cost=True, line_margin=False):
+        # Minimize generator costs
         def _objective_gen_p(model):
             return sum(
                 [
@@ -411,7 +445,31 @@ class StandardDCOPF(UnitConverter, PyomoMixin):
                 ]
             )
 
-        self.model.objective = pyo.Objective(rule=_objective_gen_p, sense=pyo.minimize)
+        # Maximize line margins
+        def _objective_line_margin(model):
+            return sum(
+                [
+                    model.line_flow[line_id] ** 2 / model.line_flow_max[line_id] ** 2
+                    for line_id in model.line_set
+                ]
+            )
+
+        if gen_cost and line_margin and self.solver_name == "gurobi":
+
+            def _objective(model):
+                return _objective_gen_p(model) + _objective_line_margin(model)
+
+        elif line_margin and self.solver_name == "gurobi":
+
+            def _objective(model):
+                return _objective_line_margin(model)
+
+        else:
+
+            def _objective(model):
+                return _objective_gen_p(model)
+
+        self.model.objective = pyo.Objective(rule=_objective, sense=pyo.minimize)
 
     """
         SOLVE FUNCTIONS.
@@ -420,18 +478,16 @@ class StandardDCOPF(UnitConverter, PyomoMixin):
     def _solve_save(self):
         self.res_cost = pyo.value(self.model.objective)
 
-        self.res_bus = self.bus[["name", "vn_pu"]].copy()
+        self.res_bus = self.bus[["v_pu"]].copy()
         self.res_bus["delta_pu"] = self._access_pyomo_variable(self.model.delta)
         self.res_bus["delta_deg"] = self.convert_rad_to_deg(
             self._access_pyomo_variable(self.model.delta)
         )
 
-        self.res_gen = self.gen[["name", "min_p_pu", "max_p_pu", "cost_pu"]].copy()
+        self.res_gen = self.gen[["min_p_pu", "max_p_pu", "cost_pu"]].copy()
         self.res_gen["p_pu"] = self._access_pyomo_variable(self.model.gen_p)
 
-        self.res_line = self.line[
-            ["name", "from_bus", "to_bus", "max_i_pu", "max_p_pu"]
-        ].copy()
+        self.res_line = self.line[["bus_or", "bus_ex", "max_p_pu"]].copy()
         self.res_line["p_pu"] = self._access_pyomo_variable(self.model.line_flow)
         self.res_line["loading_percent"] = np.abs(
             self.res_line["p_pu"] / self.line["max_p_pu"] * 100
@@ -472,43 +528,59 @@ class StandardDCOPF(UnitConverter, PyomoMixin):
     def solve_backend(self, verbose=False):
         for gen_id in self.gen.index.values:
             pp.create_poly_cost(
-                self.grid,
+                self.grid_backend,
                 gen_id,
                 "gen",
                 cp1_eur_per_mw=self.convert_per_unit_to_mw(self.gen["cost_pu"][gen_id]),
             )
 
         try:
-            pp.rundcopp(self.grid, verbose=verbose)
+            pp.rundcopp(self.grid_backend, verbose=verbose)
             valid = True
         except pp.optimal_powerflow.OPFNotConverged as e:
             valid = False
             print(e)
 
-        # Convert NaNs of inactive buses to 0
-        self.grid.res_bus = self.grid.res_bus.fillna(0)
-        self.grid.res_line = self.grid.res_line.fillna(0)
-        self.grid.res_gen = self.grid.res_gen.fillna(0)
+        generators_p = self.grid_backend.res_gen["p_mw"].sum()
+        ext_grids_p = self.grid_backend.res_ext_grid["p_mw"].sum()
+        loads_p = self.grid_backend.load["p_mw"].sum()
+        res_loads_p = self.grid_backend.res_load["p_mw"].sum()
+        valid = (
+            valid
+            and np.abs(generators_p + ext_grids_p - loads_p) < 1e-2
+            and np.abs(res_loads_p - loads_p) < 1e-2
+        )
 
-        self.grid.res_bus["delta_pu"] = self.convert_degree_to_rad(
-            self.grid.res_bus["va_degree"]
+        # Convert NaNs of inactive buses to 0
+        self.grid_backend.res_bus = self.grid_backend.res_bus.fillna(0)
+        self.grid_backend.res_line = self.grid_backend.res_line.fillna(0)
+        self.grid_backend.res_gen = self.grid_backend.res_gen.fillna(0)
+
+        self.grid_backend.res_bus["delta_pu"] = self.convert_degree_to_rad(
+            self.grid_backend.res_bus["va_degree"]
         )
-        self.grid.res_line["p_pu"] = self.convert_mw_to_per_unit(
-            self.grid.res_line["p_from_mw"]
+        self.grid_backend.res_line["p_pu"] = self.convert_mw_to_per_unit(
+            self.grid_backend.res_line["p_from_mw"]
         )
-        self.grid.res_line["i_pu"] = self.convert_ka_to_per_unit(
-            self.grid.res_line["i_from_ka"]
+        self.grid_backend.res_line["max_p_pu"] = self.grid.line["max_p_pu"]
+
+        self.grid_backend.res_gen["p_pu"] = self.convert_mw_to_per_unit(
+            self.grid_backend.res_gen["p_mw"]
         )
-        self.grid.res_gen["p_pu"] = self.convert_mw_to_per_unit(
-            self.grid.res_gen["p_mw"]
+        self.grid_backend.res_gen["min_p_pu"] = self.convert_mw_to_per_unit(
+            self.grid_backend.gen["min_p_mw"]
         )
-        self.grid.res_gen["cost_pu"] = self.gen["cost_pu"]
+        self.grid_backend.res_gen["max_p_pu"] = self.convert_mw_to_per_unit(
+            self.grid_backend.gen["max_p_mw"]
+        )
+
+        self.grid_backend.res_gen["cost_pu"] = self.gen["cost_pu"]
 
         result = {
-            "res_cost": self.grid.res_cost,
-            "res_bus": self.grid.res_bus,
-            "res_line": self.grid.res_line,
-            "res_gen": self.grid.res_gen,
+            "res_cost": self.grid_backend.res_cost,
+            "res_bus": self.grid_backend.res_bus,
+            "res_line": self.grid_backend.res_line,
+            "res_gen": self.grid_backend.res_gen,
             "valid": valid,
         }
         return result
@@ -584,53 +656,21 @@ class StandardDCOPF(UnitConverter, PyomoMixin):
 
     def print_results_backend(self):
         print("\nRESULTS BACKEND\n")
-        print("{:<10}{}".format("OBJECTIVE", self.grid.res_cost))
-        print("RES BUS\n" + self.grid.res_bus[["delta_pu"]].to_string())
+        print("{:<10}{}".format("OBJECTIVE", self.grid_backend.res_cost))
+        print("RES BUS\n" + self.grid_backend.res_bus[["delta_pu"]].to_string())
         print(
             "RES LINE\n"
-            + self.grid.res_line[["p_pu", "i_pu", "loading_percent"]].to_string()
-        )
-        print("RES GEN\n" + self.grid.res_gen[["p_pu"]].to_string())
-
-    def print_per_unit_grid(self):
-        print("\nGRID\n")
-        print("BUS\n" + self.bus[["name", "vn_pu", "sub_id", "sub_bus_id"]].to_string())
-        print(
-            "LINE\n"
-            + self.line[
-                [
-                    "name",
-                    "from_bus",
-                    "to_bus",
-                    "from_sub",
-                    "to_sub",
-                    "b_pu",
-                    "max_i_pu",
-                    "max_p_pu",
-                    "max_loading_percent",
-                ]
+            + self.grid_backend.res_line[
+                ["p_pu", "max_p_pu", "loading_percent"]
             ].to_string()
         )
         print(
-            "GEN\n"
-            + self.gen[
-                ["name", "bus", "sub", "p_pu", "min_p_pu", "max_p_pu", "cost_pu"]
-            ].to_string()
+            "RES GEN\n"
+            + self.grid_backend.res_gen[["min_p_pu", "p_pu", "max_p_pu"]].to_string()
         )
-        print("LOAD\n" + self.load[["name", "bus", "sub", "p_pu"]].to_string())
 
     def print_model(self):
         print(self.model.pprint())
-
-    """
-        HELPERS.
-    """
-
-    def set_gen_cost(self, gen_costs):
-        gen_costs = np.array(gen_costs).flatten()
-        assert gen_costs.size == self.gen["cost_pu"].size  # Check dimensions
-
-        self.gen["cost_pu"] = gen_costs
 
 
 class LineSwitchingDCOPF(StandardDCOPF):
@@ -638,12 +678,13 @@ class LineSwitchingDCOPF(StandardDCOPF):
         self,
         name,
         grid,
+        grid_backend,
         n_line_status_changes=1,
         solver_name="gurobi",
         verbose=False,
         **kwargs,
     ):
-        super().__init__(name, grid, solver_name, verbose, **kwargs)
+        super().__init__(name, grid, grid_backend, solver_name, verbose, **kwargs)
 
         # Limit on the number of line status changes
         self.n_line_status_changes = n_line_status_changes
@@ -651,11 +692,9 @@ class LineSwitchingDCOPF(StandardDCOPF):
         # Optimal line status
         self.x = None
 
-    def build_model(self, big_m=True):
-        self._build_per_unit_grid()
-
+    def build_model(self, big_m=True, gen_cost=True, line_margin=True):
         # Model
-        self.model = pyo.ConcreteModel(f"{self.name} Model")
+        self.model = pyo.ConcreteModel(f"{self.name}")
 
         # Indexed sets
         self._build_indexed_sets()  # Indexing over buses, lines, generators, and loads
@@ -670,7 +709,39 @@ class LineSwitchingDCOPF(StandardDCOPF):
         self._build_constraints(big_m=big_m)
 
         # Objective
-        self._build_objective()  # Objective to be optimized.
+        self._build_objective(
+            gen_cost=gen_cost, line_margin=line_margin
+        )  # Objective to be optimized.
+
+    """
+            VARIABLES.
+        """
+
+    def _build_variables(self):
+        self._build_variables_standard_generators()  # Generator productions and bounds
+
+        self._build_variable_standard_delta()  # Bus voltage angles and bounds
+
+        if len(self.ext_grid.index):
+            self._build_variables_standard_ext_grids()  # External grid power injections
+
+        # Power line flows
+        self.model.line_flow = pyo.Var(
+            self.model.line_set,
+            domain=pyo.Reals,
+            initialize=self._create_map_ids_to_values(self.line.index, self.line.p_pu),
+        )
+
+        # Power line status
+        # x = 0: Line is disconnected.
+        # x = 1: Line is disconnected.
+        self.model.x = pyo.Var(
+            self.model.line_set,
+            domain=pyo.Binary,
+            initialize=self._create_map_ids_to_values(
+                self.line.index, self.line.status.values.astype(int)
+            ),
+        )
 
     """
         CONSTRAINTS.
@@ -718,7 +789,7 @@ class LineSwitchingDCOPF(StandardDCOPF):
                 self.model.big_m = pyo.Param(
                     self.model.line_set,
                     initialize=self._create_map_ids_to_values(
-                        self.line.index.values, self.line["b_pu"] * np.pi
+                        self.line.index, self.line.b_pu * 2 * self.grid.delta_max
                     ),
                     within=pyo.PositiveReals,
                 )
@@ -765,9 +836,7 @@ class LineSwitchingDCOPF(StandardDCOPF):
     def _build_constraint_max_line_status_changes(self):
         def _constraint_max_line_status_change(model):
             line_status_change = [
-                1 - model.x[line_id]
-                if self.line["in_service"][line_id]
-                else model.x[line_id]
+                1 - model.x[line_id] if model.line_status[line_id] else model.x[line_id]
                 for line_id in model.line_set
             ]
 
@@ -775,60 +844,6 @@ class LineSwitchingDCOPF(StandardDCOPF):
 
         self.model.constraint_max_line_status_changes = pyo.Constraint(
             rule=_constraint_max_line_status_change
-        )
-
-    """
-        OBJECTIVE.
-    """
-
-    def _build_objective(self):
-        # Minimize generator costs
-        def _objective_gen_p(model):
-            return sum(
-                [
-                    model.gen_p[gen_id] * model.gen_costs[gen_id]
-                    for gen_id in model.gen_set
-                ]
-            )
-
-        # Maximize line margins
-        def _objective_line_margin(model):
-            return sum(
-                [
-                    model.line_flow[line_id] ** 2 / model.line_flow_max[line_id] ** 2
-                    for line_id in model.line_set
-                ]
-            )
-
-        if self.solver_name == "gurobi":
-            def _objective(model):
-                return _objective_gen_p(model) + _objective_line_margin(model)
-        else:
-            def _objective(model):
-                return _objective_gen_p(model)
-
-        self.model.objective = pyo.Objective(rule=_objective, sense=pyo.minimize)
-
-    """
-        VARIABLES.
-    """
-
-    def _build_variables(self):
-        self._build_variables_standard_generators()  # Generator productions and bounds
-        self._build_variable_standard_delta()  # Bus voltage angles and bounds
-
-        # Power line flows
-        self.model.line_flow = pyo.Var(self.model.line_set, domain=pyo.Reals)
-
-        # Line status
-        # x = 0: Line is disconnected.
-        # x = 1: Line is disconnected.
-        self.model.x = pyo.Var(
-            self.model.line_set,
-            domain=pyo.Binary,
-            initialize=self._create_map_ids_to_values(
-                self.line.index.values, self.line["in_service"].values.astype(int)
-            ),
         )
 
     """
@@ -865,8 +880,10 @@ class LineSwitchingDCOPF(StandardDCOPF):
 
 
 class TopologyOptimizationDCOPF(StandardDCOPF):
-    def __init__(self, name, grid, solver_name="gurobi", verbose=False, **kwargs):
-        super().__init__(name, grid, solver_name, verbose, **kwargs)
+    def __init__(
+        self, name, grid, grid_backend, solver_name="gurobi", verbose=False, **kwargs
+    ):
+        super().__init__(name, grid, grid_backend, solver_name, verbose, **kwargs)
 
         # Optimal switching status
         self.x_gen = None
@@ -876,19 +893,16 @@ class TopologyOptimizationDCOPF(StandardDCOPF):
         self.x_line_ex_1 = None
         self.x_line_ex_2 = None
 
-    def build_model(self, line_disconnection=True):
-        self._build_per_unit_grid()
-
+    def build_model(self, line_disconnection=True, gen_cost=False, line_margin=True):
         # Model
-        self.model = pyo.ConcreteModel(f"{self.name} Model")
+        self.model = pyo.ConcreteModel(f"{self.name}")
 
         # Indexed sets
         self._build_indexed_sets()  # Indexing over buses, lines, generators, and loads
 
         # Substation set
         self.model.sub_set = pyo.Set(
-            initialize=sorted(self.grid.bus["sub_id"].unique()),
-            within=pyo.NonNegativeIntegers,
+            initialize=self.sub.index, within=pyo.NonNegativeIntegers,
         )
 
         # Parameters
@@ -901,7 +915,9 @@ class TopologyOptimizationDCOPF(StandardDCOPF):
         self._build_constraints(line_disconnection=line_disconnection)
 
         # Objective
-        self._build_objective()  # Objective to be optimized.
+        self._build_objective(
+            gen_cost=gen_cost, line_margin=line_margin
+        )  # Objective to be optimized.
 
     """
         PARAMETERS.
@@ -917,31 +933,20 @@ class TopologyOptimizationDCOPF(StandardDCOPF):
         self._build_parameters_loads()  # Load power demand
 
     def _build_parameters_topology(self):
-        sub_ids = sorted(self.grid.bus["sub_id"].unique())
         self.model.sub_ids_to_bus_ids = pyo.Param(
             self.model.sub_set,
-            initialize=self._create_map_ids_to_values(
-                sub_ids,
-                [
-                    tuple(self.bus.index.values[self.bus["sub_id"] == sub_id])
-                    for sub_id in sub_ids
-                ],
-            ),
+            initialize=self._create_map_ids_to_values(self.sub.index, self.sub.bus),
             within=self.model.bus_set * self.model.bus_set,
         )
 
         self.model.sub_bus_ids = pyo.Param(
             self.model.bus_set,
-            initialize=self._create_map_ids_to_values(
-                self.bus.index.values, self.bus["sub_bus_id"].values
-            ),
+            initialize=self._create_map_ids_to_values(self.bus.index, self.bus.sub_bus),
         )
 
         self.model.bus_ids_to_sub_ids = pyo.Param(
             self.model.bus_set,
-            initialize=self._create_map_ids_to_values(
-                self.bus.index.values, self.bus["sub_id"]
-            ),
+            initialize=self._create_map_ids_to_values(self.bus.index, self.bus["sub"]),
             within=self.model.sub_set,
         )
 
@@ -949,33 +954,27 @@ class TopologyOptimizationDCOPF(StandardDCOPF):
             self.model.line_set,
             initialize=self._create_map_ids_to_values(
                 self.line.index.values,
-                self._dataframe_to_list_of_tuples(self.line[["from_sub", "to_sub"]]),
+                self._dataframe_to_list_of_tuples(self.line[["sub_or", "sub_ex"]]),
             ),
             within=self.model.sub_set * self.model.sub_set,
         )
 
         self.model.sub_ids_to_gen_ids = pyo.Param(
             self.model.sub_set,
-            initialize=self._create_map_ids_to_values(
-                sub_ids, self._reverse_index_map(self.gen["sub"].values, sub_ids),
-            ),
+            initialize=self._create_map_ids_to_values(self.sub.index, self.sub.gen),
             within=pyo.Any,
         )
 
         self.model.sub_ids_to_load_ids = pyo.Param(
             self.model.sub_set,
-            initialize=self._create_map_ids_to_values(
-                sub_ids, self._reverse_index_map(self.load["sub"].values, sub_ids),
-            ),
+            initialize=self._create_map_ids_to_values(self.sub.index, self.sub.load),
             within=pyo.Any,
         )
 
     def _build_parameters_loads(self):
         self.model.load_p = pyo.Param(
             self.model.load_set,
-            initialize=self._create_map_ids_to_values(
-                self.load.index.values, self.load["p_pu"]
-            ),
+            initialize=self._create_map_ids_to_values(self.load.index, self.load.p_pu),
             within=pyo.NonNegativeReals,
         )
 
@@ -993,18 +992,14 @@ class TopologyOptimizationDCOPF(StandardDCOPF):
             self.model.line_set,
             domain=pyo.Binary,
             initialize=self._create_map_ids_to_values(
-                self.line.index.values,
-                self.bus["sub_bus_id"].values[self.line["from_bus"].values.astype(int)]
-                - 1,
+                self.line.index, self.bus.sub_bus.values[self.line.bus_or.values] - 1,
             ),
         )
         self.model.x_line_or_2 = pyo.Var(
             self.model.line_set,
             domain=pyo.Binary,
             initialize=self._create_map_ids_to_values(
-                self.line.index.values,
-                self.bus["sub_bus_id"].values[self.line["from_bus"].values.astype(int)]
-                - 1,
+                self.line.index, self.bus.sub_bus.values[self.line.bus_or.values] - 1,
             ),
         )
 
@@ -1013,18 +1008,14 @@ class TopologyOptimizationDCOPF(StandardDCOPF):
             self.model.line_set,
             domain=pyo.Binary,
             initialize=self._create_map_ids_to_values(
-                self.line.index.values,
-                self.bus["sub_bus_id"].values[self.line["to_bus"].values.astype(int)]
-                - 1,
+                self.line.index, self.bus.sub_bus.values[self.line.bus_ex.values] - 1,
             ),
         )
         self.model.x_line_ex_2 = pyo.Var(
             self.model.line_set,
             domain=pyo.Binary,
             initialize=self._create_map_ids_to_values(
-                self.line.index.values,
-                self.bus["sub_bus_id"].values[self.line["to_bus"].values.astype(int)]
-                - 1,
+                self.line.index, self.bus.sub_bus.values[self.line.bus_ex.values] - 1,
             ),
         )
 
@@ -1033,8 +1024,7 @@ class TopologyOptimizationDCOPF(StandardDCOPF):
             self.model.gen_set,
             domain=pyo.Binary,
             initialize=self._create_map_ids_to_values(
-                self.gen.index.values,
-                self.bus["sub_bus_id"].values[self.gen["bus"].values.astype(int)] - 1,
+                self.gen.index, self.bus.sub_bus.values[self.gen.bus.values] - 1,
             ),
         )
 
@@ -1043,8 +1033,7 @@ class TopologyOptimizationDCOPF(StandardDCOPF):
             self.model.load_set,
             domain=pyo.Binary,
             initialize=self._create_map_ids_to_values(
-                self.load.index.values,
-                self.bus["sub_bus_id"].values[self.load["bus"].values.astype(int)] - 1,
+                self.load.index, self.bus.sub_bus.values[self.load.bus.values] - 1,
             ),
         )
 
@@ -1168,38 +1157,6 @@ class TopologyOptimizationDCOPF(StandardDCOPF):
         self.model.constraint_line_disconnection = pyo.Constraint(
             self.model.line_set, rule=_constraint_line_disconnection
         )
-
-    """
-        OBJECTIVE.
-    """
-
-    def _build_objective(self):
-        # Minimize generator costs
-        def _objective_gen_p(model):
-            return sum(
-                [
-                    model.gen_p[gen_id] * model.gen_costs[gen_id]
-                    for gen_id in model.gen_set
-                ]
-            )
-
-        # Maximize line margins
-        def _objective_line_margin(model):
-            return sum(
-                [
-                    model.line_flow[line_id] ** 2 / model.line_flow_max[line_id] ** 2
-                    for line_id in model.line_set
-                ]
-            )
-
-        if self.solver_name == "gurobi":
-            def _objective(model):
-                return _objective_gen_p(model) + _objective_line_margin(model)
-        else:
-            def _objective(model):
-                return _objective_gen_p(model)
-
-        self.model.objective = pyo.Objective(rule=_objective, sense=pyo.minimize)
 
     """
         SOLVE FUNCTIONS.
