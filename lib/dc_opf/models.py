@@ -123,7 +123,7 @@ class StandardDCOPF(UnitConverter, PyomoMixin):
             columns=["v_pu", "delta_pu", "delta_deg"], index=self.bus.index
         )
         self.res_line = pd.DataFrame(
-            columns=["bus_or", "bus_ex", "p_pu", "max_p_pu", "loading_percent"],
+            columns=["bus_or", "bus_ex", "p_pu", "max_p_pu", "loading_percent", "status"],
             index=self.line.index,
         )
         self.res_gen = pd.DataFrame(
@@ -132,7 +132,7 @@ class StandardDCOPF(UnitConverter, PyomoMixin):
         self.res_load = pd.DataFrame(columns=["p_pu"], index=self.load.index)
         self.res_ext_grid = pd.DataFrame(columns=["p_pu"], index=self.ext_grid.index)
         self.res_trafo = pd.DataFrame(
-            columns=["p_pu", "max_p_pu", "loading_percent"], index=self.trafo.index
+            columns=["p_pu", "max_p_pu", "loading_percent", "status"], index=self.trafo.index
         )
 
     def build_model(self):
@@ -505,10 +505,10 @@ class StandardDCOPF(UnitConverter, PyomoMixin):
         self.res_gen["p_pu"] = self._access_pyomo_variable(self.model.gen_p)
 
         # Power lines
-        self.res_line = self.line[["bus_or", "bus_ex", "max_p_pu"]].copy()
-        self.res_line["p_pu"] = self._access_pyomo_variable(self.model.line_flow)
+        self.res_line = self.line[~self.line.trafo][["bus_or", "bus_ex", "max_p_pu"]].copy()
+        self.res_line["p_pu"] = self._access_pyomo_variable(self.model.line_flow)[~self.line.trafo]
         self.res_line["loading_percent"] = np.abs(
-            self.res_line["p_pu"] / self.line["max_p_pu"] * 100
+            self.res_line["p_pu"] / self.line[~self.line.trafo]["max_p_pu"] * 100
         )
 
         # Loads
@@ -522,7 +522,7 @@ class StandardDCOPF(UnitConverter, PyomoMixin):
 
         # Transformers
         if len(self.trafo.index):
-            self.res_trafo["p_pu"] = self._access_pyomo_variable(self.model.trafo_flow)
+            self.res_trafo["p_pu"] = self._access_pyomo_variable(self.model.line_flow)[self.line.trafo]
 
             self.res_trafo["loading_percent"] = np.abs(
                 self.res_trafo["p_pu"] / self.trafo["max_p_pu"] * 100
@@ -985,7 +985,8 @@ class LineSwitchingDCOPF(StandardDCOPF):
 
         # Save line status variable
         self.x = self._round_solution(self._access_pyomo_variable(self.model.x))
-        self.res_line["line_status"] = self.x
+        self.res_line["status"] = self.x[~self.line.trafo]
+        self.res_trafo["status"] = self.x[self.line.trafo]
 
         if verbose:
             self.model.display()

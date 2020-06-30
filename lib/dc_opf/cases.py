@@ -22,8 +22,6 @@ class GridDCOPF(UnitConverter):
                 "gen",
                 "load",
                 "ext_grid",
-                "trafo_or",
-                "trafo_ex",
             ]
         )
         self.bus = pd.DataFrame(
@@ -37,8 +35,6 @@ class GridDCOPF(UnitConverter):
                 "gen",
                 "load",
                 "ext_grid",
-                "trafo_or",
-                "trafo_ex",
             ]
         )
         self.line = pd.DataFrame(
@@ -52,6 +48,7 @@ class GridDCOPF(UnitConverter):
                 "p_pu",
                 "max_p_pu",
                 "status",
+                "trafo",
             ]
         )
         self.gen = pd.DataFrame(
@@ -72,13 +69,11 @@ class GridDCOPF(UnitConverter):
                 "sub_ex",
                 "bus_or",
                 "bus_ex",
+                "b_pu",
                 "p_pu",
                 "max_p_pu",
-                "b_pu",
-                "v_or",
-                "v_ex",
-                "ratio",
                 "status",
+                "trafo",
             ]
         )
 
@@ -94,7 +89,7 @@ class GridDCOPF(UnitConverter):
         )
         output = output + f"\t - Buses {self.bus.shape} {list(self.bus.columns)}\n"
         output = (
-            output + f"\t - Power lines {self.line.shape} {list(self.line.columns)}\n"
+            output + f"\t - Power lines {self.line[~self.line.trafo].shape} {list(self.line[~self.line.trafo].columns)}\n"
         )
         output = output + f"\t - Generators {self.gen.shape} {list(self.gen.columns)}\n"
         output = output + f"\t - Loads {self.load.shape} {list(self.load.columns)}\n"
@@ -241,6 +236,11 @@ class GridDCOPF(UnitConverter):
         self.trafo["sub_or"] = self.sub.index.values[self.trafo["bus_or"]]
         self.trafo["sub_ex"] = self.sub.index.values[self.trafo["bus_ex"]]
 
+        # Merge power lines and transformers
+        self.line["trafo"] = False
+        self.trafo["trafo"] = True
+        self.line = self.line.append(self.trafo, ignore_index=True)
+
         sub_bus = np.empty_like(self.bus.index)
         for sub_id in self.sub.index:
             bus_mask = self.bus["sub"] == sub_id
@@ -249,8 +249,6 @@ class GridDCOPF(UnitConverter):
             line_or_mask = self.line["sub_or"] == sub_id
             line_ex_mask = self.line["sub_ex"] == sub_id
             ext_grid_mask = self.ext_grid["sub"] == sub_id
-            trafo_or_mask = self.trafo["sub_or"] == sub_id
-            trafo_ex_mask = self.trafo["sub_ex"] == sub_id
 
             sub_bus[bus_mask] = np.arange(1, np.sum(bus_mask) + 1)
 
@@ -260,8 +258,6 @@ class GridDCOPF(UnitConverter):
             self.sub["line_or"][sub_id] = tuple(np.flatnonzero(line_or_mask))
             self.sub["line_ex"][sub_id] = tuple(np.flatnonzero(line_ex_mask))
             self.sub["ext_grid"][sub_id] = tuple(np.flatnonzero(ext_grid_mask))
-            self.sub["trafo_or"][sub_id] = tuple(np.flatnonzero(trafo_or_mask))
-            self.sub["trafo_ex"][sub_id] = tuple(np.flatnonzero(trafo_ex_mask))
 
         self.bus["sub_bus"] = sub_bus
 
@@ -271,22 +267,17 @@ class GridDCOPF(UnitConverter):
             line_or_mask = self.line["bus_or"] == bus_id
             line_ex_mask = self.line["bus_ex"] == bus_id
             ext_grid_mask = self.ext_grid["bus"] == bus_id
-            trafo_or_mask = self.trafo["bus_or"] == bus_id
-            trafo_ex_mask = self.trafo["bus_ex"] == bus_id
 
             self.bus["gen"][bus_id] = tuple(np.flatnonzero(gen_mask))
             self.bus["load"][bus_id] = tuple(np.flatnonzero(load_mask))
             self.bus["line_or"][bus_id] = tuple(np.flatnonzero(line_or_mask))
             self.bus["line_ex"][bus_id] = tuple(np.flatnonzero(line_ex_mask))
             self.bus["ext_grid"][bus_id] = tuple(np.flatnonzero(ext_grid_mask))
-            self.bus["trafo_or"][bus_id] = tuple(np.flatnonzero(trafo_or_mask))
-            self.bus["trafo_ex"][bus_id] = tuple(np.flatnonzero(trafo_ex_mask))
 
         # Fill with 0 if no value
         self.line["p_pu"] = self.line["p_pu"].fillna(0)
         self.gen["p_pu"] = self.gen["p_pu"].fillna(0)
         self.ext_grid["p_pu"] = self.ext_grid["p_pu"].fillna(0)
-        self.trafo["p_pu"] = self.trafo["p_pu"].fillna(0)
 
         # Grid and computation parameters
         self.slack_bus = self.gen.bus[np.flatnonzero(self.case.grid.gen["slack"])[0]]
@@ -295,7 +286,7 @@ class GridDCOPF(UnitConverter):
     def print_grid(self):
         print("\nGRID\n")
         print("BUS\n" + self.bus.to_string())
-        print("LINE\n" + self.line.to_string())
+        print("LINE\n" + self.line[~self.line["trafo"]].to_string())
         print("GEN\n" + self.gen.to_string())
         print("LOAD\n" + self.load.to_string())
         print("EXT GRID\n" + self.ext_grid.to_string())
