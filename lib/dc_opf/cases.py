@@ -1,11 +1,10 @@
+import grid2op
+import numpy as np
 import pandapower as pp
 import pandas as pd
-import numpy as np
-import grid2op
 
-from lib.dc_opf.models import UnitConverter
 from lib.data_utils import bus_names_to_sub_ids, update_backend
-from lib.visualizer import describe_environment
+from lib.dc_opf.models import UnitConverter
 
 
 class GridDCOPF(UnitConverter):
@@ -15,7 +14,17 @@ class GridDCOPF(UnitConverter):
 
         # Initialize grid elements
         self.sub = pd.DataFrame(
-            columns=["id", "bus", "line_or", "line_ex", "gen", "load", "ext_grid"]
+            columns=[
+                "id",
+                "bus",
+                "line_or",
+                "line_ex",
+                "gen",
+                "load",
+                "ext_grid",
+                "trafo_or",
+                "trafo_ex",
+            ]
         )
         self.bus = pd.DataFrame(
             columns=[
@@ -28,6 +37,8 @@ class GridDCOPF(UnitConverter):
                 "gen",
                 "load",
                 "ext_grid",
+                "trafo_or",
+                "trafo_ex",
             ]
         )
         self.line = pd.DataFrame(
@@ -53,10 +64,48 @@ class GridDCOPF(UnitConverter):
             columns=["id", "sub", "bus", "p_pu", "min_p_pu", "max_p_pu"]
         )
 
+        # Transformer
+        self.trafo = pd.DataFrame(
+            columns=[
+                "id",
+                "sub_or",
+                "sub_ex",
+                "bus_or",
+                "bus_ex",
+                "p_pu",
+                "max_p_pu",
+                "b_pu",
+                "v_or",
+                "v_ex",
+                "ratio",
+                "status",
+            ]
+        )
+
         self.slack_bus = None
         self.delta_max = None
 
         self.build_grid()
+
+    def __str__(self):
+        output = "Grid p. u.\n"
+        output = (
+            output + f"\t - Substations {self.sub.shape} {list(self.sub.columns)}\n"
+        )
+        output = output + f"\t - Buses {self.bus.shape} {list(self.bus.columns)}\n"
+        output = (
+            output + f"\t - Power lines {self.line.shape} {list(self.line.columns)}\n"
+        )
+        output = output + f"\t - Generators {self.gen.shape} {list(self.gen.columns)}\n"
+        output = output + f"\t - Loads {self.load.shape} {list(self.load.columns)}\n"
+        output = (
+            output
+            + f"\t - External grids {self.ext_grid.shape} {list(self.ext_grid.columns)}\n"
+        )
+        output = (
+            output + f"\t - Transformers {self.trafo.shape} {list(self.trafo.columns)}"
+        )
+        return output
 
     def build_grid(self):
         """
@@ -93,6 +142,10 @@ class GridDCOPF(UnitConverter):
             * self.bus["v_pu"].values[self.case.grid.line["from_bus"].values]
         )
 
+        self.line["p_pu"] = self.convert_mw_to_per_unit(
+            self.case.grid.res_line["p_from_mw"]
+        )
+
         # Line status
         self.line["status"] = self.case.grid.line["in_service"]
 
@@ -109,6 +162,8 @@ class GridDCOPF(UnitConverter):
         )
         self.gen["min_p_pu"] = np.maximum(0.0, self.gen["min_p_pu"].values)
         self.gen["cost_pu"] = 1.0
+
+        self.gen["p_pu"] = self.convert_mw_to_per_unit(self.case.grid.gen["p_mw"])
 
         """
             Loads.
@@ -133,6 +188,23 @@ class GridDCOPF(UnitConverter):
                 self.case.grid.ext_grid["max_p_mw"]
             )
 
+        """
+            Transformers.
+            "High voltage bus is the origin (or) bus."
+            Follows definitions from https://pandapower.readthedocs.io/en/v2.2.2/elements/trafo.html.
+        """
+
+        self.trafo["id"] = self.case.grid.trafo.index
+        if "b_pu" in self.case.grid.trafo.columns:
+            self.trafo["b_pu"] = self.case.grid.trafo["b_pu"]
+
+        self.trafo["p_pu"] = self.convert_mw_to_per_unit(
+            self.case.grid.res_trafo["p_hv_mw"]
+        )
+        if "max_p_pu" in self.case.grid.trafo.columns:
+            self.trafo["max_p_pu"] = self.case.grid.trafo["max_p_pu"]
+        self.trafo["status"] = self.case.grid.trafo["in_service"]
+
         # Reindex
         self.sub.set_index("id", inplace=True)
         self.bus.set_index("id", inplace=True)
@@ -140,6 +212,7 @@ class GridDCOPF(UnitConverter):
         self.gen.set_index("id", inplace=True)
         self.load.set_index("id", inplace=True)
         self.ext_grid.set_index("id", inplace=True)
+        self.trafo.set_index("id", inplace=True)
 
         """
             Topology.
@@ -162,6 +235,12 @@ class GridDCOPF(UnitConverter):
         self.ext_grid["bus"] = self.case.grid.ext_grid["bus"]
         self.ext_grid["sub"] = self.sub.index.values[self.ext_grid["bus"]]
 
+        # Transformers
+        self.trafo["bus_or"] = self.case.grid.trafo["hv_bus"]
+        self.trafo["bus_ex"] = self.case.grid.trafo["lv_bus"]
+        self.trafo["sub_or"] = self.sub.index.values[self.trafo["bus_or"]]
+        self.trafo["sub_ex"] = self.sub.index.values[self.trafo["bus_ex"]]
+
         sub_bus = np.empty_like(self.bus.index)
         for sub_id in self.sub.index:
             bus_mask = self.bus["sub"] == sub_id
@@ -170,6 +249,8 @@ class GridDCOPF(UnitConverter):
             line_or_mask = self.line["sub_or"] == sub_id
             line_ex_mask = self.line["sub_ex"] == sub_id
             ext_grid_mask = self.ext_grid["sub"] == sub_id
+            trafo_or_mask = self.trafo["sub_or"] == sub_id
+            trafo_ex_mask = self.trafo["sub_ex"] == sub_id
 
             sub_bus[bus_mask] = np.arange(1, np.sum(bus_mask) + 1)
 
@@ -179,6 +260,8 @@ class GridDCOPF(UnitConverter):
             self.sub["line_or"][sub_id] = tuple(np.flatnonzero(line_or_mask))
             self.sub["line_ex"][sub_id] = tuple(np.flatnonzero(line_ex_mask))
             self.sub["ext_grid"][sub_id] = tuple(np.flatnonzero(ext_grid_mask))
+            self.sub["trafo_or"][sub_id] = tuple(np.flatnonzero(trafo_or_mask))
+            self.sub["trafo_ex"][sub_id] = tuple(np.flatnonzero(trafo_ex_mask))
 
         self.bus["sub_bus"] = sub_bus
 
@@ -188,32 +271,36 @@ class GridDCOPF(UnitConverter):
             line_or_mask = self.line["bus_or"] == bus_id
             line_ex_mask = self.line["bus_ex"] == bus_id
             ext_grid_mask = self.ext_grid["bus"] == bus_id
+            trafo_or_mask = self.trafo["bus_or"] == bus_id
+            trafo_ex_mask = self.trafo["bus_ex"] == bus_id
 
             self.bus["gen"][bus_id] = tuple(np.flatnonzero(gen_mask))
             self.bus["load"][bus_id] = tuple(np.flatnonzero(load_mask))
             self.bus["line_or"][bus_id] = tuple(np.flatnonzero(line_or_mask))
             self.bus["line_ex"][bus_id] = tuple(np.flatnonzero(line_ex_mask))
             self.bus["ext_grid"][bus_id] = tuple(np.flatnonzero(ext_grid_mask))
-
-        self.line["p_pu"] = self.convert_mw_to_per_unit(
-            self.case.grid.res_line["p_from_mw"]
-        )
-        self.gen["p_pu"] = self.convert_mw_to_per_unit(self.case.grid.gen["p_mw"])
+            self.bus["trafo_or"][bus_id] = tuple(np.flatnonzero(trafo_or_mask))
+            self.bus["trafo_ex"][bus_id] = tuple(np.flatnonzero(trafo_ex_mask))
 
         # Fill with 0 if no value
         self.line["p_pu"] = self.line["p_pu"].fillna(0)
         self.gen["p_pu"] = self.gen["p_pu"].fillna(0)
         self.ext_grid["p_pu"] = self.ext_grid["p_pu"].fillna(0)
+        self.trafo["p_pu"] = self.trafo["p_pu"].fillna(0)
 
         # Grid and computation parameters
         self.slack_bus = self.gen.bus[np.flatnonzero(self.case.grid.gen["slack"])[0]]
         self.delta_max = np.pi / 2
 
-    def set_gen_cost(self, gen_costs):
-        gen_costs = np.array(gen_costs).flatten()
-        assert gen_costs.size == self.gen["cost_pu"].size  # Check dimensions
-
-        self.gen["cost_pu"] = gen_costs
+    def print_grid(self):
+        print("\nGRID\n")
+        print("BUS\n" + self.bus.to_string())
+        print("LINE\n" + self.line.to_string())
+        print("GEN\n" + self.gen.to_string())
+        print("LOAD\n" + self.load.to_string())
+        print("EXT GRID\n" + self.ext_grid.to_string())
+        print("TRAFO\n" + self.trafo.to_string())
+        print(f"SLACK BUS: {self.slack_bus}")
 
 
 class OPFCase3(UnitConverter):
@@ -228,6 +315,7 @@ class OPFCase3(UnitConverter):
         self.name = "Case 3"
 
         self.grid = self.build_case3_grid()
+        self.grid_backend = self.grid
 
     def build_case3_grid(self):
         grid = pp.create_empty_network()
@@ -249,7 +337,7 @@ class OPFCase3(UnitConverter):
             length_km=1.0,
             r_ohm_per_km=0.01 * self.base_unit_z,
             x_ohm_per_km=1.0 / 3.0 * self.base_unit_z,
-            c_nf_per_km=0.0001,
+            c_nf_per_km=0.0,
             max_i_ka=self.convert_per_unit_to_ka(1.0),
             name="line-0",
             type="ol",
@@ -263,7 +351,7 @@ class OPFCase3(UnitConverter):
             length_km=1.0,
             r_ohm_per_km=0.01 * self.base_unit_z,
             x_ohm_per_km=1.0 / 2.0 * self.base_unit_z,
-            c_nf_per_km=0.0001,
+            c_nf_per_km=0.0,
             max_i_ka=self.convert_per_unit_to_ka(1.0),
             name="line-1",
             type="ol",
@@ -277,7 +365,7 @@ class OPFCase3(UnitConverter):
             length_km=1.0,
             r_ohm_per_km=0.01 * self.base_unit_z,
             x_ohm_per_km=1.0 / 2.0 * self.base_unit_z,
-            c_nf_per_km=0.0001,
+            c_nf_per_km=0.0,
             max_i_ka=self.convert_per_unit_to_ka(1.0),
             name="line-2",
             type="ol",
@@ -323,6 +411,7 @@ class OPFCase6(UnitConverter):
         self.name = "Case 6"
 
         self.grid = self.build_case6_grid()
+        self.grid_backend = self.grid
 
     def build_case6_grid(self):
         grid = pp.create_empty_network()
@@ -352,7 +441,7 @@ class OPFCase6(UnitConverter):
             length_km=1.0,
             r_ohm_per_km=1e-3 * self.base_unit_z,  # Dummy
             x_ohm_per_km=1.0 / 4.0 * self.base_unit_z,
-            c_nf_per_km=1e-9,  # Dummy
+            c_nf_per_km=0.0,  # Dummy
             max_i_ka=self.convert_per_unit_to_ka(2.0),
             name="line-0",
             type="ol",
@@ -365,7 +454,7 @@ class OPFCase6(UnitConverter):
             length_km=1.0,
             r_ohm_per_km=1e-3 * self.base_unit_z,  # Dummy
             x_ohm_per_km=1.0 / 4.706 * self.base_unit_z,
-            c_nf_per_km=1e-9,  # Dummy
+            c_nf_per_km=0.0,  # Dummy
             max_i_ka=self.convert_per_unit_to_ka(2.0),
             name="line-1",
             type="ol",
@@ -378,7 +467,7 @@ class OPFCase6(UnitConverter):
             length_km=1.0,
             r_ohm_per_km=1e-3 * self.base_unit_z,  # Dummy
             x_ohm_per_km=1.0 / 3.102 * self.base_unit_z,
-            c_nf_per_km=1e-9,  # Dummy
+            c_nf_per_km=0.0,  # Dummy
             max_i_ka=self.convert_per_unit_to_ka(2.0),
             name="line-2",
             type="ol",
@@ -391,7 +480,7 @@ class OPFCase6(UnitConverter):
             length_km=1.0,
             r_ohm_per_km=1e-3 * self.base_unit_z,  # Dummy
             x_ohm_per_km=1.0 / 3.846 * self.base_unit_z,
-            c_nf_per_km=1e-9,  # Dummy
+            c_nf_per_km=0.0,  # Dummy
             max_i_ka=self.convert_per_unit_to_ka(2.0),
             name="line-3",
             type="ol",
@@ -404,7 +493,7 @@ class OPFCase6(UnitConverter):
             length_km=1.0,
             r_ohm_per_km=1e-3 * self.base_unit_z,  # Dummy
             x_ohm_per_km=1.0 / 8.001 * self.base_unit_z,
-            c_nf_per_km=1e-9,  # Dummy
+            c_nf_per_km=0.0,  # Dummy
             max_i_ka=self.convert_per_unit_to_ka(2.0),
             name="line-4",
             type="ol",
@@ -417,7 +506,7 @@ class OPFCase6(UnitConverter):
             length_km=1.0,
             r_ohm_per_km=1e-3 * self.base_unit_z,  # Dummy
             x_ohm_per_km=1.0 / 3.0 * self.base_unit_z,
-            c_nf_per_km=1e-9,  # Dummy
+            c_nf_per_km=0.0,  # Dummy
             max_i_ka=self.convert_per_unit_to_ka(2.0),
             name="line-5",
             type="ol",
@@ -430,7 +519,7 @@ class OPFCase6(UnitConverter):
             length_km=1.0,
             r_ohm_per_km=1e-3 * self.base_unit_z,  # Dummy
             x_ohm_per_km=1.0 / 1.454 * self.base_unit_z,
-            c_nf_per_km=1e-9,  # Dummy
+            c_nf_per_km=0.0,  # Dummy
             max_i_ka=self.convert_per_unit_to_ka(2.0),
             name="line-6",
             type="ol",
@@ -443,7 +532,7 @@ class OPFCase6(UnitConverter):
             length_km=1.0,
             r_ohm_per_km=1e-3 * self.base_unit_z,  # Dummy
             x_ohm_per_km=1.0 / 3.175 * self.base_unit_z,
-            c_nf_per_km=1e-9,  # Dummy
+            c_nf_per_km=0.0,  # Dummy
             max_i_ka=self.convert_per_unit_to_ka(2.0),
             name="line-7",
             type="ol",
@@ -456,7 +545,7 @@ class OPFCase6(UnitConverter):
             length_km=1.0,
             r_ohm_per_km=1e-3 * self.base_unit_z,  # Dummy
             x_ohm_per_km=1.0 / 9.6157 * self.base_unit_z,
-            c_nf_per_km=1e-9,  # Dummy
+            c_nf_per_km=0.0,  # Dummy
             max_i_ka=self.convert_per_unit_to_ka(2.0),
             name="line-8",
             type="ol",
@@ -469,7 +558,7 @@ class OPFCase6(UnitConverter):
             length_km=1.0,
             r_ohm_per_km=1e-3 * self.base_unit_z,  # Dummy
             x_ohm_per_km=1.0 / 2.0 * self.base_unit_z,
-            c_nf_per_km=1e-9,  # Dummy
+            c_nf_per_km=0.0,  # Dummy
             max_i_ka=self.convert_per_unit_to_ka(2.0),
             name="line-9",
             type="ol",
@@ -482,7 +571,7 @@ class OPFCase6(UnitConverter):
             length_km=1.0,
             r_ohm_per_km=1e-3 * self.base_unit_z,  # Dummy
             x_ohm_per_km=1.0 / 3.0 * self.base_unit_z,
-            c_nf_per_km=1e-9,  # Dummy
+            c_nf_per_km=0.0,  # Dummy
             max_i_ka=self.convert_per_unit_to_ka(2.0),
             name="line-10",
             type="ol",
@@ -542,6 +631,191 @@ class OPFCase6(UnitConverter):
         return grid
 
 
+class OPFCase4(UnitConverter):
+    """
+    Test case for power flow computation, including an external grid and a transformer.
+    Found in https://github.com/e2nIEE/pandapower/blob/develop/tutorials/opf_curtail.ipynb.
+    """
+
+    def __init__(self):
+        UnitConverter.__init__(self, base_unit_p=1e6, base_unit_v=110000.0)
+
+        self.name = "Case 4"
+
+        self.grid = self.build_case4_grid()
+        self.grid_backend = self.grid
+
+    def build_case4_grid(self):
+        grid = pp.create_empty_network()
+
+        # Substation buses 1
+        bus0 = pp.create_bus(
+            grid,
+            vn_kv=2 * self.base_unit_v / 1000,
+            min_vm_pu=1.0,
+            max_vm_pu=1.02,
+            name="bus-0-0",
+        )
+        bus1 = pp.create_bus(
+            grid,
+            vn_kv=self.base_unit_v / 1000,
+            min_vm_pu=1.0,
+            max_vm_pu=1.02,
+            name="bus-1-1",
+        )
+        bus2 = pp.create_bus(
+            grid,
+            vn_kv=self.base_unit_v / 1000,
+            min_vm_pu=1.0,
+            max_vm_pu=1.02,
+            name="bus-2-2",
+        )
+        bus3 = pp.create_bus(
+            grid,
+            vn_kv=self.base_unit_v / 1000,
+            min_vm_pu=1.0,
+            max_vm_pu=1.02,
+            name="bus-3-3",
+        )
+
+        # Substation buses 2
+        pp.create_bus(
+            grid,
+            vn_kv=2 * self.base_unit_v / 1000,
+            min_vm_pu=1.0,
+            max_vm_pu=1.02,
+            name="bus-4-0",
+        )
+        pp.create_bus(
+            grid,
+            vn_kv=self.base_unit_v / 1000,
+            min_vm_pu=1.0,
+            max_vm_pu=1.02,
+            name="bus-5-1",
+        )
+        pp.create_bus(
+            grid,
+            vn_kv=self.base_unit_v / 1000,
+            min_vm_pu=1.0,
+            max_vm_pu=1.02,
+            name="bus-6-2",
+        )
+        pp.create_bus(
+            grid,
+            vn_kv=self.base_unit_v / 1000,
+            min_vm_pu=1.0,
+            max_vm_pu=1.02,
+            name="bus-7-3",
+        )
+
+        # Transformer
+        pp.create_transformer_from_parameters(
+            grid,
+            hv_bus=bus0,
+            lv_bus=bus1,
+            name="trafo-0",
+            sn_mva=3.5,
+            vn_hv_kv=2 * self.base_unit_v / 1000,
+            vn_lv_kv=self.base_unit_v / 1000,
+            vk_percent=12.5,
+            vkr_percent=0.0,
+            pfe_kw=0.0,
+            i0_percent=0.0,
+            shift_degree=0.0,
+            max_loading_percent=100.0,
+        )
+
+        pp.create_line_from_parameters(
+            grid,
+            bus1,
+            bus2,
+            length_km=1.0,
+            r_ohm_per_km=0.0,
+            x_ohm_per_km=1.0 / 4.0 * self.base_unit_z,
+            c_nf_per_km=0.0,
+            max_i_ka=self.convert_per_unit_to_ka(5.0),
+            name="line-0",
+            type="ol",
+            max_loading_percent=100.0,
+        )
+
+        pp.create_line_from_parameters(
+            grid,
+            bus2,
+            bus3,
+            length_km=1.0,
+            r_ohm_per_km=0.0,
+            x_ohm_per_km=1.0 / 6.0 * self.base_unit_z,
+            c_nf_per_km=0.0,
+            max_i_ka=self.convert_per_unit_to_ka(5.0),
+            name="line-1",
+            type="ol",
+            max_loading_percent=100.0,
+        )
+
+        pp.create_line_from_parameters(
+            grid,
+            bus3,
+            bus1,
+            length_km=1.0,
+            r_ohm_per_km=0.0,
+            x_ohm_per_km=1.0 / 5.0 * self.base_unit_z,
+            c_nf_per_km=0.0,
+            max_i_ka=self.convert_per_unit_to_ka(4.0),
+            name="line-2",
+            type="ol",
+            max_loading_percent=100.0,
+        )
+
+        # Loads
+        pp.create_load(grid, bus1, p_mw=2, name="load-0", controllable=False)
+        pp.create_load(grid, bus2, p_mw=3, name="load-1", controllable=False)
+        pp.create_load(grid, bus3, p_mw=6, name="load-2", controllable=False)
+
+        # Generators
+        pp.create_gen(
+            grid,
+            bus0,
+            p_mw=0,
+            min_p_mw=0,
+            max_p_mw=1,
+            vm_pu=1.01,
+            name="gen-0",
+            controllable=True,
+            slack=True,
+        )
+        pp.create_gen(
+            grid,
+            bus2,
+            p_mw=0,
+            min_p_mw=0,
+            max_p_mw=5,
+            vm_pu=1.01,
+            name="gen-1",
+            controllable=True,
+        )
+        pp.create_gen(
+            grid,
+            bus3,
+            p_mw=0,
+            min_p_mw=0,
+            max_p_mw=8,
+            vm_pu=1.01,
+            name="gen-2",
+            controllable=True,
+        )
+
+        # External grids
+        pp.create_ext_grid(
+            grid, bus0, va_degree=0.0, name="ext-grid-0", max_p_mw=3.0, min_p_mw=0.0, max_loading_percent=100.0
+        )
+
+        grid.trafo["b_pu"] = 28.0  # Empirically: x = vk_percent / 100 * 1 / sn_mva
+        grid.trafo["max_p_pu"] = 3.5  # sn_mva
+
+        return grid
+
+
 class OPFRTECase5(UnitConverter):
     def __init__(self):
         UnitConverter.__init__(self, base_unit_p=1e6, base_unit_v=1e5)
@@ -549,9 +823,9 @@ class OPFRTECase5(UnitConverter):
         self.name = "Case RTE 5"
 
         env = grid2op.make(dataset="rte_case5_example")
-        update_backend(env)
 
-        self.grid = env.backend._grid
+        self.grid = update_backend(env)
+        self.grid_backend = env.backend._grid
 
 
 class OPFL2RPN2019(UnitConverter):
@@ -561,9 +835,9 @@ class OPFL2RPN2019(UnitConverter):
         self.name = "Case L2RPN 2019"
 
         env = grid2op.make(dataset="l2rpn_2019")
-        update_backend(env)
 
-        self.grid = env.backend._grid
+        self.grid = update_backend(env)
+        self.grid_backend = env.backend._grid
 
 
 class OPFL2RPN2020(UnitConverter):
@@ -573,7 +847,6 @@ class OPFL2RPN2020(UnitConverter):
         self.name = "Case L2RPN 2020 WCCI"
 
         env = grid2op.make(dataset="l2rpn_wcci_2020")
-        describe_environment(env)
-        update_backend(env, verbose=True)
 
-        self.grid = env.backend._grid
+        self.grid = update_backend(env)
+        self.grid_backend = env.backend._grid

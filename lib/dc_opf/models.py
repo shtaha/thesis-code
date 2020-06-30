@@ -107,6 +107,7 @@ class StandardDCOPF(UnitConverter, PyomoMixin):
         self.gen = grid.gen
         self.load = grid.load
         self.ext_grid = grid.ext_grid
+        self.trafo = grid.trafo
 
         self.model = None
 
@@ -117,17 +118,30 @@ class StandardDCOPF(UnitConverter, PyomoMixin):
         self.solver = pyo_opt.SolverFactory(solver_name)
 
         # Results
-        self.res_cost = None
-        self.res_bus = None
-        self.res_line = None
-        self.res_gen = None
+        self.res_cost = 0.0
+        self.res_bus = pd.DataFrame(
+            columns=["v_pu", "delta_pu", "delta_deg"], index=self.bus.index
+        )
+        self.res_line = pd.DataFrame(
+            columns=["bus_or", "bus_ex", "p_pu", "max_p_pu", "loading_percent"],
+            index=self.line.index,
+        )
+        self.res_gen = pd.DataFrame(
+            columns=["min_p_pu", "p_pu", "max_p_pu", "cost_pu"], index=self.gen.index
+        )
+        self.res_load = pd.DataFrame(columns=["p_pu"], index=self.load.index)
+        self.res_ext_grid = pd.DataFrame(columns=["p_pu"], index=self.ext_grid.index)
+        self.res_trafo = pd.DataFrame(
+            columns=["p_pu", "max_p_pu", "loading_percent"], index=self.trafo.index
+        )
 
     def build_model(self):
         # Model
         self.model = pyo.ConcreteModel(f"{self.name}")
 
         # Indexed sets
-        self._build_indexed_sets()  # Indexing over buses, lines, generators, and loads
+        # Indexing over buses, lines, generators, loads, external grids, and transformers
+        self._build_indexed_sets()
 
         # Parameters
         self._build_parameters()
@@ -174,7 +188,9 @@ class StandardDCOPF(UnitConverter, PyomoMixin):
         self._build_parameters_generators()  # Bounds on generator production
         self._build_parameters_lines()  # Power line thermal limit and susceptance
         self._build_parameters_objective()  # Objective parameters
-        self._build_parameters_ext_grids()  # External grid power limits
+
+        if len(self.ext_grid.index):
+            self._build_parameters_ext_grids()  # External grid power limits
 
         # # Variable
         self._build_parameters_topology()  # Topology of generators and power lines
@@ -240,7 +256,6 @@ class StandardDCOPF(UnitConverter, PyomoMixin):
         """
         Initialize objective parameters: generator costs.
         """
-
         self.model.gen_costs = pyo.Param(
             self.model.gen_set,
             initialize=self._create_map_ids_to_values(self.gen.index, self.gen.cost_pu),
@@ -248,21 +263,20 @@ class StandardDCOPF(UnitConverter, PyomoMixin):
         )
 
     def _build_parameters_ext_grids(self):
-        if len(self.ext_grid.index):
-            self.model.ext_grid_p_max = pyo.Param(
-                self.model.ext_grid_set,
-                initialize=self._create_map_ids_to_values(
-                    self.ext_grid.index, self.ext_grid.max_p_pu
-                ),
-                within=pyo.NonNegativeReals,
-            )
-            self.model.ext_grid_p_min = pyo.Param(
-                self.model.ext_grid_set,
-                initialize=self._create_map_ids_to_values(
-                    self.ext_grid.index, self.ext_grid.min_p_pu
-                ),
-                within=pyo.NonNegativeReals,
-            )
+        self.model.ext_grid_p_max = pyo.Param(
+            self.model.ext_grid_set,
+            initialize=self._create_map_ids_to_values(
+                self.ext_grid.index, self.ext_grid.max_p_pu
+            ),
+            within=pyo.NonNegativeReals,
+        )
+        self.model.ext_grid_p_min = pyo.Param(
+            self.model.ext_grid_set,
+            initialize=self._create_map_ids_to_values(
+                self.ext_grid.index, self.ext_grid.min_p_pu
+            ),
+            within=pyo.Reals,
+        )
 
     def _build_parameters_loads(self):
         # Load bus injections
@@ -271,7 +285,7 @@ class StandardDCOPF(UnitConverter, PyomoMixin):
             initialize=self._create_map_ids_to_values_sum(
                 self.bus.index, self.bus.load, self.load.p_pu,
             ),
-            within=pyo.NonNegativeReals,
+            within=pyo.Reals,
         )
 
     def _build_parameters_topology(self):
@@ -476,22 +490,92 @@ class StandardDCOPF(UnitConverter, PyomoMixin):
     """
 
     def _solve_save(self):
+        # Objective
         self.res_cost = pyo.value(self.model.objective)
 
+        # Buses
         self.res_bus = self.bus[["v_pu"]].copy()
         self.res_bus["delta_pu"] = self._access_pyomo_variable(self.model.delta)
         self.res_bus["delta_deg"] = self.convert_rad_to_deg(
             self._access_pyomo_variable(self.model.delta)
         )
 
+        # Generators
         self.res_gen = self.gen[["min_p_pu", "max_p_pu", "cost_pu"]].copy()
         self.res_gen["p_pu"] = self._access_pyomo_variable(self.model.gen_p)
 
+        # Power lines
         self.res_line = self.line[["bus_or", "bus_ex", "max_p_pu"]].copy()
         self.res_line["p_pu"] = self._access_pyomo_variable(self.model.line_flow)
         self.res_line["loading_percent"] = np.abs(
             self.res_line["p_pu"] / self.line["max_p_pu"] * 100
         )
+
+        # Loads
+        self.res_load = self.load[["p_pu"]]
+
+        # External grids
+        if len(self.ext_grid.index):
+            self.res_ext_grid["p_pu"] = self._access_pyomo_variable(
+                self.model.ext_grid_p
+            )
+
+        # Transformers
+        if len(self.trafo.index):
+            self.res_trafo["p_pu"] = self._access_pyomo_variable(self.model.trafo_flow)
+
+            self.res_trafo["loading_percent"] = np.abs(
+                self.res_trafo["p_pu"] / self.trafo["max_p_pu"] * 100
+            )
+            self.res_trafo["max_p_pu"] = self.grid.trafo["max_p_pu"]
+
+    def _solve_save_backend(self):
+        # Convert NaNs of inactive buses to 0
+        self.grid_backend.res_bus = self.grid_backend.res_bus.fillna(0)
+        self.grid_backend.res_line = self.grid_backend.res_line.fillna(0)
+        self.grid_backend.res_gen = self.grid_backend.res_gen.fillna(0)
+        self.grid_backend.res_load = self.grid_backend.res_load.fillna(0)
+        self.grid_backend.res_ext_grid = self.grid_backend.res_ext_grid.fillna(0)
+        self.grid_backend.res_trafo = self.grid_backend.res_trafo.fillna(0)
+
+        # Buses
+        self.grid_backend.res_bus["delta_pu"] = self.convert_degree_to_rad(
+            self.grid_backend.res_bus["va_degree"]
+        )
+
+        # Power lines
+        self.grid_backend.res_line["p_pu"] = self.convert_mw_to_per_unit(
+            self.grid_backend.res_line["p_from_mw"]
+        )
+        self.grid_backend.res_line["max_p_pu"] = self.grid.line["max_p_pu"]
+
+        # Generators
+        self.grid_backend.res_gen["p_pu"] = self.convert_mw_to_per_unit(
+            self.grid_backend.res_gen["p_mw"]
+        )
+        self.grid_backend.res_gen["min_p_pu"] = self.convert_mw_to_per_unit(
+            self.grid_backend.gen["min_p_mw"]
+        )
+        self.grid_backend.res_gen["max_p_pu"] = self.convert_mw_to_per_unit(
+            self.grid_backend.gen["max_p_mw"]
+        )
+        self.grid_backend.res_gen["cost_pu"] = self.gen["cost_pu"]
+
+        # Loads
+        self.grid_backend.res_load["p_pu"] = self.convert_mw_to_per_unit(
+            self.grid_backend.res_load["p_mw"]
+        )
+
+        # External grids
+        self.grid_backend.res_ext_grid["p_pu"] = self.convert_mw_to_per_unit(
+            self.grid_backend.res_ext_grid["p_mw"]
+        )
+
+        # Transformers
+        self.grid_backend.res_trafo["p_pu"] = self.convert_mw_to_per_unit(
+            self.grid_backend.res_trafo["p_hv_mw"]
+        )
+        self.grid_backend.res_trafo["max_p_pu"] = self.grid.trafo["max_p_pu"]
 
     def _solve(self, verbose=False, tol=1e-9):
         """
@@ -522,6 +606,9 @@ class StandardDCOPF(UnitConverter, PyomoMixin):
             "res_bus": self.res_bus,
             "res_line": self.res_line,
             "res_gen": self.res_gen,
+            "res_load": self.res_load,
+            "res_ext_grid": self.res_ext_grid,
+            "res_trafo": self.res_trafo,
         }
         return result
 
@@ -535,11 +622,13 @@ class StandardDCOPF(UnitConverter, PyomoMixin):
             )
 
         try:
-            pp.rundcopp(self.grid_backend, verbose=verbose)
+            pp.rundcopp(self.grid_backend, verbose=verbose, suppress_warnings=True)
             valid = True
         except pp.optimal_powerflow.OPFNotConverged as e:
             valid = False
             print(e)
+
+        self._solve_save_backend()
 
         generators_p = self.grid_backend.res_gen["p_mw"].sum()
         ext_grids_p = self.grid_backend.res_ext_grid["p_mw"].sum()
@@ -551,42 +640,20 @@ class StandardDCOPF(UnitConverter, PyomoMixin):
             and np.abs(res_loads_p - loads_p) < 1e-2
         )
 
-        # Convert NaNs of inactive buses to 0
-        self.grid_backend.res_bus = self.grid_backend.res_bus.fillna(0)
-        self.grid_backend.res_line = self.grid_backend.res_line.fillna(0)
-        self.grid_backend.res_gen = self.grid_backend.res_gen.fillna(0)
-
-        self.grid_backend.res_bus["delta_pu"] = self.convert_degree_to_rad(
-            self.grid_backend.res_bus["va_degree"]
-        )
-        self.grid_backend.res_line["p_pu"] = self.convert_mw_to_per_unit(
-            self.grid_backend.res_line["p_from_mw"]
-        )
-        self.grid_backend.res_line["max_p_pu"] = self.grid.line["max_p_pu"]
-
-        self.grid_backend.res_gen["p_pu"] = self.convert_mw_to_per_unit(
-            self.grid_backend.res_gen["p_mw"]
-        )
-        self.grid_backend.res_gen["min_p_pu"] = self.convert_mw_to_per_unit(
-            self.grid_backend.gen["min_p_mw"]
-        )
-        self.grid_backend.res_gen["max_p_pu"] = self.convert_mw_to_per_unit(
-            self.grid_backend.gen["max_p_mw"]
-        )
-
-        self.grid_backend.res_gen["cost_pu"] = self.gen["cost_pu"]
-
         result = {
             "res_cost": self.grid_backend.res_cost,
             "res_bus": self.grid_backend.res_bus,
             "res_line": self.grid_backend.res_line,
             "res_gen": self.grid_backend.res_gen,
+            "res_load": self.grid_backend.res_load,
+            "res_ext_grid": self.grid_backend.res_ext_grid,
+            "res_trafo": self.grid_backend.res_trafo,
             "valid": valid,
         }
         return result
 
     def solve_and_compare(self, verbose=False, tol=1e-9):
-        result = self.solve(verbose=verbose, tol=tol)
+        result = self.solve(verbose=False, tol=tol)
         result_backend = self.solve_backend()
 
         res_cost = pd.DataFrame(
@@ -615,6 +682,12 @@ class StandardDCOPF(UnitConverter, PyomoMixin):
                 "diff": np.abs(
                     result["res_line"]["p_pu"] - result_backend["res_line"]["p_pu"]
                 ),
+                "line_loading": result["res_line"]["loading_percent"],
+                "b_line_loading": result_backend["res_line"]["loading_percent"],
+                "diff_loading": np.abs(
+                    result["res_line"]["loading_percent"]
+                    - result_backend["res_line"]["loading_percent"]
+                ),
             }
         )
 
@@ -629,17 +702,63 @@ class StandardDCOPF(UnitConverter, PyomoMixin):
             }
         )
 
+        res_load = pd.DataFrame(
+            {
+                "load_pu": result["res_load"]["p_pu"],
+                "b_load_pu": result_backend["res_load"]["p_pu"],
+                "diff": np.abs(
+                    result["res_load"]["p_pu"] - result_backend["res_load"]["p_pu"]
+                ),
+            }
+        )
+
+        res_ext_grid = pd.DataFrame(
+            {
+                "ext_grid_pu": result["res_ext_grid"]["p_pu"],
+                "b_ext_grid_pu": result_backend["res_ext_grid"]["p_pu"],
+                "diff": np.abs(
+                    result["res_ext_grid"]["p_pu"]
+                    - result_backend["res_ext_grid"]["p_pu"]
+                ),
+            }
+        )
+
+        res_trafo = pd.DataFrame(
+            {
+                "trafo_pu": result["res_trafo"]["p_pu"],
+                "b_trafo_pu": result_backend["res_trafo"]["p_pu"],
+                "diff": np.abs(
+                    result["res_trafo"]["p_pu"] - result_backend["res_trafo"]["p_pu"]
+                ),
+                "trafo_loading": result["res_trafo"]["loading_percent"],
+                "b_trafo_loading": result_backend["res_trafo"]["loading_percent"],
+                "diff_loading": np.abs(
+                    result["res_trafo"]["loading_percent"]
+                    - result_backend["res_trafo"]["loading_percent"]
+                ),
+            }
+        )
+
         if verbose:
-            print(res_cost.to_string())
-            print(res_bus.to_string())
-            print(res_line.to_string())
-            print(res_gen.to_string())
+            print("OBJECTIVE\n" + res_cost.to_string())
+            print("BUS\n" + res_bus.to_string())
+            print("LINE\n" + res_line.to_string())
+            print("GEN\n" + res_gen.to_string())
+            print("LOAD\n" + res_load.to_string())
+            if len(res_ext_grid.index):
+                print("EXT GRID\n" + res_ext_grid.to_string())
+
+            if len(res_trafo.index):
+                print("TRAFO\n" + res_trafo.to_string())
 
         result = {
             "res_cost": res_cost,
             "res_bus": res_bus,
             "res_line": res_line,
             "res_gen": res_gen,
+            "res_load": res_load,
+            "res_ext_grid": res_ext_grid,
+            "res_trafo": res_trafo,
         }
         return result
 
@@ -653,21 +772,27 @@ class StandardDCOPF(UnitConverter, PyomoMixin):
         print("RES BUS\n" + self.res_bus.to_string())
         print("RES LINE\n" + self.res_line.to_string())
         print("RES GEN\n" + self.res_gen.to_string())
+        print("RES LOAD\n" + self.res_load.to_string())
+        print("RES EXT GRID\n" + self.res_ext_grid.to_string())
+        print("RES TRAFO\n" + self.res_trafo.to_string())
 
     def print_results_backend(self):
+        res_cost = self.grid_backend.res_cost
+        res_bus = self.grid_backend.res_bus[["delta_pu"]]
+        res_line = self.grid_backend.res_line[["p_pu", "max_p_pu", "loading_percent"]]
+        res_gen = self.grid_backend.res_gen[["min_p_pu", "p_pu", "max_p_pu", "cost_pu"]]
+        res_load = self.grid_backend.res_load[["p_pu"]]
+        res_ext_grid = self.grid_backend.res_ext_grid[["p_pu"]]
+        res_trafo = self.grid_backend.res_trafo[["p_pu", "max_p_pu", "loading_percent"]]
+
         print("\nRESULTS BACKEND\n")
-        print("{:<10}{}".format("OBJECTIVE", self.grid_backend.res_cost))
-        print("RES BUS\n" + self.grid_backend.res_bus[["delta_pu"]].to_string())
-        print(
-            "RES LINE\n"
-            + self.grid_backend.res_line[
-                ["p_pu", "max_p_pu", "loading_percent"]
-            ].to_string()
-        )
-        print(
-            "RES GEN\n"
-            + self.grid_backend.res_gen[["min_p_pu", "p_pu", "max_p_pu"]].to_string()
-        )
+        print("{:<10}{}".format("OBJECTIVE", res_cost))
+        print("RES BUS\n" + res_bus.to_string())
+        print("RES LINE\n" + res_line.to_string())
+        print("RES GEN\n" + res_gen.to_string())
+        print("RES LOAD\n" + res_load.to_string())
+        print("RES EXT GRID\n" + res_ext_grid.to_string())
+        print("RES TRAFO\n" + res_trafo.to_string())
 
     def print_model(self):
         print(self.model.pprint())
@@ -760,7 +885,6 @@ class LineSwitchingDCOPF(StandardDCOPF):
 
         self._build_constraint_bus_balance()  # Bus power balance
 
-        # Limit number of line status changes
         self._build_constraint_max_line_status_changes()
 
     def _build_constraint_line_max_flow(self):
@@ -785,14 +909,13 @@ class LineSwitchingDCOPF(StandardDCOPF):
 
     def _build_constraint_line_flows(self, big_m=True):
         if big_m:
-            if big_m:
-                self.model.big_m = pyo.Param(
-                    self.model.line_set,
-                    initialize=self._create_map_ids_to_values(
-                        self.line.index, self.line.b_pu * 2 * self.grid.delta_max
-                    ),
-                    within=pyo.PositiveReals,
-                )
+            self.model.big_m = pyo.Param(
+                self.model.line_set,
+                initialize=self._create_map_ids_to_values(
+                    self.line.index, self.line.b_pu * 2 * self.grid.delta_max
+                ),
+                within=pyo.PositiveReals,
+            )
 
             # -M_l(1 - x_l) <= F_ij - b_ij * (delta_i - delta_j) <= M_l * (1 - x_l)
             def _constraint_line_flow_upper(model, line_id):
@@ -817,7 +940,6 @@ class LineSwitchingDCOPF(StandardDCOPF):
                 self.model.line_set, rule=_constraint_line_flow_lower
             )
         else:
-
             def _constraint_line_flow(model, line_id):
                 return (
                     model.line_flow[line_id]
@@ -855,8 +977,8 @@ class LineSwitchingDCOPF(StandardDCOPF):
 
         # Parse Gurobi log for additional information
         gap = parse_gurobi_log(self.solver._log)["gap"]
-        if gap < 1e-6:
-            gap = 1e-6
+        if gap < 1e-4:
+            gap = 1e-4
 
         # Save standard DC-OPF variable results
         self._solve_save()
@@ -975,7 +1097,7 @@ class TopologyOptimizationDCOPF(StandardDCOPF):
         self.model.load_p = pyo.Param(
             self.model.load_set,
             initialize=self._create_map_ids_to_values(self.load.index, self.load.p_pu),
-            within=pyo.NonNegativeReals,
+            within=pyo.Reals,
         )
 
     """
