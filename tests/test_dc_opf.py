@@ -52,8 +52,12 @@ class TestStandardDCOPF(unittest.TestCase):
                         result["res_ext_grid"]["diff"], eps
                     ).all(),
                     "trafo": np.less_equal(result["res_trafo"]["diff"], eps).all(),
-                    "line_loading": np.less_equal(result["res_line"]["diff_loading"], 100 * eps).all(),
-                    "trafo_loading": np.less_equal(result["res_trafo"]["diff_loading"], 100 * eps).all(),
+                    "line_loading": np.less_equal(
+                        result["res_line"]["diff_loading"], 100 * eps
+                    ).all(),
+                    "trafo_loading": np.less_equal(
+                        result["res_trafo"]["diff_loading"], 100 * eps
+                    ).all(),
                 }
             )
 
@@ -307,7 +311,10 @@ class TestLineSwitchingDCOPF(unittest.TestCase):
         # Check with brute force solution
         objective_brute = results_backend["objective"][results_backend["valid"]].min()
 
-        hot_brute = results_backend["objective"].values < (1 + result_gap) * objective_brute + result_gap
+        hot_brute = (
+            results_backend["objective"].values
+            < (1 + result_gap) * objective_brute + result_gap
+        )
         hot_brute = np.logical_and(hot_brute, results_backend["valid"])
         indices_brute = hot_to_indices(hot_brute)
         status_brute = results_backend["status"][indices_brute]
@@ -506,9 +513,9 @@ class TestTopologyOptimizationDCOPF(unittest.TestCase):
         if verbose:
             model.print_results()
 
-        n_gen = model.grid_backend.gen.shape[0]
-        n_load = model.grid_backend.load.shape[0]
-        n_line = model.grid_backend.line.shape[0]
+        n_gen = model.grid.gen.shape[0]
+        n_load = model.grid.load.shape[0]
+        n_line = model.grid.line.shape[0]
 
         """
             BACKEND BRUTE FORCE.
@@ -559,35 +566,40 @@ class TestTopologyOptimizationDCOPF(unittest.TestCase):
                 line_or_sub_bus = -np.ones_like(x_line_or_1, dtype=np.int)
                 line_or_sub_bus[x_line_or_1.astype(np.bool)] = 1
                 line_or_sub_bus[x_line_or_2.astype(np.bool)] = 2
-                line_or_bus = [
+                line_or_bus = np.array([
                     model.grid.sub["bus"][sub_id][sub_bus - 1]
                     if sub_bus != -1
                     else model.grid.sub["bus"][sub_id][0]
                     for sub_bus, sub_id in zip(
                         line_or_sub_bus, model.grid.line["sub_or"]
                     )
-                ]
+                ])
 
                 # Power line - Extremity bus
                 line_ex_sub_bus = -np.ones_like(x_line_ex_1, dtype=np.int)
                 line_ex_sub_bus[x_line_ex_1.astype(np.bool)] = 1
                 line_ex_sub_bus[x_line_ex_2.astype(np.bool)] = 2
-                line_ex_bus = [
+                line_ex_bus = np.array([
                     model.grid.sub["bus"][sub_id][sub_bus - 1]
                     if sub_bus != -1
                     else model.grid.sub["bus"][sub_id][0]
                     for sub_bus, sub_id in zip(
                         line_ex_sub_bus, model.grid.line["sub_ex"]
                     )
-                ]
+                ])
 
                 # Construct grid for backend
                 grid_tmp = model.grid_backend.deepcopy()
-                grid_tmp.line["in_service"] = line_status
                 grid_tmp.gen["bus"] = gen_bus
                 grid_tmp.load["bus"] = load_bus
-                grid_tmp.line["from_bus"] = line_or_bus
-                grid_tmp.line["to_bus"] = line_ex_bus
+
+                grid_tmp.line["in_service"] = line_status[~model.grid.line.trafo]
+                grid_tmp.line["from_bus"] = line_or_bus[~model.grid.line.trafo]
+                grid_tmp.line["to_bus"] = line_ex_bus[~model.grid.line.trafo]
+
+                grid_tmp.trafo["in_service"] = line_status[model.grid.line.trafo]
+                grid_tmp.trafo["hv_bus"] = line_or_bus[model.grid.line.trafo]
+                grid_tmp.trafo["lv_bus"] = line_ex_bus[model.grid.line.trafo]
 
                 for gen_id in grid_tmp.gen.index.values:
                     pp.create_poly_cost(

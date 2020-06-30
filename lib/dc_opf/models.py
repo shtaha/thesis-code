@@ -123,7 +123,14 @@ class StandardDCOPF(UnitConverter, PyomoMixin):
             columns=["v_pu", "delta_pu", "delta_deg"], index=self.bus.index
         )
         self.res_line = pd.DataFrame(
-            columns=["bus_or", "bus_ex", "p_pu", "max_p_pu", "loading_percent", "status"],
+            columns=[
+                "bus_or",
+                "bus_ex",
+                "p_pu",
+                "max_p_pu",
+                "loading_percent",
+                "status",
+            ],
             index=self.line.index,
         )
         self.res_gen = pd.DataFrame(
@@ -132,7 +139,8 @@ class StandardDCOPF(UnitConverter, PyomoMixin):
         self.res_load = pd.DataFrame(columns=["p_pu"], index=self.load.index)
         self.res_ext_grid = pd.DataFrame(columns=["p_pu"], index=self.ext_grid.index)
         self.res_trafo = pd.DataFrame(
-            columns=["p_pu", "max_p_pu", "loading_percent", "status"], index=self.trafo.index
+            columns=["p_pu", "max_p_pu", "loading_percent", "status"],
+            index=self.trafo.index,
         )
 
     def build_model(self):
@@ -505,8 +513,12 @@ class StandardDCOPF(UnitConverter, PyomoMixin):
         self.res_gen["p_pu"] = self._access_pyomo_variable(self.model.gen_p)
 
         # Power lines
-        self.res_line = self.line[~self.line.trafo][["bus_or", "bus_ex", "max_p_pu"]].copy()
-        self.res_line["p_pu"] = self._access_pyomo_variable(self.model.line_flow)[~self.line.trafo]
+        self.res_line = self.line[~self.line.trafo][
+            ["bus_or", "bus_ex", "max_p_pu"]
+        ].copy()
+        self.res_line["p_pu"] = self._access_pyomo_variable(self.model.line_flow)[
+            ~self.line.trafo
+        ]
         self.res_line["loading_percent"] = np.abs(
             self.res_line["p_pu"] / self.line[~self.line.trafo]["max_p_pu"] * 100
         )
@@ -522,7 +534,9 @@ class StandardDCOPF(UnitConverter, PyomoMixin):
 
         # Transformers
         if len(self.trafo.index):
-            self.res_trafo["p_pu"] = self._access_pyomo_variable(self.model.line_flow)[self.line.trafo]
+            self.res_trafo["p_pu"] = self._access_pyomo_variable(self.model.line_flow)[
+                self.line.trafo
+            ]
 
             self.res_trafo["loading_percent"] = np.abs(
                 self.res_trafo["p_pu"] / self.trafo["max_p_pu"] * 100
@@ -940,6 +954,7 @@ class LineSwitchingDCOPF(StandardDCOPF):
                 self.model.line_set, rule=_constraint_line_flow_lower
             )
         else:
+
             def _constraint_line_flow(model, line_id):
                 return (
                     model.line_flow[line_id]
@@ -1047,13 +1062,16 @@ class TopologyOptimizationDCOPF(StandardDCOPF):
     """
 
     def _build_parameters(self):
+        self._build_parameters_delta()  # Bus voltage angle bounds and reference node
         self._build_parameters_generators()  # Bounds on generator production
         self._build_parameters_lines()  # Power line thermal limit and susceptance
         self._build_parameters_objective()  # Objective parameters
 
+        if len(self.ext_grid.index):
+            self._build_parameters_ext_grids()  # External grid power limits
+
         self._build_parameters_topology()  # Topology of generators and power lines
-        self._build_parameters_delta()  # Bus voltage angle bounds and reference node
-        self._build_parameters_loads()  # Load power demand
+        self._build_parameters_loads()  # Bus load injections
 
     def _build_parameters_topology(self):
         self.model.sub_ids_to_bus_ids = pyo.Param(
@@ -1094,6 +1112,15 @@ class TopologyOptimizationDCOPF(StandardDCOPF):
             within=pyo.Any,
         )
 
+        if len(self.ext_grid.index):
+            self.model.bus_ids_to_ext_grid_ids = pyo.Param(
+                self.model.bus_set,
+                initialize=self._create_map_ids_to_values(
+                    self.bus.index, self.bus.ext_grid
+                ),
+                within=pyo.Any,
+            )
+
     def _build_parameters_loads(self):
         self.model.load_p = pyo.Param(
             self.model.load_set,
@@ -1109,6 +1136,9 @@ class TopologyOptimizationDCOPF(StandardDCOPF):
         self._build_variables_standard_generators()  # Generator productions and bounds
         self._build_variable_standard_delta()  # Bus voltage angles and bounds
         self._build_variable_standard_line()  # Power line flows
+
+        if len(self.ext_grid.index):
+            self._build_variables_standard_ext_grids()
 
         # Power line OR bus switching
         self.model.x_line_or_1 = pyo.Var(
@@ -1214,6 +1244,13 @@ class TopologyOptimizationDCOPF(StandardDCOPF):
                 sum_gen_p = sum(bus_gen_p)
             else:
                 sum_gen_p = 0.0
+
+            if len(self.ext_grid.index):
+                bus_ext_grid_ids = model.bus_ids_to_ext_grid_ids[bus_id]
+                bus_ext_grids_p = [
+                    model.ext_grid_p[ext_grid_id] for ext_grid_id in bus_ext_grid_ids
+                ]
+                sum_gen_p = sum_gen_p + sum(bus_ext_grids_p)
 
             # Load bus injections
             bus_load_ids = model.sub_ids_to_load_ids[sub_id]

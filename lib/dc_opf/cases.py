@@ -14,15 +14,7 @@ class GridDCOPF(UnitConverter):
 
         # Initialize grid elements
         self.sub = pd.DataFrame(
-            columns=[
-                "id",
-                "bus",
-                "line_or",
-                "line_ex",
-                "gen",
-                "load",
-                "ext_grid",
-            ]
+            columns=["id", "bus", "line_or", "line_ex", "gen", "load", "ext_grid",]
         )
         self.bus = pd.DataFrame(
             columns=[
@@ -89,7 +81,8 @@ class GridDCOPF(UnitConverter):
         )
         output = output + f"\t - Buses {self.bus.shape} {list(self.bus.columns)}\n"
         output = (
-            output + f"\t - Power lines {self.line[~self.line.trafo].shape} {list(self.line[~self.line.trafo].columns)}\n"
+            output
+            + f"\t - Power lines {self.line[~self.line.trafo].shape} {list(self.line[~self.line.trafo].columns)}\n"
         )
         output = output + f"\t - Generators {self.gen.shape} {list(self.gen.columns)}\n"
         output = output + f"\t - Loads {self.load.shape} {list(self.load.columns)}\n"
@@ -798,7 +791,13 @@ class OPFCase4(UnitConverter):
 
         # External grids
         pp.create_ext_grid(
-            grid, bus0, va_degree=0.0, name="ext-grid-0", max_p_mw=3.0, min_p_mw=0.0, max_loading_percent=100.0
+            grid,
+            bus0,
+            va_degree=0.0,
+            name="ext-grid-0",
+            max_p_mw=3.0,
+            min_p_mw=0.0,
+            max_loading_percent=100.0,
         )
 
         grid.trafo["b_pu"] = 28.0  # Empirically: x = vk_percent / 100 * 1 / sn_mva
@@ -813,10 +812,10 @@ class OPFRTECase5(UnitConverter):
 
         self.name = "Case RTE 5"
 
-        env = grid2op.make(dataset="rte_case5_example")
+        self.env = grid2op.make(dataset="rte_case5_example")
 
-        self.grid = update_backend(env)
-        self.grid_backend = env.backend._grid
+        self.grid = update_backend(self.env)
+        self.grid_backend = self.env.backend._grid
 
 
 class OPFL2RPN2019(UnitConverter):
@@ -825,10 +824,10 @@ class OPFL2RPN2019(UnitConverter):
 
         self.name = "Case L2RPN 2019"
 
-        env = grid2op.make(dataset="l2rpn_2019")
+        self.env = grid2op.make(dataset="l2rpn_2019")
 
-        self.grid = update_backend(env)
-        self.grid_backend = env.backend._grid
+        self.grid = update_backend(self.env)
+        self.grid_backend = self.env.backend._grid
 
 
 class OPFL2RPN2020(UnitConverter):
@@ -837,7 +836,7 @@ class OPFL2RPN2020(UnitConverter):
 
         self.name = "Case L2RPN 2020 WCCI"
 
-        env = grid2op.make(dataset="l2rpn_wcci_2020")
+        self.env = grid2op.make(dataset="l2rpn_wcci_2020")
 
-        self.grid = update_backend(env)
-        self.grid_backend = env.backend._grid
+        self.grid = update_backend(self.env)
+        self.grid_backend = self.env.backend._grid
