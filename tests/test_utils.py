@@ -3,7 +3,8 @@ import unittest
 
 import numpy as np
 
-from lib.data_utils import indices_to_hot, hot_to_indices, bus_names_to_sub_ids
+from lib.data_utils import indices_to_hot, hot_to_indices
+from lib.dc_opf.cases import bus_names_to_sub_ids
 
 
 class TestDataUtils(unittest.TestCase):

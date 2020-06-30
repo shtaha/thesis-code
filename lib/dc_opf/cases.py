@@ -3,8 +3,13 @@ import numpy as np
 import pandapower as pp
 import pandas as pd
 
-from lib.data_utils import bus_names_to_sub_ids, update_backend
+from lib.data_utils import update_backend
 from lib.dc_opf.models import UnitConverter
+
+
+def bus_names_to_sub_ids(bus_names):
+    sub_ids = [int(bus_name.split("-")[-1]) for bus_name in bus_names]
+    return sub_ids
 
 
 class GridDCOPF(UnitConverter):
@@ -14,7 +19,7 @@ class GridDCOPF(UnitConverter):
 
         # Initialize grid elements
         self.sub = pd.DataFrame(
-            columns=["id", "bus", "line_or", "line_ex", "gen", "load", "ext_grid",]
+            columns=["id", "bus", "line_or", "line_ex", "gen", "load", "ext_grid"]
         )
         self.bus = pd.DataFrame(
             columns=[

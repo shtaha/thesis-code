@@ -41,6 +41,15 @@ def hot_to_indices(bool_array: np.ndarray) -> np.ndarray:
     return index_array
 
 
+def parse_gurobi_log(log):
+    gap = 0.0
+    for line in log.split("\n")[-5:]:
+        if "Best objective" in line:
+            gap = float(line.strip().split()[-1].replace("%", ""))
+
+    return {"gap": gap}
+
+
 def update_backend(env, verbose=False):
     """
     Update backend grid with missing data.
@@ -140,17 +149,3 @@ def update_backend(env, verbose=False):
         print("line\n" + grid.line.to_string())
 
     return grid
-
-
-def parse_gurobi_log(log):
-    gap = 0.0
-    for line in log.split("\n")[-5:]:
-        if "Best objective" in line:
-            gap = float(line.strip().split()[-1].replace("%", ""))
-
-    return {"gap": gap}
-
-
-def bus_names_to_sub_ids(bus_names):
-    sub_ids = [int(bus_name.split("-")[-1]) for bus_name in bus_names]
-    return sub_ids
