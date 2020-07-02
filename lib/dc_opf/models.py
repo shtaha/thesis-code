@@ -626,7 +626,7 @@ class StandardDCOPF(UnitConverter, PyomoMixin):
         }
         return result
 
-    def solve_backend(self, verbose=False):
+    def solve_backend(self, verbose=False, tol=1e-9):
         for gen_id in self.gen.index.values:
             pp.create_poly_cost(
                 self.grid_backend,
@@ -636,7 +636,9 @@ class StandardDCOPF(UnitConverter, PyomoMixin):
             )
 
         try:
-            pp.rundcopp(self.grid_backend, verbose=verbose, suppress_warnings=True)
+            pp.rundcopp(
+                self.grid_backend, verbose=verbose, suppress_warnings=True, delta=tol
+            )
             valid = True
         except pp.optimal_powerflow.OPFNotConverged as e:
             valid = False
@@ -702,8 +704,13 @@ class StandardDCOPF(UnitConverter, PyomoMixin):
                     result["res_line"]["loading_percent"]
                     - result_backend["res_line"]["loading_percent"]
                 ),
+                "max_p_pu": np.abs(result["res_line"]["p_pu"])
+                / result["res_line"]["loading_percent"],
+                "b_max_p_pu": np.abs(result_backend["res_line"]["p_pu"])
+                / result_backend["res_line"]["loading_percent"],
             }
         )
+        res_line["diff_max"] = np.abs(res_line["max_p_pu"] - res_line["b_max_p_pu"])
 
         res_gen = pd.DataFrame(
             {
@@ -750,8 +757,13 @@ class StandardDCOPF(UnitConverter, PyomoMixin):
                     result["res_trafo"]["loading_percent"]
                     - result_backend["res_trafo"]["loading_percent"]
                 ),
+                "max_p_pu": np.abs(result["res_trafo"]["p_pu"])
+                / result["res_trafo"]["loading_percent"],
+                "b_max_p_pu": np.abs(result_backend["res_trafo"]["p_pu"])
+                / result_backend["res_trafo"]["loading_percent"],
             }
         )
+        res_trafo["diff_max"] = np.abs(res_trafo["max_p_pu"] - res_trafo["b_max_p_pu"])
 
         if verbose:
             print("OBJECTIVE\n" + res_cost.to_string())

@@ -1,10 +1,30 @@
 import grid2op
 import numpy as np
 import pandapower as pp
+import pandapower.networks as pn
 import pandas as pd
 
 from lib.data_utils import update_backend
 from lib.dc_opf.models import UnitConverter
+
+
+def load_case(case_name):
+    if case_name == "case3":
+        return OPFCase3()
+    elif case_name == "case6":
+        return OPFCase6()
+    elif case_name == "case4":
+        return OPFCase4()
+    elif case_name == "case118":
+        return OPFCase118()
+    elif case_name == "rte_case5":
+        return OPFRTECase5()
+    elif case_name == "l2rpn2019":
+        return OPFL2RPN2019()
+    elif case_name == "l2rpn2020":
+        return OPFL2RPN2020()
+    else:
+        raise ValueError(f"Invalid case name. Case {case_name} does not exist.")
 
 
 def bus_names_to_sub_ids(bus_names):
@@ -104,9 +124,11 @@ class GridDCOPF(UnitConverter):
         """
             Buses.
         """
-        self.bus["id"] = self.case.grid.bus.index
-        self.bus["sub"] = bus_names_to_sub_ids(self.case.grid.bus["name"])
-        self.bus["v_pu"] = self.convert_kv_to_per_unit(self.case.grid.bus["vn_kv"])
+        self.bus["id"] = self.case.grid_backend.bus.index
+        self.bus["sub"] = bus_names_to_sub_ids(self.case.grid_backend.bus["name"])
+        self.bus["v_pu"] = self.convert_kv_to_per_unit(
+            self.case.grid_backend.bus["vn_kv"]
+        )
 
         """
             Substations.
@@ -116,69 +138,75 @@ class GridDCOPF(UnitConverter):
         """
             Power lines.
         """
-        self.line["id"] = self.case.grid.line.index
+        self.line["id"] = self.case.grid_backend.line.index
 
         # Inverse line reactance
+        # Equation given: https://pandapower.readthedocs.io/en/v2.2.2/elements/line.html.
+
         x_pu = self.convert_ohm_to_per_unit(
-            self.case.grid.line["x_ohm_per_km"]
-            * self.case.grid.line["length_km"]
-            / self.case.grid.line["parallel"]
+            self.case.grid_backend.line["x_ohm_per_km"]
+            * self.case.grid_backend.line["length_km"]
+            / self.case.grid_backend.line["parallel"]
         )
         self.line["b_pu"] = 1 / x_pu
 
         # Power line flow thermal limit
         # P_l_max = I_l_max * V_l
-        line_max_i_pu = self.convert_ka_to_per_unit(self.case.grid.line["max_i_ka"])
+        line_max_i_pu = self.convert_ka_to_per_unit(
+            self.case.grid_backend.line["max_i_ka"]
+        )
         self.line["max_p_pu"] = (
             np.sqrt(3)
             * line_max_i_pu
-            * self.bus["v_pu"].values[self.case.grid.line["from_bus"].values]
+            * self.bus["v_pu"].values[self.case.grid_backend.line["from_bus"].values]
         )
 
         self.line["p_pu"] = self.convert_mw_to_per_unit(
-            self.case.grid.res_line["p_from_mw"]
+            self.case.grid_backend.res_line["p_from_mw"]
         )
 
         # Line status
-        self.line["status"] = self.case.grid.line["in_service"]
+        self.line["status"] = self.case.grid_backend.line["in_service"]
 
         """
             Generators.
         """
-        self.gen["id"] = self.case.grid.gen.index
-        self.gen["p_pu"] = self.convert_mw_to_per_unit(self.case.grid.gen["p_mw"])
+        self.gen["id"] = self.case.grid_backend.gen.index
+        self.gen["p_pu"] = self.convert_mw_to_per_unit(
+            self.case.grid_backend.gen["p_mw"]
+        )
         self.gen["max_p_pu"] = self.convert_mw_to_per_unit(
-            self.case.grid.gen["max_p_mw"]
+            self.case.grid_backend.gen["max_p_mw"]
         )
         self.gen["min_p_pu"] = self.convert_mw_to_per_unit(
-            self.case.grid.gen["min_p_mw"]
+            self.case.grid_backend.gen["min_p_mw"]
         )
         self.gen["min_p_pu"] = np.maximum(0.0, self.gen["min_p_pu"].values)
         self.gen["cost_pu"] = 1.0
 
-        self.gen["p_pu"] = self.convert_mw_to_per_unit(self.case.grid.gen["p_mw"])
-
         """
             Loads.
         """
-        self.load["id"] = self.case.grid.load.index
-        self.load["p_pu"] = self.convert_mw_to_per_unit(self.case.grid.load["p_mw"])
+        self.load["id"] = self.case.grid_backend.load.index
+        self.load["p_pu"] = self.convert_mw_to_per_unit(
+            self.case.grid_backend.load["p_mw"]
+        )
 
         """
             External grids.
         """
-        self.ext_grid["id"] = self.case.grid.ext_grid.index
+        self.ext_grid["id"] = self.case.grid_backend.ext_grid.index
         self.ext_grid["p_pu"] = self.convert_mw_to_per_unit(
-            self.case.grid.res_ext_grid["p_mw"]
+            self.case.grid_backend.res_ext_grid["p_mw"]
         )
-        if "min_p_mw" in self.case.grid.ext_grid.columns:
+        if "min_p_mw" in self.case.grid_backend.ext_grid.columns:
             self.ext_grid["min_p_pu"] = self.convert_mw_to_per_unit(
-                self.case.grid.ext_grid["min_p_mw"]
+                self.case.grid_backend.ext_grid["min_p_mw"]
             )
 
-        if "max_p_mw" in self.case.grid.ext_grid.columns:
+        if "max_p_mw" in self.case.grid_backend.ext_grid.columns:
             self.ext_grid["max_p_pu"] = self.convert_mw_to_per_unit(
-                self.case.grid.ext_grid["max_p_mw"]
+                self.case.grid_backend.ext_grid["max_p_mw"]
             )
 
         """
@@ -187,16 +215,29 @@ class GridDCOPF(UnitConverter):
             Follows definitions from https://pandapower.readthedocs.io/en/v2.2.2/elements/trafo.html.
         """
 
-        self.trafo["id"] = self.case.grid.trafo.index
-        if "b_pu" in self.case.grid.trafo.columns:
-            self.trafo["b_pu"] = self.case.grid.trafo["b_pu"]
+        self.trafo["id"] = self.case.grid_backend.trafo.index
+        if "b_pu" in self.case.grid_backend.trafo.columns:
+            self.trafo["b_pu"] = self.case.grid_backend.trafo["b_pu"]
+        else:
+            self.trafo["b_pu"] = (
+                1
+                / (self.case.grid_backend.trafo["vk_percent"] / 100.0)
+                * self.case.grid_backend.trafo["sn_mva"]
+            )
 
         self.trafo["p_pu"] = self.convert_mw_to_per_unit(
-            self.case.grid.res_trafo["p_hv_mw"]
+            self.case.grid_backend.res_trafo["p_hv_mw"]
         )
-        if "max_p_pu" in self.case.grid.trafo.columns:
-            self.trafo["max_p_pu"] = self.case.grid.trafo["max_p_pu"]
-        self.trafo["status"] = self.case.grid.trafo["in_service"]
+        self.trafo["p_pu"].fillna(0, inplace=True)
+
+        if "max_p_pu" in self.case.grid_backend.trafo.columns:
+            self.trafo["max_p_pu"] = self.case.grid_backend.trafo["max_p_pu"]
+        else:
+            self.trafo["max_p_pu"] = self.convert_mw_to_per_unit(
+                self.case.grid_backend.trafo["sn_mva"]
+            )
+
+        self.trafo["status"] = self.case.grid_backend.trafo["in_service"]
 
         # Reindex
         self.sub.set_index("id", inplace=True)
@@ -211,26 +252,26 @@ class GridDCOPF(UnitConverter):
             Topology.
         """
         # Generators
-        self.gen["bus"] = self.case.grid.gen["bus"]
+        self.gen["bus"] = self.case.grid_backend.gen["bus"]
         self.gen["sub"] = self.sub.index.values[self.gen["bus"]]
 
         # Loads
-        self.load["bus"] = self.case.grid.load["bus"]
+        self.load["bus"] = self.case.grid_backend.load["bus"]
         self.load["sub"] = self.sub.index.values[self.load["bus"]]
 
         # Power lines
-        self.line["bus_or"] = self.case.grid.line["from_bus"]
-        self.line["bus_ex"] = self.case.grid.line["to_bus"]
+        self.line["bus_or"] = self.case.grid_backend.line["from_bus"]
+        self.line["bus_ex"] = self.case.grid_backend.line["to_bus"]
         self.line["sub_or"] = self.sub.index.values[self.line["bus_or"]]
         self.line["sub_ex"] = self.sub.index.values[self.line["bus_ex"]]
 
         # External grids
-        self.ext_grid["bus"] = self.case.grid.ext_grid["bus"]
+        self.ext_grid["bus"] = self.case.grid_backend.ext_grid["bus"]
         self.ext_grid["sub"] = self.sub.index.values[self.ext_grid["bus"]]
 
         # Transformers
-        self.trafo["bus_or"] = self.case.grid.trafo["hv_bus"]
-        self.trafo["bus_ex"] = self.case.grid.trafo["lv_bus"]
+        self.trafo["bus_or"] = self.case.grid_backend.trafo["hv_bus"]
+        self.trafo["bus_ex"] = self.case.grid_backend.trafo["lv_bus"]
         self.trafo["sub_or"] = self.sub.index.values[self.trafo["bus_or"]]
         self.trafo["sub_ex"] = self.sub.index.values[self.trafo["bus_ex"]]
 
@@ -278,7 +319,16 @@ class GridDCOPF(UnitConverter):
         self.ext_grid["p_pu"] = self.ext_grid["p_pu"].fillna(0)
 
         # Grid and computation parameters
-        self.slack_bus = self.gen.bus[np.flatnonzero(self.case.grid.gen["slack"])[0]]
+        if not self.case.grid_backend.gen["slack"].any():
+            slack_bus = 0
+            if len(self.ext_grid.index):
+                slack_bus = self.case.grid_backend.ext_grid["bus"][0]
+            self.slack_bus = slack_bus
+        else:
+            self.slack_bus = self.gen.bus[
+                np.flatnonzero(self.case.grid_backend.gen["slack"])[0]
+            ]
+
         self.delta_max = np.pi / 2
 
     def print_grid(self):
@@ -303,8 +353,9 @@ class OPFCase3(UnitConverter):
 
         self.name = "Case 3"
 
-        self.grid = self.build_case3_grid()
-        self.grid_backend = self.grid
+        self.env = None
+        self.grid_org = self.build_case3_grid()
+        self.grid_backend = self.grid_org.deepcopy()
 
     def build_case3_grid(self):
         grid = pp.create_empty_network()
@@ -399,8 +450,9 @@ class OPFCase6(UnitConverter):
 
         self.name = "Case 6"
 
-        self.grid = self.build_case6_grid()
-        self.grid_backend = self.grid
+        self.env = None
+        self.grid_org = self.build_case6_grid()
+        self.grid_backend = self.grid_org.deepcopy()
 
     def build_case6_grid(self):
         grid = pp.create_empty_network()
@@ -631,8 +683,9 @@ class OPFCase4(UnitConverter):
 
         self.name = "Case 4"
 
-        self.grid = self.build_case4_grid()
-        self.grid_backend = self.grid
+        self.env = None
+        self.grid_org = self.build_case4_grid()
+        self.grid_backend = self.grid_org.deepcopy()
 
     def build_case4_grid(self):
         grid = pp.create_empty_network()
@@ -811,6 +864,45 @@ class OPFCase4(UnitConverter):
         return grid
 
 
+class OPFCase118(UnitConverter):
+    """
+    Test case for power flow computation.
+    Found at: https://pandapower.readthedocs.io/en/v2.2.2/networks/power_system_test_cases.html#case-118.
+    """
+
+    def __init__(self):
+        UnitConverter.__init__(self, base_unit_p=1e6, base_unit_v=138000.0)
+
+        self.name = "Case 118"
+
+        self.env = None
+        self.grid_org = self.build_case118_grid()
+        self.grid_backend = self.grid_org.deepcopy()
+
+    @staticmethod
+    def build_case118_grid():
+        grid = pn.case118()
+        grid.bus.sort_index(inplace=True)
+        print(grid.bus.to_string())
+
+        grid.bus["name"] = [
+            f"bus-{bus_id}-{name}" for bus_id, name in enumerate(grid.bus["name"])
+        ]
+
+        grid.bus.reset_index(inplace=True, drop=True)
+        grid.line.reset_index(inplace=True, drop=True)
+        grid.gen.reset_index(inplace=True, drop=True)
+        grid.load.reset_index(inplace=True, drop=True)
+        grid.ext_grid.reset_index(inplace=True, drop=True)
+        grid.trafo.reset_index(inplace=True, drop=True)
+        grid.shunt.reset_index(inplace=True, drop=True)
+
+        # Remove all costs
+        grid.poly_cost = grid.poly_cost.iloc[0:0]
+
+        return grid
+
+
 class OPFRTECase5(UnitConverter):
     def __init__(self):
         UnitConverter.__init__(self, base_unit_p=1e6, base_unit_v=1e5)
@@ -818,9 +910,8 @@ class OPFRTECase5(UnitConverter):
         self.name = "Case RTE 5"
 
         self.env = grid2op.make(dataset="rte_case5_example")
-
-        self.grid = update_backend(self.env)
-        self.grid_backend = self.env.backend._grid
+        self.grid_org = self.env.backend._grid
+        self.grid_backend = update_backend(self.env)
 
 
 class OPFL2RPN2019(UnitConverter):
@@ -830,18 +921,16 @@ class OPFL2RPN2019(UnitConverter):
         self.name = "Case L2RPN 2019"
 
         self.env = grid2op.make(dataset="l2rpn_2019")
-
-        self.grid = update_backend(self.env)
-        self.grid_backend = self.env.backend._grid
+        self.grid_org = self.env.backend._grid
+        self.grid_backend = update_backend(self.env)
 
 
 class OPFL2RPN2020(UnitConverter):
     def __init__(self):
-        UnitConverter.__init__(self, base_unit_p=1e6, base_unit_v=138000)
+        UnitConverter.__init__(self, base_unit_p=1e6, base_unit_v=138000.0)
 
         self.name = "Case L2RPN 2020 WCCI"
 
         self.env = grid2op.make(dataset="l2rpn_wcci_2020")
-
-        self.grid = update_backend(self.env)
-        self.grid_backend = self.env.backend._grid
+        self.grid_org = self.env.backend._grid
+        self.grid_backend = update_backend(self.env)

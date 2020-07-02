@@ -307,33 +307,34 @@ def describe_substation(subid, environment):
 
 
 def describe_environment(environment):
-    print("\n" + environment.name.upper())
-    print(f"obs_space {environment.observation_space.size()}")
-    print(f"action_space {environment.action_space.n}")
-    print("obs " + ", ".join(environment.get_obs().to_dict().keys()))
+    if environment:
+        print("\n" + environment.name.upper())
+        print(f"obs_space {environment.observation_space.size()}")
+        print(f"action_space {environment.action_space.n}")
+        print("obs " + ", ".join(environment.get_obs().to_dict().keys()))
 
-    print(f"n_gen {environment.n_gen}")
-    print(f"n_load {environment.n_load}")
-    print(f"n_line {environment.n_line}")
-    print(f"n_sub {len(environment.sub_info)}")
+        print(f"n_gen {environment.n_gen}")
+        print(f"n_load {environment.n_load}")
+        print(f"n_line {environment.n_line}")
+        print(f"n_sub {len(environment.sub_info)}")
 
-    sub_info = ", ".join(
-        ["{}:{:>2}".format(i, sub) for i, sub in enumerate(environment.sub_info)]
-    )
-    print(f"sub_info {sub_info}")
-    print(f"dim_topo {environment.dim_topo}")
+        sub_info = ", ".join(
+            ["{}:{:>2}".format(i, sub) for i, sub in enumerate(environment.sub_info)]
+        )
+        print(f"sub_info {sub_info}")
+        print(f"dim_topo {environment.dim_topo}")
 
-    print(f"load_to_subid {environment.action_space.load_to_subid}")
-    print(f"gen_to_subid {environment.action_space.gen_to_subid}")
+        print(f"load_to_subid {environment.action_space.load_to_subid}")
+        print(f"gen_to_subid {environment.action_space.gen_to_subid}")
 
-    line_or_to_subid = ", ".join(
-        ["{:>3}".format(subid) for subid in environment.line_or_to_subid]
-    )
-    line_ex_to_subid = ", ".join(
-        ["{:>3}".format(subid) for subid in environment.line_ex_to_subid]
-    )
-    print(f"line_or_to_subid {line_or_to_subid}")
-    print(f"line_ex_to_subid {line_ex_to_subid}\n")
+        line_or_to_subid = ", ".join(
+            ["{:>3}".format(subid) for subid in environment.line_or_to_subid]
+        )
+        line_ex_to_subid = ", ".join(
+            ["{:>3}".format(subid) for subid in environment.line_ex_to_subid]
+        )
+        print(f"line_or_to_subid {line_or_to_subid}")
+        print(f"line_ex_to_subid {line_ex_to_subid}\n")
 
 
 def print_environment_attributes(env):

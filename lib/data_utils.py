@@ -129,7 +129,6 @@ def update_backend(env, verbose=False):
         trafo_params.set_index("id", inplace=True)
         grid.trafo["b_pu"] = trafo_params["b_pu"]
         grid.trafo["max_p_pu"] = trafo_params["max_p_pu"]
-        grid.trafo["in_service"] = False
 
     # Environment and backend inconsistency
     grid.gen["min_p_mw"] = env.gen_pmin
