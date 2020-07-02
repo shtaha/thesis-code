@@ -462,6 +462,26 @@ class TestLineSwitchingDCOPF(unittest.TestCase):
 
         self.runner_opf_line_switching(model, grid, n_line_status_changes, verbose=True)
 
+    def test_l2rpn2020_line_switching(self):
+        n_line_status_changes = 1
+
+        case = load_case("l2rpn2020")
+        grid = GridDCOPF(
+            case, base_unit_v=case.base_unit_v, base_unit_p=case.base_unit_p
+        )
+        grid.line["b_pu"][[45, 46, 47]] = [5000.0, 1014.19878296, 3311.25827815]
+
+        model = LineSwitchingDCOPF(
+            f"{case.name} DC OPF Line Switching",
+            grid=grid,
+            grid_backend=case.grid_backend,
+            n_line_status_changes=n_line_status_changes,
+            base_unit_p=case.base_unit_p,
+            base_unit_v=case.base_unit_v,
+        )
+
+        self.runner_opf_line_switching(model, grid, n_line_status_changes, verbose=True)
+
 
 class TestTopologyOptimizationDCOPF(unittest.TestCase):
     """
