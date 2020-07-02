@@ -11,9 +11,9 @@ from lib.dc_opf import (
 )
 
 
-class TestStandardDCOPF(unittest.TestCase):
+class TestCasesDCOPF(unittest.TestCase):
     """
-    Test standard DC-OPF implementation.
+    Test per unit DC-OPF grid parameters.
     """
 
     @classmethod
@@ -161,7 +161,7 @@ class TestStandardDCOPF(unittest.TestCase):
             base_unit_v=case.base_unit_v,
         )
 
-        self.runner(model, verbose=False)
+        self.runner(model, eps=5e-3, verbose=True)
 
     def test_l2rpn2019(self):
         case = load_case("l2rpn2019")
