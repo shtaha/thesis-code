@@ -758,7 +758,7 @@ class TestTopologyOptimizationDCOPF(unittest.TestCase):
             base_unit_v=case.base_unit_v,
         )
 
-        self.runner_opf_topology_optimization(model, grid)
+        self.runner_opf_topology_optimization(model, grid, verbose=True)
 
     """
         Intractable.

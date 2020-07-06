@@ -4,8 +4,9 @@ import pandapower as pp
 import pandapower.networks as pn
 import pandas as pd
 
-from lib.data_utils import update_backend
+from lib.data_utils import update_backend, hot_to_indices
 from lib.dc_opf.models import UnitConverter
+from lib.visualizer import describe_substation
 
 
 def load_case(case_name):
@@ -28,7 +29,13 @@ def load_case(case_name):
 
 
 def bus_names_to_sub_ids(bus_names):
-    sub_ids = [int(bus_name.split("-")[-1]) for bus_name in bus_names]
+    sub_ids = np.array([int(bus_name.split("-")[-1]) for bus_name in bus_names])
+
+    # Start with substation with id 0
+    sub_zero = int(bus_names[0].split("-")[-1])
+    if sub_zero:
+        sub_ids = sub_ids - sub_zero
+
     return sub_ids
 
 
@@ -96,27 +103,28 @@ class GridDCOPF(UnitConverter):
 
         self.slack_bus = None
         self.delta_max = None
+        self.fixed_elements = None
 
         self.build_grid()
 
     def __str__(self):
         output = "Grid p. u.\n"
         output = (
-            output + f"\t - Substations {self.sub.shape} {list(self.sub.columns)}\n"
+                output + f"\t - Substations {self.sub.shape} {list(self.sub.columns)}\n"
         )
         output = output + f"\t - Buses {self.bus.shape} {list(self.bus.columns)}\n"
         output = (
-            output
-            + f"\t - Power lines {self.line[~self.line.trafo].shape} {list(self.line[~self.line.trafo].columns)}\n"
+                output
+                + f"\t - Power lines {self.line[~self.line.trafo].shape} {list(self.line[~self.line.trafo].columns)}\n"
         )
         output = output + f"\t - Generators {self.gen.shape} {list(self.gen.columns)}\n"
         output = output + f"\t - Loads {self.load.shape} {list(self.load.columns)}\n"
         output = (
-            output
-            + f"\t - External grids {self.ext_grid.shape} {list(self.ext_grid.columns)}\n"
+                output
+                + f"\t - External grids {self.ext_grid.shape} {list(self.ext_grid.columns)}\n"
         )
         output = (
-            output + f"\t - Transformers {self.trafo.shape} {list(self.trafo.columns)}"
+                output + f"\t - Transformers {self.trafo.shape} {list(self.trafo.columns)}"
         )
         return output
 
@@ -156,9 +164,9 @@ class GridDCOPF(UnitConverter):
             self.case.grid_backend.line["max_i_ka"]
         )
         self.line["max_p_pu"] = (
-            np.sqrt(3)
-            * line_max_i_pu
-            * self.bus["v_pu"].values[self.case.grid_backend.line["from_bus"].values]
+                np.sqrt(3)
+                * line_max_i_pu
+                * self.bus["v_pu"].values[self.case.grid_backend.line["from_bus"].values]
         )
 
         self.line["p_pu"] = self.convert_mw_to_per_unit(
@@ -220,9 +228,9 @@ class GridDCOPF(UnitConverter):
             self.trafo["b_pu"] = self.case.grid_backend.trafo["b_pu"]
         else:
             self.trafo["b_pu"] = (
-                1
-                / (self.case.grid_backend.trafo["vk_percent"] / 100.0)
-                * self.case.grid_backend.trafo["sn_mva"]
+                    1
+                    / (self.case.grid_backend.trafo["vk_percent"] / 100.0)
+                    * self.case.grid_backend.trafo["sn_mva"]
             )
 
         self.trafo["p_pu"] = self.convert_mw_to_per_unit(
@@ -331,8 +339,62 @@ class GridDCOPF(UnitConverter):
 
         self.delta_max = np.pi / 2
 
+        # Substation topological symmetry
+        self.fixed_elements = self.get_fixed_elements(True)
+
+    def get_fixed_elements(self, verbose=False):
+        """
+        Get id of a power line end at each substation. Used for eliminating substation topological symmetry.
+        """
+        fixed_elements = dict()
+
+        for sub_id in self.sub.index:
+            fixed_elements[sub_id] = dict()
+
+            if self.case.env:
+                # Grid element ids
+                line_or_ids = hot_to_indices(
+                    self.case.env.action_space.line_or_to_subid == sub_id
+                )
+                line_ex_ids = hot_to_indices(
+                    self.case.env.action_space.line_ex_to_subid == sub_id
+                )
+
+                # Grid element positions within substation
+                lines_or_pos = self.case.env.action_space.line_or_to_sub_pos[line_or_ids]
+                lines_ex_pos = self.case.env.action_space.line_ex_to_sub_pos[line_ex_ids]
+
+                fixed_elements[sub_id]["line_or"] = line_or_ids[
+                    np.flatnonzero(lines_or_pos == 0)
+                ].tolist()
+                fixed_elements[sub_id]["line_ex"] = line_ex_ids[
+                    np.flatnonzero(lines_ex_pos == 0)
+                ].tolist()
+
+                if verbose:
+                    describe_substation(sub_id, self.case.env)
+            else:
+                line_or_ids = self.sub["line_or"][sub_id]
+                line_ex_ids = self.sub["line_ex"][sub_id]
+                if len(line_or_ids):
+                    fixed_elements[sub_id]["line_or"] = [line_or_ids[0]]
+                    fixed_elements[sub_id]["line_ex"] = []
+                elif len(line_ex_ids):
+                    fixed_elements[sub_id]["line_or"] = []
+                    fixed_elements[sub_id]["line_ex"] = [line_ex_ids[0]]
+
+            # Check if each substation has exactly one power line end at position 0
+            assert len(fixed_elements[sub_id]["line_or"]) + len(fixed_elements[sub_id]["line_ex"]) == 1
+
+            if verbose:
+                print(fixed_elements[sub_id])
+
+        fixed_elements = pd.DataFrame([fixed_elements[sub_id] for sub_id in fixed_elements])
+        return fixed_elements
+
     def print_grid(self):
         print("\nGRID\n")
+        print("SUB\n" + self.sub.to_string())
         print("BUS\n" + self.bus.to_string())
         print("LINE\n" + self.line[~self.line["trafo"]].to_string())
         print("GEN\n" + self.gen.to_string())
@@ -340,6 +402,7 @@ class GridDCOPF(UnitConverter):
         print("EXT GRID\n" + self.ext_grid.to_string())
         print("TRAFO\n" + self.trafo.to_string())
         print(f"SLACK BUS: {self.slack_bus}")
+        print("FIXED ELEMENTS\n" + self.fixed_elements.to_string())
 
 
 class OPFCase3(UnitConverter):

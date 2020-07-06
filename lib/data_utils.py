@@ -89,8 +89,11 @@ def update_backend(env, verbose=False):
         # Update thermal limits with environment thermal limits
         grid.line["max_i_ka"] = env.get_thermal_limit()
     elif env.name == "l2rpn_wcci_2020":
-        n_bus = len(grid.bus.index)
-        bus_to_sub_ids = np.concatenate((np.arange(0, n_bus), np.arange(0, n_bus)))
+        # Check if even number of buses
+        assert len(grid.bus.index) % 2 == 0
+
+        n_sub = len(grid.bus.index) // 2
+        bus_to_sub_ids = np.concatenate((np.arange(0, n_sub), np.arange(0, n_sub)))
         bus_names = [
             f"bus-{bus_id}-{sub_id}"
             for bus_id, sub_id in zip(grid.bus.index, bus_to_sub_ids)

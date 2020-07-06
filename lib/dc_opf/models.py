@@ -1206,7 +1206,7 @@ class TopologyOptimizationDCOPF(StandardDCOPF):
         CONSTRAINTS.
     """
 
-    # TODO: Constraints on variables, symmetry, line disconnections
+    # TODO: Constraints on variables, line disconnections
 
     def _build_constraints(self, line_disconnection=True):
         self._build_constraint_line_flows()  # Power flow definition
@@ -1216,6 +1216,9 @@ class TopologyOptimizationDCOPF(StandardDCOPF):
 
         if line_disconnection:
             self._build_constraint_line_disconnection()
+
+        # Constraints to eliminate symmetric topologies
+        self._build_constraint_symmetry()
 
     def _build_constraint_line_flows(self):
         # Power flow equation with topology switching
@@ -1329,6 +1332,21 @@ class TopologyOptimizationDCOPF(StandardDCOPF):
         self.model.constraint_line_disconnection = pyo.Constraint(
             self.model.line_set, rule=_constraint_line_disconnection
         )
+
+    def _build_constraint_symmetry(self):
+        for sub_id in self.grid.fixed_elements.index:
+            line_or = self.grid.fixed_elements.line_or[sub_id]
+            line_ex = self.grid.fixed_elements.line_ex[sub_id]
+
+            print(sub_id, line_or, line_ex)
+            if len(line_or):
+                line_id = line_or[0]
+                self.model.x_line_or_2[line_id].value = 0
+                self.model.x_line_or_2[line_id].fixed = True
+            if len(line_ex):
+                line_id = line_ex[0]
+                self.model.x_line_ex_2[line_id].value = 0
+                self.model.x_line_ex_2[line_id].fixed = True
 
     """
         SOLVE FUNCTIONS.
