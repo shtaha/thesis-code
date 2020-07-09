@@ -161,7 +161,7 @@ class TestCasesDCOPF(unittest.TestCase):
             base_unit_v=case.base_unit_v,
         )
 
-        self.runner(model, eps=5e-3, verbose=True)
+        self.runner(model, eps=5e-3, verbose=False)
 
     def test_l2rpn2019(self):
         case = load_case("l2rpn2019")
@@ -177,7 +177,7 @@ class TestCasesDCOPF(unittest.TestCase):
             base_unit_v=case.base_unit_v,
         )
 
-        self.runner(model, eps=1e-2, verbose=True)
+        self.runner(model, eps=1e-2, verbose=False)
 
     def test_l2rpn2020(self):
         case = load_case("l2rpn2020")

@@ -78,6 +78,7 @@ class TestStandardDCOPF(unittest.TestCase):
             grid_backend=case.grid_backend,
             base_unit_p=case.base_unit_p,
             base_unit_v=case.base_unit_v,
+            solver_name="mosek",
         )
 
         self.runner_opf(model, verbose=False)
@@ -192,43 +193,6 @@ class TestStandardDCOPF(unittest.TestCase):
         )
 
         self.runner_opf(model, eps=1e-3, verbose=False)
-
-    # def test_case118(self):
-    #     case = load_case("case118")
-    #     grid = GridDCOPF(
-    #         case, base_unit_v=case.base_unit_v, base_unit_p=case.base_unit_p
-    #     )
-    #
-    #     model = StandardDCOPF(
-    #         f"{case.name} Standard DC OPF",
-    #         grid=grid,
-    #         grid_backend=case.grid_backend,
-    #         base_unit_p=case.base_unit_p,
-    #         base_unit_v=case.base_unit_v,
-    #     )
-    #     model.grid.gen["cost_pu"] = np.random.uniform(0.5, 1.5, grid.gen.shape[0])
-    #     model.build_model()
-    #
-    #     print(case.grid_backend)
-    #     print(case.grid_backend.bus.to_string())
-    #     print(case.grid_backend.line.to_string())
-    #     # print(case.grid_backend.gen.to_string())
-    #     # print(case.grid_backend.load.to_string())
-    #     # print(case.grid_backend.ext_grid.to_string())
-    #     # print(case.grid_backend.trafo.to_string())
-    #     # print(case.grid_backend.poly_cost.to_string())
-    #
-    #     print(grid)
-    #     print(grid.bus.to_string())
-    #     print(grid.line.to_string())
-    #     # print(grid.gen.to_string())
-    #     # print(grid.load.to_string())
-    #     # print(grid.ext_grid.to_string())
-    #     # print(grid.trafo.to_string())
-    #
-    #     model.solve_and_compare(verbose=True)
-    #     #
-    #     # self.runner_opf(model, verbose=False)
 
 
 class TestLineSwitchingDCOPF(unittest.TestCase):
@@ -758,24 +722,4 @@ class TestTopologyOptimizationDCOPF(unittest.TestCase):
             base_unit_v=case.base_unit_v,
         )
 
-        self.runner_opf_topology_optimization(model, grid, verbose=True)
-
-    """
-        Intractable.
-    """
-
-    # def test_case4_topology(self):
-    #     case = load_case("case4")
-    #     grid = GridDCOPF(
-    #         case, base_unit_v=case.base_unit_v, base_unit_p=case.base_unit_p
-    #     )
-    #
-    #     model = TopologyOptimizationDCOPF(
-    #         f"{case.name} DC OPF Topology Optimization",
-    #         grid=grid,
-    #         grid_backend=case.grid_backend,
-    #         base_unit_p=case.base_unit_p,
-    #         base_unit_v=case.base_unit_v,
-    #     )
-    #
-    #     self.runner_opf_topology_optimization(model, grid)
+        self.runner_opf_topology_optimization(model, grid, verbose=False)

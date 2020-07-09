@@ -10,7 +10,7 @@ from grid2op.Action import (
 )
 from grid2op.dtypes import dt_int
 
-from lib.data_utils import hot_vector
+from lib.data_utils import indices_to_hot
 
 
 class ActionSpaceGenerator(object):
@@ -75,7 +75,7 @@ class ActionSpaceGenerator(object):
             )
 
             # Check if there is only one valid topology on a given substation, then this topology is fixed and thus
-            # the corresponding action redundant.
+            # the corresponding action is redundant.
             if len(substation_actions) > 1:
                 actions_info.extend(substation_actions_info)
                 actions.extend(substation_actions)
@@ -120,8 +120,8 @@ class ActionSpaceGenerator(object):
         not_lines_pos = np.concatenate((gen_pos, load_pos))
 
         # Get binary positions
-        lines_pos = hot_vector(lines_pos, length=n_elements, dtype=np.bool)
-        not_lines_pos = hot_vector(not_lines_pos, length=n_elements, dtype=np.bool)
+        lines_pos = indices_to_hot(lines_pos, length=n_elements, dtype=np.bool)
+        not_lines_pos = indices_to_hot(not_lines_pos, length=n_elements, dtype=np.bool)
 
         # Check if the positions of lines, loads and generators are correct.
         if not np.equal(~lines_pos, not_lines_pos).all():

@@ -11,10 +11,12 @@ from lib.visualizer import describe_environment, render_and_save
 
 def parse_arguments():
     parser = argparse.ArgumentParser()
-    # parser.add_argument("--env_name", default=Const.ENV_NAME, type=str, help="Environment name.")
     parser.add_argument(
-        "--env_name", default="rte_case5_example", type=str, help="Environment name."
+        "--env_name", default=Const.ENV_NAME, type=str, help="Environment name."
     )
+    # parser.add_argument(
+    #     "--env_name", default="l2rpn_2019", type=str, help="Environment name."
+    # )
     # parser.add_argument("--env_name", default="l2rpn_2019", type=str, help="Environment name.")
     parser.add_argument(
         "--action_cls", default="topology_dispatch", type=str, help="Action class used."
@@ -30,7 +32,7 @@ def parse_arguments():
         default=4,
         type=int,
         help="Number of redispatching actions per generator, the actual number "
-             "of actions is doubled - positive and negative.",
+        "of actions is doubled - positive and negative.",
     )
     parser.add_argument(
         "-v", "--verbose", help="Set verbosity level.", action="store_false"
@@ -67,9 +69,15 @@ if __name__ == "__main__":
     action_generator = ActionSpaceGenerator(env)
 
     # Grid2Op Generator
-    grid2op_actions_topology_set = action_generator.grid2op_get_all_unitary_topologies_set()
-    grid2op_actions_line_set = action_generator.grid2op_get_all_unitary_line_status_set()
-    grid2op_actions_line_change = action_generator.grid2op_get_all_unitary_line_status_change()
+    grid2op_actions_topology_set = (
+        action_generator.grid2op_get_all_unitary_topologies_set()
+    )
+    grid2op_actions_line_set = (
+        action_generator.grid2op_get_all_unitary_line_status_set()
+    )
+    grid2op_actions_line_change = (
+        action_generator.grid2op_get_all_unitary_line_status_change()
+    )
     grid2op_actions_redispatch = action_generator.grid2op_get_all_unitary_redispatch()
 
     # Custom Generator with Analysis and Action Information
@@ -85,15 +93,24 @@ if __name__ == "__main__":
         actions_topology_set, actions_topology_set_info, verbose=args.verbose
     )
 
-    actions_line_set, actions_line_set_info = action_generator.get_all_unitary_line_status_set(n_bus=args.n_bus,
-                                                                                               verbose=args.verbose)
-
-    actions_line_change, actions_line_change_info = action_generator.get_all_unitary_line_status_change(
-        verbose=args.verbose
+    (
+        actions_line_set,
+        actions_line_set_info,
+    ) = action_generator.get_all_unitary_line_status_set(
+        n_bus=args.n_bus, verbose=args.verbose
     )
 
-    actions_redispatch, actions_redispatch_info = action_generator.get_all_unitary_redispatch(
-        n_redispatch=args.n_redispatch, verbose=False)
+    (
+        actions_line_change,
+        actions_line_change_info,
+    ) = action_generator.get_all_unitary_line_status_change(verbose=False)
+
+    (
+        actions_redispatch,
+        actions_redispatch_info,
+    ) = action_generator.get_all_unitary_redispatch(
+        n_redispatch=args.n_redispatch, verbose=False
+    )
 
     print("\n")
     print("actions: 1 do-nothing action")
