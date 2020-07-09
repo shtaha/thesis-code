@@ -18,11 +18,11 @@ def load_case(case_name):
         return OPFCase4()
     elif case_name == "case118":
         return OPFCase118()
-    elif case_name == "rte_case5":
+    elif case_name in ["rte_case5", "rte_case5_example"]:
         return OPFRTECase5()
-    elif case_name == "l2rpn2019":
+    elif case_name in ["l2rpn2019", "l2rpn_2019"]:
         return OPFL2RPN2019()
-    elif case_name == "l2rpn2020":
+    elif case_name in ["l2rpn2020", "l2rpn_wcci_2020", "l2rpn_2020"]:
         return OPFL2RPN2020()
     else:
         raise ValueError(f"Invalid case name. Case {case_name} does not exist.")
@@ -620,12 +620,16 @@ class OPFCase118(OPFAbstractCase, UnitConverter):
 
 
 class OPFRTECase5(OPFAbstractCase, UnitConverter, OPFCaseMixin):
-    def __init__(self):
+    def __init__(self, env=None):
         UnitConverter.__init__(self, base_unit_p=1e6, base_unit_v=1e5)
 
         self.name = "Case RTE 5"
 
-        self.env = grid2op.make(dataset="rte_case5_example")
+        if not env:
+            self.env = grid2op.make(dataset="rte_case5_example")
+        else:
+            self.env = env
+
         self.grid_org = self.build_case_grid()
         self.grid_backend = self.update_backend(self.env)
 
@@ -658,12 +662,16 @@ class OPFRTECase5(OPFAbstractCase, UnitConverter, OPFCaseMixin):
 
 
 class OPFL2RPN2019(OPFAbstractCase, UnitConverter, OPFCaseMixin):
-    def __init__(self):
+    def __init__(self, env=None):
         UnitConverter.__init__(self, base_unit_p=1e6, base_unit_v=1e5)
 
         self.name = "Case L2RPN 2019"
 
-        self.env = grid2op.make(dataset="l2rpn_2019")
+        if not env:
+            self.env = grid2op.make(dataset="l2rpn_2019")
+        else:
+            self.env = env
+
         self.grid_org = self.build_case_grid()
         self.grid_backend = self.update_backend(self.env)
 
@@ -692,12 +700,16 @@ class OPFL2RPN2019(OPFAbstractCase, UnitConverter, OPFCaseMixin):
 
 
 class OPFL2RPN2020(OPFAbstractCase, UnitConverter, OPFCaseMixin):
-    def __init__(self):
+    def __init__(self, env=None):
         UnitConverter.__init__(self, base_unit_p=1e6, base_unit_v=138000.0)
 
         self.name = "Case L2RPN 2020 WCCI"
 
-        self.env = grid2op.make(dataset="l2rpn_wcci_2020")
+        if not env:
+            self.env = grid2op.make(dataset="l2rpn_wcci_2020")
+        else:
+            self.env = env
+
         self.grid_org = self.build_case_grid()
         self.grid_backend = self.update_backend(self.env)
 

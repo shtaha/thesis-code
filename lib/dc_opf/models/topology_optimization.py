@@ -44,6 +44,9 @@ class TopologyOptimizationDCOPF(StandardDCOPF):
         self.model.sub_set = pyo.Set(
             initialize=self.sub.index, within=pyo.NonNegativeIntegers,
         )
+        self.model.sub_bus_set = pyo.Set(
+            initialize=[1, 2], within=pyo.NonNegativeIntegers,
+        )
 
         # Parameters
         self._build_parameters()
@@ -82,7 +85,7 @@ class TopologyOptimizationDCOPF(StandardDCOPF):
             within=self.model.bus_set * self.model.bus_set,
         )
 
-        self.model.sub_bus_ids = pyo.Param(
+        self.model.bus_ids_to_sub_bus_ids = pyo.Param(
             self.model.bus_set,
             initialize=self._create_map_ids_to_values(self.bus.index, self.bus.sub_bus),
         )
@@ -102,16 +105,61 @@ class TopologyOptimizationDCOPF(StandardDCOPF):
             within=self.model.sub_set * self.model.sub_set,
         )
 
+        # Substation grid elements
         self.model.sub_ids_to_gen_ids = pyo.Param(
             self.model.sub_set,
             initialize=self._create_map_ids_to_values(self.sub.index, self.sub.gen),
             within=pyo.Any,
         )
-
         self.model.sub_ids_to_load_ids = pyo.Param(
             self.model.sub_set,
             initialize=self._create_map_ids_to_values(self.sub.index, self.sub.load),
             within=pyo.Any,
+        )
+        self.model.sub_ids_to_line_or_ids = pyo.Param(
+            self.model.sub_set,
+            initialize=self._create_map_ids_to_values(self.sub.index, self.sub.line_or),
+            within=pyo.Any,
+        )
+        self.model.sub_ids_to_line_ex_ids = pyo.Param(
+            self.model.sub_set,
+            initialize=self._create_map_ids_to_values(self.sub.index, self.sub.line_ex),
+            within=pyo.Any,
+        )
+        self.model.sub_n_elements = pyo.Param(
+            self.model.sub_set,
+            initialize=self._create_map_ids_to_values(
+                self.sub.index, self.sub.n_elements
+            ),
+            within=pyo.NonNegativeIntegers,
+        )
+
+        # Bus within a substation
+        self.model.gen_ids_to_sub_bus_ids = pyo.Param(
+            self.model.gen_set,
+            initialize=self._create_map_ids_to_values(self.gen.index, self.gen.sub_bus),
+            within=self.model.sub_bus_set,
+        )
+        self.model.load_ids_to_sub_bus_ids = pyo.Param(
+            self.model.load_set,
+            initialize=self._create_map_ids_to_values(
+                self.load.index, self.load.sub_bus
+            ),
+            within=self.model.sub_bus_set,
+        )
+        self.model.line_or_ids_to_sub_bus_ids = pyo.Param(
+            self.model.line_set,
+            initialize=self._create_map_ids_to_values(
+                self.line.index, self.line.sub_bus_or
+            ),
+            within=self.model.sub_bus_set,
+        )
+        self.model.line_ex_ids_to_sub_bus_ids = pyo.Param(
+            self.model.line_set,
+            initialize=self._create_map_ids_to_values(
+                self.line.index, self.line.sub_bus_ex
+            ),
+            within=self.model.sub_bus_set,
         )
 
         if len(self.ext_grid.index):
@@ -121,6 +169,13 @@ class TopologyOptimizationDCOPF(StandardDCOPF):
                     self.bus.index, self.bus.ext_grid
                 ),
                 within=pyo.Any,
+            )
+            self.model.ext_grid_ids_to_sub_bus_ids = pyo.Param(
+                self.model.ext_grid_set,
+                initialize=self._create_map_ids_to_values(
+                    self.ext_grid.index, self.ext_grid.sub_bus
+                ),
+                within=self.model.sub_bus_set,
             )
 
     def _build_parameters_loads(self):
@@ -147,14 +202,20 @@ class TopologyOptimizationDCOPF(StandardDCOPF):
             self.model.line_set,
             domain=pyo.Binary,
             initialize=self._create_map_ids_to_values(
-                self.line.index, self.bus.sub_bus.values[self.line.bus_or.values] - 1,
+                self.line.index,
+                np.equal(self.bus.sub_bus.values[self.line.bus_or.values], 1).astype(
+                    int
+                ),
             ),
         )
         self.model.x_line_or_2 = pyo.Var(
             self.model.line_set,
             domain=pyo.Binary,
             initialize=self._create_map_ids_to_values(
-                self.line.index, self.bus.sub_bus.values[self.line.bus_or.values] - 1,
+                self.line.index,
+                np.equal(self.bus.sub_bus.values[self.line.bus_or.values], 2).astype(
+                    int
+                ),
             ),
         )
 
@@ -163,14 +224,20 @@ class TopologyOptimizationDCOPF(StandardDCOPF):
             self.model.line_set,
             domain=pyo.Binary,
             initialize=self._create_map_ids_to_values(
-                self.line.index, self.bus.sub_bus.values[self.line.bus_ex.values] - 1,
+                self.line.index,
+                np.equal(self.bus.sub_bus.values[self.line.bus_ex.values], 1).astype(
+                    int
+                ),
             ),
         )
         self.model.x_line_ex_2 = pyo.Var(
             self.model.line_set,
             domain=pyo.Binary,
             initialize=self._create_map_ids_to_values(
-                self.line.index, self.bus.sub_bus.values[self.line.bus_ex.values] - 1,
+                self.line.index,
+                np.equal(self.bus.sub_bus.values[self.line.bus_ex.values], 2).astype(
+                    int
+                ),
             ),
         )
 
@@ -179,7 +246,8 @@ class TopologyOptimizationDCOPF(StandardDCOPF):
             self.model.gen_set,
             domain=pyo.Binary,
             initialize=self._create_map_ids_to_values(
-                self.gen.index, self.bus.sub_bus.values[self.gen.bus.values] - 1,
+                self.gen.index,
+                np.equal(self.bus.sub_bus.values[self.gen.bus.values], 2),
             ),
         )
 
@@ -188,7 +256,8 @@ class TopologyOptimizationDCOPF(StandardDCOPF):
             self.model.load_set,
             domain=pyo.Binary,
             initialize=self._create_map_ids_to_values(
-                self.load.index, self.bus.sub_bus.values[self.load.bus.values] - 1,
+                self.load.index,
+                np.equal(self.bus.sub_bus.values[self.load.bus.values], 2),
             ),
         )
 
@@ -213,8 +282,6 @@ class TopologyOptimizationDCOPF(StandardDCOPF):
         CONSTRAINTS.
     """
 
-    # TODO: Constraints on variables, line disconnections
-
     def _build_constraints(self, line_disconnection=True):
         self._build_constraint_line_flows()  # Power flow definition
         self._build_constraint_bus_balance()  # Bus power balance
@@ -226,6 +293,8 @@ class TopologyOptimizationDCOPF(StandardDCOPF):
 
         # Constraints to eliminate symmetric topologies
         self._build_constraint_symmetry()
+        self._build_constraint_line_status_switch()
+        self._build_constraint_substation_topology_switch()
 
     def _build_constraint_line_flows(self):
         # Power flow equation with topology switching
@@ -259,7 +328,7 @@ class TopologyOptimizationDCOPF(StandardDCOPF):
             if len(bus_gen_ids):
                 bus_gen_p = [
                     model.gen_p[gen_id] * (1 - model.x_gen[gen_id])
-                    if model.sub_bus_ids[bus_id] == 1
+                    if model.bus_ids_to_sub_bus_ids[bus_id] == 1
                     else model.gen_p[gen_id] * model.x_gen[gen_id]
                     for gen_id in bus_gen_ids
                 ]
@@ -279,7 +348,7 @@ class TopologyOptimizationDCOPF(StandardDCOPF):
             if len(bus_load_ids):
                 bus_load_p = [
                     model.load_p[load_id] * (1 - model.x_load[load_id])
-                    if model.sub_bus_ids[bus_id] == 1
+                    if model.bus_ids_to_sub_bus_ids[bus_id] == 1
                     else model.load_p[load_id] * model.x_load[load_id]
                     for load_id in bus_load_ids
                 ]
@@ -290,7 +359,7 @@ class TopologyOptimizationDCOPF(StandardDCOPF):
             # Power line flows
             flows_out = [
                 model.line_flow[line_id] * model.x_line_or_1[line_id]
-                if model.sub_bus_ids[bus_id] == 1
+                if model.bus_ids_to_sub_bus_ids[bus_id] == 1
                 else model.line_flow[line_id] * model.x_line_or_2[line_id]
                 for line_id in model.line_set
                 if sub_id == model.line_ids_to_sub_ids[line_id][0]
@@ -298,7 +367,7 @@ class TopologyOptimizationDCOPF(StandardDCOPF):
 
             flows_in = [
                 model.line_flow[line_id] * model.x_line_ex_1[line_id]
-                if model.sub_bus_ids[bus_id] == 1
+                if model.bus_ids_to_sub_bus_ids[bus_id] == 1
                 else model.line_flow[line_id] * model.x_line_ex_2[line_id]
                 for line_id in model.line_set
                 if sub_id == model.line_ids_to_sub_ids[line_id][1]
@@ -355,16 +424,110 @@ class TopologyOptimizationDCOPF(StandardDCOPF):
                 self.model.x_line_ex_2[line_id].fixed = True
 
     def _build_constraint_line_status_switch(self):
-        def _constraint_line_disconnection(model, line_id):
+        def _constraint_line_status_switch(model, line_id):
+            if model.line_status[line_id]:
+                x_line_status = 1 - model.x_line_status_switch[line_id]
+            else:
+                x_line_status = model.x_line_status_switch[line_id]
+
             return (
                 model.x_line_or_1[line_id]
                 + model.x_line_or_2[line_id]
                 + model.x_line_ex_1[line_id]
                 + model.x_line_ex_2[line_id]
+                <= 2 * x_line_status
             )
 
-        self.model.constraint_line_disconnection = pyo.Constraint(
-            self.model.line_set, rule=_constraint_line_disconnection
+        def _constraint_max_line_status_switch(model):
+            return (
+                sum([model.x_line_status_switch[line_id] for line_id in model.line_set])
+                <= self.n_line_status_switch
+            )
+
+        # Auxiliary constraint for checking line status switch
+        self.model.constraint_line_status_switch = pyo.Constraint(
+            self.model.line_set, rule=_constraint_line_status_switch
+        )
+
+        # Limit the number of line status switches
+        self.model.constraint_max_line_status_switch = pyo.Constraint(
+            rule=_constraint_max_line_status_switch
+        )
+
+    def _build_constraint_substation_topology_switch(self):
+        def _constraint_substation_topology_switch(model, sub_id):
+            sub_gen_ids = model.sub_ids_to_gen_ids[sub_id]
+            sub_load_ids = model.sub_ids_to_load_ids[sub_id]
+            sub_line_or_ids = model.sub_ids_to_line_or_ids[sub_id]
+            sub_line_ex_ids = model.sub_ids_to_line_ex_ids[sub_id]
+
+            x_sub_gen_switch = [
+                model.x_gen[gen_id]
+                if model.gen_ids_to_sub_bus_ids[gen_id] == 1
+                else 1 - model.x_gen[gen_id]
+                for gen_id in sub_gen_ids
+            ]
+            x_sub_load_switch = [
+                model.x_load[load_id]
+                if model.load_ids_to_sub_bus_ids[load_id] == 1
+                else 1 - model.x_load[load_id]
+                for load_id in sub_load_ids
+            ]
+
+            x_sub_line_or_switch = []
+            for line_id in sub_line_or_ids:
+                if model.line_status[line_id]:
+                    if model.line_or_ids_to_sub_bus_ids[line_id] == 1:
+                        x_sub_line_or_switch.append(model.x_line_or_2[line_id])
+                    elif model.line_or_ids_to_sub_bus_ids[line_id] == 2:
+                        x_sub_line_or_switch.append(model.x_line_or_1[line_id])
+                    else:
+                        raise ValueError("No such substation bus.")
+                else:
+                    # If line is reconnected, then skip
+                    pass
+
+            x_sub_line_ex_switch = []
+            for line_id in sub_line_ex_ids:
+                if model.line_status[line_id]:
+                    if model.line_ex_ids_to_sub_bus_ids[line_id] == 1:
+                        x_sub_line_ex_switch.append(model.x_line_ex_2[line_id])
+                    elif model.line_ex_ids_to_sub_bus_ids[line_id] == 2:
+                        x_sub_line_ex_switch.append(model.x_line_ex_1[line_id])
+                    else:
+                        raise ValueError("No such substation bus.")
+                else:
+                    # If line is reconnected, then skip
+                    pass
+
+            return (
+                sum(x_sub_gen_switch)
+                + sum(x_sub_load_switch)
+                + sum(x_sub_line_or_switch)
+                + sum(x_sub_line_ex_switch)
+                <= model.sub_n_elements[sub_id]
+                * model.x_substation_topology_switch[sub_id]
+            )
+
+        def _constraint_max_substation_topology_switch(model):
+            return (
+                sum(
+                    [
+                        model.x_substation_topology_switch[sub_id]
+                        for sub_id in model.sub_set
+                    ]
+                )
+                <= self.n_substation_topology_switch
+            )
+
+        # Auxiliary constraint for checking substation topology reconfigurations
+        self.model.constraint_substation_topology_switch = pyo.Constraint(
+            self.model.sub_set, rule=_constraint_substation_topology_switch
+        )
+
+        # Limit the number of substation topology reconfigurations
+        self.model.constraint_max_substation_topology_switch = pyo.Constraint(
+            rule=_constraint_max_substation_topology_switch
         )
 
     """
@@ -400,6 +563,13 @@ class TopologyOptimizationDCOPF(StandardDCOPF):
             self._access_pyomo_variable(self.model.x_line_ex_2)
         )
 
+        self.x_line_status_switch = self._round_solution(
+            self._access_pyomo_variable(self.model.x_line_status_switch)
+        )
+        self.x_substation_topology_switch = self._round_solution(
+            self._access_pyomo_variable(self.model.x_substation_topology_switch)
+        )
+
         if verbose:
             self.model.display()
 
@@ -424,6 +594,8 @@ class TopologyOptimizationDCOPF(StandardDCOPF):
             "res_x_line_or_2": self.x_line_or_2,
             "res_x_line_ex_1": self.x_line_ex_1,
             "res_x_line_ex_2": self.x_line_ex_2,
+            "res_x_line_status_switch": self.x_line_status_switch,
+            "res_x_substation_topology_switch": self.x_substation_topology_switch,
             "res_gap": gap,
         }
         return result

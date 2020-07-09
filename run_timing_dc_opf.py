@@ -9,7 +9,7 @@ from lib.constants import Constants as Const
 
 
 save_dir = create_results_dir(Const.RESULTS_DIR)
-n_measurements = 200
+n_measurements = 20
 n_bins = 20
 time_measurements = dict()
 

@@ -1,4 +1,3 @@
-import itertools
 import json
 import os
 import warnings
@@ -12,62 +11,6 @@ def custom_formatwarning(msg, *args, **kwargs):
 
 
 warnings.formatwarning = custom_formatwarning
-
-
-def print_action(action):
-    representation = action.__str__()
-    representation = [
-        line.strip() for line in representation.split("\n")[1:] if "NOT" not in line
-    ]
-    if len(representation) > 0:
-        assert not action.is_ambiguous()[0]
-        print("action", "\n".join(representation))
-    else:
-        print("action: do nothing")
-
-
-def print_matrix(matrix, name=None, spacing=None, decimals=4):
-    if name:
-        if type(matrix) == np.ndarray:
-            shape = matrix.shape
-        else:
-            shape = len(matrix)
-
-        print(name, "=", str(shape), str(type(matrix)))
-
-    lines = []
-    matrix = np.squeeze(matrix)
-    matrix = np.atleast_2d(matrix)
-
-    max_value = np.max(np.abs(matrix))
-    if not spacing:
-        if max_value > 0 and not np.isinf(max_value):
-            spacing = max([int(np.log10(max_value)) + 5, 6])
-        else:
-            spacing = 6
-
-    for row in matrix:
-        line = ""
-        for cell in row:
-            if not np.isinf(np.abs(cell)):
-                if cell == 0 or np.abs(int(cell) - cell) < 1e-12:
-                    pattern = "{:>" + str(int(spacing)) + "}"
-                    line = line + pattern.format(int(cell))
-                else:
-                    pattern = "{:>" + str(int(spacing)) + "." + str(int(decimals)) + "}"
-                    line = line + pattern.format(cell)
-            else:
-                pattern = "{:>" + str(int(spacing)) + "}"
-                line = line + pattern.format(cell)
-
-        lines.append(line)
-    print("\n".join(lines))
-    print("\n")
-
-
-def print_trainable_variables(model):
-    for var in model.trainable_variables:
-        print(var.name, var.shape, np.linalg.norm(var.numpy()))
 
 
 def render_and_save(environment, save_dir=None, fig_title=None):
@@ -188,6 +131,18 @@ def print_topology_changes(
             print("Load topology changes:\n" + "\n".join(topology))
 
 
+def print_action(action):
+    representation = action.__str__()
+    representation = [
+        line.strip() for line in representation.split("\n")[1:] if "NOT" not in line
+    ]
+    if len(representation) > 0:
+        assert not action.is_ambiguous()[0]
+        print("action", "\n".join(representation))
+    else:
+        print("action: do nothing")
+
+
 def print_info(info, done, reward):
     is_illegal = info["is_illegal"]
     is_ambiguous = info["is_ambiguous"]
@@ -293,9 +248,6 @@ def describe_substation(subid, environment):
         if line in lines_ex
     ]
 
-    elements = list(itertools.chain(lines_or, lines_ex, gens, loads))
-    positions = list(itertools.chain(pos_lines_or, pos_lines_ex, pos_gens, pos_loads))
-
     if n_elements != len(gens) + len(loads) + len(lines_or) + len(lines_ex):
         raise ValueError("Element counts do not match.")
 
@@ -351,12 +303,19 @@ def print_environment_attributes(env):
                     print(f"env.{str(attr)} = {getattr(env, attr)}")
 
 
-class NumpyEncoder(json.JSONEncoder):
-    def default(self, obj):
-        if isinstance(obj, np.ndarray):
-            return obj.tolist()
-        return json.JSONEncoder.default(self, obj)
+def print_grid(grid):
+    print("\nGRID\n")
+    print(grid)
+    print("BUS\n" + grid.bus.to_string())
+    print("LINE\n" + grid.line.to_string())
+    print("GEN\n" + grid.gen.to_string())
+    print("LOAD\n" + grid.load.to_string())
 
-
-def print_dict(dictionary):
-    print(json.dumps(dictionary, indent=1, cls=NumpyEncoder))
+    if len(grid.ext_grid.index):
+        print("EXT GRID\n" + grid.ext_grid.to_string())
+    else:
+        print("EXT GRID: None")
+    if len(grid.trafo.index):
+        print("TRAFO\n" + grid.trafo.to_string())
+    else:
+        print("TRAFO: None")

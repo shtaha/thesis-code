@@ -24,7 +24,16 @@ class GridDCOPF(UnitConverter):
 
         # Initialize grid elements
         self.sub = pd.DataFrame(
-            columns=["id", "bus", "line_or", "line_ex", "gen", "load", "ext_grid"]
+            columns=[
+                "id",
+                "bus",
+                "line_or",
+                "line_ex",
+                "gen",
+                "load",
+                "ext_grid",
+                "n_elements",
+            ]
         )
         self.bus = pd.DataFrame(
             columns=[
@@ -46,6 +55,8 @@ class GridDCOPF(UnitConverter):
                 "sub_ex",
                 "bus_or",
                 "bus_ex",
+                "sub_bus_or",
+                "sub_bus_ex",
                 "b_pu",
                 "p_pu",
                 "max_p_pu",
@@ -54,13 +65,22 @@ class GridDCOPF(UnitConverter):
             ]
         )
         self.gen = pd.DataFrame(
-            columns=["id", "sub", "bus", "p_pu", "min_p_pu", "max_p_pu", "cost_pu"]
+            columns=[
+                "id",
+                "sub",
+                "bus",
+                "sub_bus",
+                "p_pu",
+                "min_p_pu",
+                "max_p_pu",
+                "cost_pu",
+            ]
         )
-        self.load = pd.DataFrame(columns=["id", "sub", "bus", "p_pu"])
+        self.load = pd.DataFrame(columns=["id", "sub", "bus", "sub_bus", "p_pu"])
 
         # External grid
         self.ext_grid = pd.DataFrame(
-            columns=["id", "sub", "bus", "p_pu", "min_p_pu", "max_p_pu"]
+            columns=["id", "sub", "bus", "sub_bus", "p_pu", "min_p_pu", "max_p_pu"]
         )
 
         # Transformer
@@ -71,6 +91,8 @@ class GridDCOPF(UnitConverter):
                 "sub_ex",
                 "bus_or",
                 "bus_ex",
+                "sub_bus_or",
+                "sub_bus_ex",
                 "b_pu",
                 "p_pu",
                 "max_p_pu",
@@ -284,7 +306,21 @@ class GridDCOPF(UnitConverter):
             self.sub["line_ex"][sub_id] = tuple(np.flatnonzero(line_ex_mask))
             self.sub["ext_grid"][sub_id] = tuple(np.flatnonzero(ext_grid_mask))
 
+        # Bus within a substation of each grid element
         self.bus["sub_bus"] = sub_bus
+        self.gen["sub_bus"] = self.bus["sub_bus"].values[self.gen["bus"].values]
+        self.load["sub_bus"] = self.bus["sub_bus"].values[self.load["bus"].values]
+        self.line["sub_bus_or"] = self.bus["sub_bus"].values[self.line["bus_or"].values]
+        self.line["sub_bus_ex"] = self.bus["sub_bus"].values[self.line["bus_ex"].values]
+        self.ext_grid["sub_bus"] = self.bus["sub_bus"].values[
+            self.ext_grid["bus"].values
+        ]
+        self.trafo["sub_bus_or"] = self.bus["sub_bus"].values[
+            self.trafo["bus_or"].values
+        ]
+        self.trafo["sub_bus_ex"] = self.bus["sub_bus"].values[
+            self.trafo["bus_ex"].values
+        ]
 
         for bus_id in self.bus.index:
             gen_mask = self.gen["bus"] == bus_id
@@ -298,6 +334,18 @@ class GridDCOPF(UnitConverter):
             self.bus["line_or"][bus_id] = tuple(np.flatnonzero(line_or_mask))
             self.bus["line_ex"][bus_id] = tuple(np.flatnonzero(line_ex_mask))
             self.bus["ext_grid"][bus_id] = tuple(np.flatnonzero(ext_grid_mask))
+
+        # Number of elements per substation (without external grids)
+        if self.case.env:
+            self.sub["n_elements"] = self.case.env.sub_info
+        else:
+            self.sub["n_elements"] = [
+                len(self.sub.line_or[sub_id])
+                + len(self.sub.line_ex[sub_id])
+                + len(self.sub.gen[sub_id])
+                + len(self.sub.load[sub_id])
+                for sub_id in self.sub.index
+            ]
 
         # Fill with 0 if no value
         self.line["p_pu"] = self.line["p_pu"].fillna(0)

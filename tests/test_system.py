@@ -42,6 +42,23 @@ class TestSystem(unittest.TestCase):
             time.sleep(0.1)
             self.assertTrue(True)
 
+    def test_solver_mosek(self):
+        if sys.platform == "win32":
+            model = self.create_pyomo_instance()
+            solver = pyo_opt.SolverFactory("mosek")
+
+            print(solver)
+            solver.solve(model, tee=True)
+            print(model.display())
+
+            time.sleep(0.1)
+            self.assertTrue(True)
+        else:
+            print("Mosek not installed.")
+
+            time.sleep(0.1)
+            self.assertTrue(True)
+
     def test_solver_glpk(self):
         model = self.create_pyomo_instance()
         solver = pyo_opt.SolverFactory("glpk")
