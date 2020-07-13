@@ -2,6 +2,7 @@ import numpy as np
 import pandas as pd
 
 from .unit_converter import UnitConverter
+from .topology_converter import TopologyConverter
 from ..data_utils import hot_to_indices
 from ..visualizer import describe_substation
 
@@ -17,7 +18,7 @@ def bus_names_to_sub_ids(bus_names):
     return sub_ids
 
 
-class GridDCOPF(UnitConverter):
+class GridDCOPF(UnitConverter, TopologyConverter):
     def __init__(self, case, base_unit_v, base_unit_p=1e6):
         UnitConverter.__init__(self, base_unit_v=base_unit_v, base_unit_p=base_unit_p)
         self.case = case
@@ -106,6 +107,12 @@ class GridDCOPF(UnitConverter):
         self.fixed_elements = None
 
         self.build_grid()
+
+        # If grid is part of grid2op environment, then construct a topology converter
+        if self.case.env:
+            TopologyConverter.__init__(self, env=case.env)
+            self._is_valid_grid()
+            self.topo_vect, self.line_status = self._get_topology_vector()
 
     def __str__(self):
         output = "Grid p. u.\n"
@@ -322,18 +329,7 @@ class GridDCOPF(UnitConverter):
             self.trafo["bus_ex"].values
         ]
 
-        for bus_id in self.bus.index:
-            gen_mask = self.gen["bus"] == bus_id
-            load_mask = self.load["bus"] == bus_id
-            line_or_mask = self.line["bus_or"] == bus_id
-            line_ex_mask = self.line["bus_ex"] == bus_id
-            ext_grid_mask = self.ext_grid["bus"] == bus_id
-
-            self.bus["gen"][bus_id] = tuple(np.flatnonzero(gen_mask))
-            self.bus["load"][bus_id] = tuple(np.flatnonzero(load_mask))
-            self.bus["line_or"][bus_id] = tuple(np.flatnonzero(line_or_mask))
-            self.bus["line_ex"][bus_id] = tuple(np.flatnonzero(line_ex_mask))
-            self.bus["ext_grid"][bus_id] = tuple(np.flatnonzero(ext_grid_mask))
+        self._update_buses()
 
         # Number of elements per substation (without external grids)
         if self.case.env:
@@ -367,6 +363,20 @@ class GridDCOPF(UnitConverter):
 
         # Substation topological symmetry
         self.fixed_elements = self.get_fixed_elements()
+
+    def print_grid(self):
+        print("\nGRID\n")
+        print("SUB\n" + self.sub.to_string())
+        print("BUS\n" + self.bus.to_string())
+        print("LINE\n" + self.line[~self.line["trafo"]].to_string())
+        print("GEN\n" + self.gen.to_string())
+        print("LOAD\n" + self.load.to_string())
+        if len(self.ext_grid.index):
+            print("EXT GRID\n" + self.ext_grid.to_string())
+        if len(self.trafo.index):
+            print("TRAFO\n" + self.trafo.to_string())
+        print(f"SLACK BUS: {self.slack_bus}")
+        print("FIXED ELEMENTS\n" + self.fixed_elements.to_string())
 
     def get_fixed_elements(self, verbose=False):
         """
@@ -428,14 +438,264 @@ class GridDCOPF(UnitConverter):
         )
         return fixed_elements
 
-    def print_grid(self):
-        print("\nGRID\n")
-        print("SUB\n" + self.sub.to_string())
-        print("BUS\n" + self.bus.to_string())
-        print("LINE\n" + self.line[~self.line["trafo"]].to_string())
-        print("GEN\n" + self.gen.to_string())
-        print("LOAD\n" + self.load.to_string())
-        print("EXT GRID\n" + self.ext_grid.to_string())
-        print("TRAFO\n" + self.trafo.to_string())
-        print(f"SLACK BUS: {self.slack_bus}")
-        print("FIXED ELEMENTS\n" + self.fixed_elements.to_string())
+    """
+        UPDATE GRID GIVEN AN OBSERVATION.
+    """
+
+    def update(self, obs_new, reset=False, verbose=False):
+        self._update_grid_topology(obs_new, reset=reset, verbose=verbose)
+        self._update_flows(obs_new)
+
+        self._count_topology_changes(
+            self.topo_vect,
+            self.line_status,
+            obs_new.topo_vect,
+            obs_new.line_status,
+            verbose=verbose,
+        )
+
+        self.topo_vect, self.line_status = self._get_topology_vector()
+
+        # Check if topology vector and line statuses are updated
+        assert np.equal(self.topo_vect, obs_new.topo_vect).all()
+        assert np.equal(self.line_status, obs_new.line_status).all()
+
+    def _update_injection_topology(
+        self, injections, inj_sub_bus, inj_str, reset=False, verbose=False
+    ):
+        for inj_id in injections.index:
+            sub_bus = injections["sub_bus"][inj_id]
+            bus = injections["bus"][inj_id]
+
+            sub_bus_new = inj_sub_bus[inj_id]
+            bus_new = self.sub["bus"][injections["sub"][inj_id]][sub_bus_new - 1]
+
+            if verbose and bus != bus_new:
+                print(
+                    "{:<35}{:<10}".format(
+                        f"{inj_str} {inj_id}:",
+                        f"{bus}({sub_bus})\t->\t{bus_new}({sub_bus_new})",
+                    )
+                )
+
+            if not reset:
+                assert (bus != bus_new) == (
+                    sub_bus != sub_bus_new
+                )  # If switch, then both have to change
+            if bus != bus_new and sub_bus != sub_bus_new:
+                injections["sub_bus"][inj_id] = sub_bus_new
+                injections["bus"][inj_id] = bus_new
+
+        assert np.equal(injections["sub_bus"], inj_sub_bus).all()
+
+    def _update_grid_topology(
+        self, obs_new, reset=False, verbose=False,
+    ):
+        """
+        Update grid given an observation.
+        """
+        (
+            gen_sub_bus,
+            load_sub_bus,
+            line_or_sub_bus,
+            line_ex_sub_bus,
+        ) = self._get_substation_buses(obs_new.topo_vect)
+        line_status = obs_new.line_status
+
+        # Update generators
+        self._update_injection_topology(
+            self.gen, gen_sub_bus, "GEN", reset=reset, verbose=verbose
+        )
+
+        # Update loads
+        self._update_injection_topology(
+            self.load, load_sub_bus, "LOAD", reset=reset, verbose=verbose
+        )
+
+        # for gen_id in self.gen.index:
+        #     sub_bus = self.gen["sub_bus"][gen_id]
+        #     bus = self.gen["bus"][gen_id]
+        #
+        #     sub_bus_new = gen_sub_bus[gen_id]
+        #     bus_new = self.sub["bus"][self.gen["sub"][gen_id]][sub_bus_new - 1]
+        #
+        #     if verbose and bus != bus_new:
+        #         print(
+        #             "{:<35}{:<10}".format(
+        #                 f"GEN {gen_id}:",
+        #                 f"{bus}({sub_bus})\t->\t{bus_new}({sub_bus_new})",
+        #             )
+        #         )
+        #
+        #     if not reset:
+        #         assert (bus != bus_new) == (
+        #             sub_bus != sub_bus_new
+        #         )  # If switch, then both have to change
+        #     if bus != bus_new and sub_bus != sub_bus_new:
+        #         self.gen["sub_bus"][gen_id] = sub_bus_new
+        #         self.gen["bus"][gen_id] = bus_new
+        #
+        # assert np.equal(self.gen["sub_bus"], gen_sub_bus).all()
+        #
+        # for load_id in self.load.index:
+        #     sub_bus = self.load["sub_bus"][load_id]
+        #     bus = self.load["bus"][load_id]
+        #
+        #     sub_bus_new = load_sub_bus[load_id]
+        #     bus_new = self.sub["bus"][self.load["sub"][load_id]][sub_bus_new - 1]
+        #
+        #     if verbose and bus != bus_new:
+        #         print(
+        #             "{:<35}{:<10}".format(
+        #                 f"LOAD {load_id}:",
+        #                 f"{bus}({sub_bus})\t->\t{bus_new}({sub_bus_new})",
+        #             )
+        #         )
+        #
+        #     if not reset:
+        #         assert (bus != bus_new) == (
+        #             sub_bus != sub_bus_new
+        #         )  # If switch, then both have to change
+        #     if bus != bus_new and sub_bus != sub_bus_new:
+        #         self.load["sub_bus"][load_id] = sub_bus_new
+        #         self.load["bus"][load_id] = bus_new
+        #
+        # assert np.equal(self.load["sub_bus"], load_sub_bus).all()
+
+        # Update power lines
+        for line_id in self.line.index:
+            status = self.line["status"][line_id]
+            sub_bus_or = self.line["sub_bus_or"][line_id]
+            bus_or = self.line["bus_or"][line_id]
+            sub_bus_ex = self.line["sub_bus_ex"][line_id]
+            bus_ex = self.line["bus_ex"][line_id]
+
+            status_new = line_status[line_id]
+
+            if status_new:
+                sub_bus_or_new = line_or_sub_bus[line_id]
+                bus_or_new = self.sub["bus"][self.line["sub_or"][line_id]][
+                    sub_bus_or_new - 1
+                ]
+                sub_bus_ex_new = line_ex_sub_bus[line_id]
+                bus_ex_new = self.sub["bus"][self.line["sub_ex"][line_id]][
+                    sub_bus_ex_new - 1
+                ]
+
+                if not reset:
+                    assert (bus_or != bus_or_new) == (
+                        sub_bus_or != sub_bus_or_new
+                    )  # If switch, then both have to change
+                    assert (bus_ex != bus_ex_new) == (
+                        sub_bus_ex != sub_bus_ex_new
+                    )  # If switch, then both have to chang
+
+                if bus_or != bus_or_new and sub_bus_or != sub_bus_or_new:
+                    if verbose:
+                        print(
+                            "{:<35}{:<10}".format(
+                                f"LINE OR {line_id}:",
+                                f"{bus_or}({sub_bus_or})\t->\t{bus_or_new}({sub_bus_or_new})",
+                            )
+                        )
+                    self.line["sub_bus_or"][line_id] = sub_bus_or_new
+                    self.line["bus_or"][line_id] = bus_or_new
+                if bus_ex != bus_ex_new and sub_bus_ex != sub_bus_ex_new:
+                    if verbose:
+                        print(
+                            "{:<35}{:<10}".format(
+                                f"LINE EX {line_id}:",
+                                f"{bus_ex}({sub_bus_ex})\t->\t{bus_ex_new}({sub_bus_ex_new})",
+                            )
+                        )
+                    self.line["sub_bus_ex"][line_id] = sub_bus_ex_new
+                    self.line["bus_ex"][line_id] = bus_ex_new
+
+            # In case of status switch
+            if status != status_new:
+                self.line["status"][line_id] = status_new
+
+                if verbose:
+                    print(
+                        "{:<35}{:<10}".format(
+                            f"LINE STATUS {line_id}:", f"{status}  ->  {status_new}"
+                        )
+                    )
+
+        # Update transformers
+        self.trafo["bus_or"] = self.line["bus_or"].values[self.line["trafo"]]
+        self.trafo["sub_bus_or"] = self.line["sub_bus_or"].values[self.line["trafo"]]
+        self.trafo["bus_ex"] = self.line["bus_ex"].values[self.line["trafo"]]
+        self.trafo["sub_bus_ex"] = self.line["sub_bus_ex"].values[self.line["trafo"]]
+
+        if not reset:
+            assert np.equal(
+                self.line["sub_bus_or"][line_status], line_or_sub_bus[line_status]
+            ).all()
+            assert np.equal(
+                self.line["sub_bus_ex"][line_status], line_ex_sub_bus[line_status]
+            ).all()
+            assert np.equal(self.line["status"], line_status).all()
+
+        # Update grid.bus data
+        self._update_buses()
+
+    def _update_flows(self, obs):
+        """
+        Update active power flows, productions and demands.
+        """
+
+        self.gen["p_pu"] = self.convert_mw_to_per_unit(obs.prod_p)
+        self.load["p_pu"] = self.convert_mw_to_per_unit(obs.load_p)
+        self.line["p_pu"] = self.convert_mw_to_per_unit(obs.p_or)
+        self.trafo["p_pu"] = self.convert_mw_to_per_unit(
+            obs.p_or[self.line["trafo"].values]
+        )
+
+    def _update_buses(self):
+        for bus_id in self.bus.index:
+            gen_mask = self.gen["bus"] == bus_id
+            load_mask = self.load["bus"] == bus_id
+            line_or_mask = self.line["bus_or"] == bus_id
+            line_ex_mask = self.line["bus_ex"] == bus_id
+            ext_grid_mask = self.ext_grid["bus"] == bus_id
+
+            self.bus["gen"][bus_id] = tuple(np.flatnonzero(gen_mask))
+            self.bus["load"][bus_id] = tuple(np.flatnonzero(load_mask))
+            self.bus["line_or"][bus_id] = tuple(np.flatnonzero(line_or_mask))
+            self.bus["line_ex"][bus_id] = tuple(np.flatnonzero(line_ex_mask))
+            self.bus["ext_grid"][bus_id] = tuple(np.flatnonzero(ext_grid_mask))
+
+    def _get_topology_vector(self):
+        gen_sub_bus = self.gen.sub_bus.values.copy()
+        load_sub_bus = self.load.sub_bus.values.copy()
+        line_or_sub_bus = self.line.sub_bus_or.values.copy()
+        line_ex_sub_bus = self.line.sub_bus_ex.values.copy()
+        line_status = self.line.status.values.copy()
+
+        topo_vect = self._construct_topology_vector(
+            gen_sub_bus, load_sub_bus, line_or_sub_bus, line_ex_sub_bus, line_status
+        )
+
+        return topo_vect, line_status
+
+    def _is_valid_grid(self):
+        assert self.n_sub == len(self.sub.index)
+        assert self.n_bus == len(self.bus.index)
+        assert self.n_gen == len(self.gen.index)
+        assert self.n_load == len(self.load.index)
+        assert self.n_line == len(self.line.index)
+
+        for sub_id, n_elements_sub in enumerate(self.env.sub_info):
+            (
+                gen_ids,
+                load_ids,
+                line_or_ids,
+                line_ex_ids,
+            ) = self._get_substation_element_ids(sub_id)
+
+            assert np.equal(gen_ids, self.sub.gen[sub_id]).all()
+            assert np.equal(load_ids, self.sub.load[sub_id]).all()
+            assert np.equal(line_or_ids, self.sub.line_or[sub_id]).all()
+            assert np.equal(line_ex_ids, self.sub.line_ex[sub_id]).all()
+            assert np.equal(self.env.sub_info, self.sub.n_elements).all()

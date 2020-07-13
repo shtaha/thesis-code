@@ -24,6 +24,7 @@
 
 
 ## Tests
+    black . --exclude="./venv"
     
     python -m unittest discover <directory>
     python -m unittest discover tests

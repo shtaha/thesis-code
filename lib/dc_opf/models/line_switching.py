@@ -179,8 +179,8 @@ class LineSwitchingDCOPF(StandardDCOPF):
         SOLVE FUNCTIONS.
     """
 
-    def solve(self, verbose=False, tol=1e-9):
-        self._solve(verbose=verbose, tol=tol)
+    def solve(self, verbose=False, tol=1e-9, time_limit=20):
+        self._solve(verbose=verbose, tol=tol, time_limit=20)
 
         # Parse Gurobi log for additional information
         gap = parse_gurobi_log(self.solver._log)["gap"]

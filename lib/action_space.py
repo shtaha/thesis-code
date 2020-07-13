@@ -195,7 +195,7 @@ class ActionSpaceGenerator(object):
             )
 
         _, n_valid, n_disconnection = self.get_number_topologies_set_sub_id(
-            sub_id, n_bus=n_bus, verbose=True
+            sub_id, n_bus=n_bus, verbose=verbose
         )
 
         # If there are only 2 or less elements per substation, then there is no action possible, despite one topology

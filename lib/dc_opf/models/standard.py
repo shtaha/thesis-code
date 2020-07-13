@@ -528,8 +528,8 @@ class StandardDCOPF(UnitConverter, PyomoMixin):
 
         self.solver.solve(self.model, tee=verbose, options=options)
 
-    def solve(self, verbose=False, tol=1e-9):
-        self._solve(verbose=verbose, tol=tol)
+    def solve(self, verbose=False, tol=1e-9, time_limit=20):
+        self._solve(verbose=verbose, tol=tol, time_limit=20)
 
         # Save standard DC-OPF variable results
         self._solve_save()

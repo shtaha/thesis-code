@@ -1,6 +1,7 @@
 import itertools
 import time
 import unittest
+import sys
 
 import numpy as np
 import pandas as pd
@@ -178,6 +179,11 @@ class TestStandardDCOPF(unittest.TestCase):
         self.runner_opf(model, verbose=False)
 
     def test_l2rpn2020(self):
+        if sys.platform != "win32":
+            print("L2RPN 2020 not available.")
+            self.assertTrue(True)
+            return
+
         case = load_case("l2rpn2020")
         grid = GridDCOPF(
             case, base_unit_v=case.base_unit_v, base_unit_p=case.base_unit_p
@@ -427,6 +433,11 @@ class TestLineSwitchingDCOPF(unittest.TestCase):
         self.runner_opf_line_switching(model, grid, n_line_status_changes, verbose=True)
 
     def test_l2rpn2020_line_switching(self):
+        if sys.platform != "win32":
+            print("L2RPN 2020 not available.")
+            self.assertTrue(True)
+            return
+
         n_line_status_changes = 1
 
         case = load_case("l2rpn2020")

@@ -9,3 +9,4 @@ from .cases import (
 )
 from .grid import GridDCOPF, bus_names_to_sub_ids
 from .models import StandardDCOPF, LineSwitchingDCOPF, TopologyOptimizationDCOPF
+from .topology_converter import TopologyConverter

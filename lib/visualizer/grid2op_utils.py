@@ -150,11 +150,15 @@ def print_info(info, done, reward):
     # is_illegal_reco = info["is_illegal_reco"]
     exceptions = info["exception"]
 
-    print(f"Done: {done} with Reward {reward}")
-    print(f"Action: ILLEGAL = {is_illegal} AMBIGUOUS {is_ambiguous}")
+    print("{:<35}{}\t{}".format("REWARD:", str(reward), str(done)))
+    print(
+        "{:<35}{}\t{}".format(
+            "ACTION:", f"ILLEGAL {is_illegal}", f"AMBIGUOUS {is_ambiguous}"
+        )
+    )
     if exceptions:
         for exception in exceptions:
-            warnings.warn(f"Exception raised: {exception}")
+            warnings.warn("{:<35}{}".format(f"EXCEPTION:", str(exception)))
 
 
 def print_rho(observation):
@@ -252,9 +256,9 @@ def describe_substation(subid, environment):
         raise ValueError("Element counts do not match.")
 
     print(f"substation id: {subid} {n_elements}")
-    print(f"ids: lines_or {lines_or} lines_ex {lines_ex} gens {gens} loads {loads}")
+    print(f"ids: gens {gens} loads {loads} lines_or {lines_or} lines_ex {lines_ex}")
     print(
-        f"pos: lines_or {pos_lines_or} lines_ex {pos_lines_ex} gens {pos_gens} loads {pos_loads}"
+        f"pos: gens {pos_gens} loads {pos_loads} lines_or {pos_lines_or} lines_ex {pos_lines_ex}"
     )
 
 
@@ -287,20 +291,6 @@ def describe_environment(environment):
         )
         print(f"line_or_to_subid {line_or_to_subid}")
         print(f"line_ex_to_subid {line_ex_to_subid}\n")
-
-
-def print_environment_attributes(env):
-    for attr in dir(env):
-        if str(attr)[:1] != "_":
-            if any(
-                name in str(attr)
-                for name in ["line", "gen", "bus", "sub", "load", "dim"]
-            ):
-                if not any(
-                    name in str(attr)
-                    for name in ["helper", "get", "opponent", "space", "action"]
-                ):
-                    print(f"env.{str(attr)} = {getattr(env, attr)}")
 
 
 def print_grid(grid):

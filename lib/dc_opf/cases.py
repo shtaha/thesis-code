@@ -585,6 +585,7 @@ class OPFCase118(OPFAbstractCase, UnitConverter):
     """
     Test case for power flow computation.
     Found at: https://pandapower.readthedocs.io/en/v2.2.2/networks/power_system_test_cases.html#case-118.
+    Not used, neither tested.
     """
 
     def __init__(self):

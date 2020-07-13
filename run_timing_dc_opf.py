@@ -9,7 +9,7 @@ from lib.constants import Constants as Const
 
 
 save_dir = create_results_dir(Const.RESULTS_DIR)
-n_measurements = 20
+n_measurements = 200
 n_bins = 20
 time_measurements = dict()
 
@@ -26,6 +26,7 @@ for case_name in ["l2rpn2020"]:
     time_measurements[case_name] = list()
 
     for i in range(n_measurements + 1):
+        print(f"Measurement: {i}")
         start_total = timer()
         start_load = timer()
         case = load_case(case_name)
@@ -58,7 +59,7 @@ for case_name in ["l2rpn2020"]:
         time_build = timer() - start_build
 
         start_solve = timer()
-        model.solve(tol=0.01, verbose=True)
+        model.solve(tol=0.01, verbose=False)
         time_solve = timer() - start_solve
 
         time_total = timer() - start_total

@@ -22,12 +22,6 @@ def parse_arguments():
         "--action_cls", default="topology_dispatch", type=str, help="Action class used."
     )
     parser.add_argument(
-        "--n_bus",
-        default=2,
-        type=int,
-        help="Number of buses per substation. Tested only for 2.",
-    )
-    parser.add_argument(
         "--n_redispatch",
         default=4,
         type=int,
@@ -85,7 +79,7 @@ if __name__ == "__main__":
     (
         actions_topology_set,
         actions_topology_set_info,
-    ) = action_generator.get_all_unitary_topologies_set(n_bus=args.n_bus, verbose=False)
+    ) = action_generator.get_all_unitary_topologies_set(verbose=False)
     (
         actions_topology_set_filtered,
         actions_topology_set_filtered_info,
@@ -96,9 +90,7 @@ if __name__ == "__main__":
     (
         actions_line_set,
         actions_line_set_info,
-    ) = action_generator.get_all_unitary_line_status_set(
-        n_bus=args.n_bus, verbose=args.verbose
-    )
+    ) = action_generator.get_all_unitary_line_status_set(verbose=args.verbose)
 
     (
         actions_line_change,
