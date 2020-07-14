@@ -49,6 +49,7 @@ actions_do_nothing = env.action_space({})
 """
     Initialize topology converter.
 """
+# TODO: Maintenance support, CHECK constraints
 
 np.random.seed(1)
 obs = env.reset()
@@ -80,9 +81,11 @@ for t in range(10):
     elif t == 3:
         action_idx = np.random.randint(0, len(actions_topology_set_filtered))
         action = actions_topology_set_filtered[action_idx]
-        model.print_model()
     else:
         action = actions_do_nothing
+
+    # model.print_model()
+    # input("Press Enter to continue...")
 
     """
         Act.
@@ -108,3 +111,4 @@ for t in range(10):
 
     if t == 3:
         break
+

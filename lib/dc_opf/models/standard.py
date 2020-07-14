@@ -12,7 +12,7 @@ from ..unit_converter import UnitConverter
 
 class StandardDCOPF(UnitConverter, PyomoMixin):
     def __init__(
-        self, name, grid, grid_backend, solver_name="mosek", verbose=False, **kwargs
+        self, name, grid, grid_backend, solver_name="glpk", verbose=False, **kwargs
     ):
         UnitConverter.__init__(self, **kwargs)
         if verbose:
@@ -492,6 +492,8 @@ class StandardDCOPF(UnitConverter, PyomoMixin):
     def _solve(self, verbose=False, tol=1e-9, time_limit=20):
         """
         Set options to solver and solve the MIP.
+        Compatible with Gurobi, GLPK, and Mosek.
+
         Gurobi parameters: https://www.gurobi.com/documentation/9.0/refman/parameters.html
         """
         if self.solver_name == "gurobi":
@@ -503,9 +505,14 @@ class StandardDCOPF(UnitConverter, PyomoMixin):
         else:
             options = {}
 
-        self.solver_status = self.solver.solve(
-            self.model, tee=verbose, options=options, warmstart=True
-        )
+        if self.solver_name != "glpk":
+            self.solver_status = self.solver.solve(
+                self.model, tee=verbose, options=options, warmstart=True
+            )
+        else:
+            self.solver_status = self.solver.solve(
+                self.model, tee=verbose, options=options
+            )
 
     def solve(self, verbose=False, tol=1e-9, time_limit=20):
         self._solve(verbose=verbose, tol=tol, time_limit=20)
