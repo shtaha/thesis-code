@@ -12,7 +12,7 @@ from ..unit_converter import UnitConverter
 
 class StandardDCOPF(UnitConverter, PyomoMixin):
     def __init__(
-        self, name, grid, grid_backend, solver_name="glpk", verbose=False, **kwargs
+        self, name, grid, grid_backend, solver_name="mosek", verbose=False, **kwargs
     ):
         UnitConverter.__init__(self, **kwargs)
         if verbose:

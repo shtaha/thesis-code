@@ -5,7 +5,6 @@ from lib.dc_opf import GridDCOPF, load_case, TopologyOptimizationDCOPF
 from lib.visualizer import (
     describe_environment,
     print_info,
-    print_dict,
     print_parameters,
 )
 
@@ -111,4 +110,3 @@ for t in range(10):
 
     if t == 3:
         break
-

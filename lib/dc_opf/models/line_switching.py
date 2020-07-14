@@ -1,8 +1,7 @@
+import numpy as np
 import pyomo.environ as pyo
 
-from lib.data_utils import parse_gurobi_log
 from .standard import StandardDCOPF
-import numpy as np
 
 
 class LineSwitchingDCOPF(StandardDCOPF):

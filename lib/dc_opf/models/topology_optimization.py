@@ -2,7 +2,6 @@ import numpy as np
 import pyomo.environ as pyo
 
 from .standard import StandardDCOPF
-from ...data_utils import parse_gurobi_log
 
 
 class TopologyOptimizationDCOPF(StandardDCOPF):
