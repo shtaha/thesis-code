@@ -51,7 +51,7 @@ class LineSwitchingDCOPF(StandardDCOPF):
     def _build_variables(self):
         self._build_variables_standard_generators()  # Generator productions and bounds
 
-        self._build_variable_standard_delta()  # Bus voltage angles and bounds
+        self._build_variables_standard_delta()  # Bus voltage angles and bounds
 
         if len(self.ext_grid.index):
             self._build_variables_standard_ext_grids()  # External grid power injections
@@ -174,6 +174,46 @@ class LineSwitchingDCOPF(StandardDCOPF):
         self.model.constraint_max_line_status_changes = pyo.Constraint(
             rule=_constraint_max_line_status_change
         )
+
+    """
+        OBJECTIVE.    
+    """
+
+    def _build_objective(self, gen_cost=True, line_margin=False):
+        # Minimize generator costs
+        def _objective_gen_p(model):
+            return sum(
+                [
+                    model.gen_p[gen_id] * model.gen_costs[gen_id]
+                    for gen_id in model.gen_set
+                ]
+            )
+
+        # Maximize line margins
+        def _objective_line_margin(model):
+            return sum(
+                [
+                    model.line_flow[line_id] ** 2 / model.line_flow_max[line_id] ** 2
+                    for line_id in model.line_set
+                ]
+            )
+
+        if gen_cost and line_margin and self.solver_name == "gurobi":
+
+            def _objective(model):
+                return _objective_gen_p(model) + _objective_line_margin(model)
+
+        elif line_margin and self.solver_name == "gurobi":
+
+            def _objective(model):
+                return _objective_line_margin(model)
+
+        else:
+
+            def _objective(model):
+                return _objective_gen_p(model)
+
+        self.model.objective = pyo.Objective(rule=_objective, sense=pyo.minimize)
 
     """
         SOLVE FUNCTIONS.

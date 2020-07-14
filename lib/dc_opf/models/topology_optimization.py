@@ -33,7 +33,16 @@ class TopologyOptimizationDCOPF(StandardDCOPF):
         self.x_line_status_switch = None
         self.x_substation_topology_switch = None
 
-    def build_model(self, line_disconnection=True, gen_cost=False, line_margin=True):
+    def build_model(
+        self,
+        line_disconnection=True,
+        symmetry=True,
+        switching_limits=True,
+        cooldown=True,
+        gen_cost=False,
+        line_margin=False,
+        min_rho=True,
+    ):
         # Model
         self.model = pyo.ConcreteModel(f"{self.name}")
 
@@ -52,14 +61,20 @@ class TopologyOptimizationDCOPF(StandardDCOPF):
         self._build_parameters()
 
         # Variables
-        self._build_variables()
+        self._build_variables(min_rho=min_rho)
 
         # Constraints
-        self._build_constraints(line_disconnection=line_disconnection)
+        self._build_constraints(
+            line_disconnection=line_disconnection,
+            symmmetry=symmetry,
+            switching_limits=switching_limits,
+            cooldown=cooldown,
+            min_rho=min_rho,
+        )
 
         # Objective
         self._build_objective(
-            gen_cost=gen_cost, line_margin=line_margin
+            gen_cost=gen_cost, line_margin=line_margin, min_rho=min_rho
         )  # Objective to be optimized.
 
     """
@@ -189,13 +204,16 @@ class TopologyOptimizationDCOPF(StandardDCOPF):
         VARIABLES.
     """
 
-    def _build_variables(self):
+    def _build_variables(self, min_rho=True):
         self._build_variables_standard_generators()  # Generator productions and bounds
-        self._build_variable_standard_delta()  # Bus voltage angles and bounds
-        self._build_variable_standard_line()  # Power line flows
+        self._build_variables_standard_delta()  # Bus voltage angles and bounds
+        self._build_variables_standard_line()  # Power line flows
 
         if len(self.ext_grid.index):
             self._build_variables_standard_ext_grids()
+
+        if min_rho:
+            self._build_variable_min_rho()
 
         # Power line OR bus switching
         self.model.x_line_or_1 = pyo.Var(
@@ -278,11 +296,25 @@ class TopologyOptimizationDCOPF(StandardDCOPF):
             ),
         )
 
+    def _build_variable_min_rho(self):
+        self.model.min_rho = pyo.Var(
+            domain=pyo.NonNegativeReals,
+            bounds=(0.0, 1.0),
+            initialize=np.max(np.abs(self.line.p_pu) / self.line.max_p_pu),
+        )
+
     """
         CONSTRAINTS.
     """
 
-    def _build_constraints(self, line_disconnection=True):
+    def _build_constraints(
+        self,
+        line_disconnection=True,
+        symmmetry=True,
+        switching_limits=True,
+        cooldown=True,
+        min_rho=True,
+    ):
         self._build_constraint_line_flows()  # Power flow definition
         self._build_constraint_bus_balance()  # Bus power balance
         self._build_constraint_line_or()
@@ -292,9 +324,18 @@ class TopologyOptimizationDCOPF(StandardDCOPF):
             self._build_constraint_line_disconnection()
 
         # Constraints to eliminate symmetric topologies
-        self._build_constraint_symmetry()
-        self._build_constraint_line_status_switch()
-        self._build_constraint_substation_topology_switch()
+        if symmmetry:
+            self._build_constraint_symmetry()
+
+        if switching_limits:
+            self._build_constraint_line_status_switch()
+            self._build_constraint_substation_topology_switch()
+
+        if cooldown:
+            pass
+
+        if min_rho:
+            self._build_constraint_min_rho()
 
     def _build_constraint_line_flows(self):
         # Power flow equation with topology switching
@@ -529,6 +570,66 @@ class TopologyOptimizationDCOPF(StandardDCOPF):
         self.model.constraint_max_substation_topology_switch = pyo.Constraint(
             rule=_constraint_max_substation_topology_switch
         )
+
+    def _build_constraint_min_rho(self):
+        def _constraint_min_rho_upper(model, line_id):
+            return (
+                model.line_flow[line_id] <= model.line_flow_max[line_id] * model.min_rho
+            )
+
+        def _constraint_min_rho_lower(model, line_id):
+            return (
+                -model.line_flow_max[line_id] * model.min_rho
+                <= model.line_flow[line_id]
+            )
+
+        self.model.constraint_min_rho_upper = pyo.Constraint(
+            self.model.line_set, rule=_constraint_min_rho_upper
+        )
+
+        self.model.constraint_min_rho_lower = pyo.Constraint(
+            self.model.line_set, rule=_constraint_min_rho_lower
+        )
+
+    """
+        OBJECTIVE.
+    """
+
+    def _build_objective(self, gen_cost=False, line_margin=False, min_rho=True):
+        # Minimize generator costs
+        def _objective_gen_p(model):
+            return sum(
+                [
+                    model.gen_p[gen_id] * model.gen_costs[gen_id]
+                    for gen_id in model.gen_set
+                ]
+            )
+
+        # Maximize line margins
+        def _objective_line_margin(model):
+            return sum(
+                [
+                    model.line_flow[line_id] ** 2 / model.line_flow_max[line_id] ** 2
+                    for line_id in model.line_set
+                ]
+            )
+
+        # Maximize line margins
+        def _objective_min_rho(model):
+            return model.min_rho
+
+        def _objective(model):
+            if min_rho:
+                return _objective_min_rho(model)
+            else:
+                if gen_cost and line_margin:
+                    return _objective_gen_p(model) + _objective_line_margin(model)
+                elif line_margin:
+                    return _objective_line_margin(model)
+                else:
+                    return _objective_gen_p(model)
+
+        self.model.objective = pyo.Objective(rule=_objective, sense=pyo.minimize)
 
     """
         SOLVE FUNCTIONS.

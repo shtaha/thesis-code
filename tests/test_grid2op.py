@@ -1,11 +1,11 @@
+import sys
 import time
 import unittest
-import sys
 
 import grid2op
 
-from lib.visualizer import describe_environment, print_grid
 from lib.dc_opf import OPFRTECase5, OPFL2RPN2019, OPFL2RPN2020
+from lib.visualizer import describe_environment, print_grid
 
 
 class TestGrid2op(unittest.TestCase):

@@ -1,12 +1,13 @@
 import itertools
+import sys
 import time
 import unittest
-import sys
 
 import numpy as np
-import pandas as pd
 import pandapower as pp
+import pandas as pd
 
+from lib.data_utils import indices_to_hot, hot_to_indices
 from lib.dc_opf import (
     StandardDCOPF,
     LineSwitchingDCOPF,
@@ -14,7 +15,6 @@ from lib.dc_opf import (
     GridDCOPF,
     load_case,
 )
-from lib.data_utils import indices_to_hot, hot_to_indices
 
 
 class TestStandardDCOPF(unittest.TestCase):
@@ -501,13 +501,19 @@ class TestTopologyOptimizationDCOPF(unittest.TestCase):
         return cond_line_or and cond_line_ex and cond_line_disconnected
 
     def runner_opf_topology_optimization(
-        self, model, gen_cost=True, line_margin=True, verbose=False, tol=1e-2
+        self,
+        model,
+        gen_cost=True,
+        line_margin=True,
+        min_rho=False,
+        verbose=False,
+        tol=1e-2,
     ):
         np.random.seed(0)
         model.gen["cost_pu"] = np.random.uniform(1.0, 5.0, (model.grid.gen.shape[0],))
-        model.build_model(gen_cost=gen_cost, line_margin=line_margin)
+        model.build_model(gen_cost=gen_cost, line_margin=line_margin, min_rho=min_rho)
 
-        if verbose:
+        if verbose or True:
             model.print_model()
 
         if model.solver_name != "gurobi":

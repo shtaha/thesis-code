@@ -82,7 +82,7 @@ class StandardDCOPF(UnitConverter, PyomoMixin):
         self._build_constraints()
 
         # Objective
-        self._build_objective()  # Objective to be optimized.
+        self._build_objective_standard()  # Objective to be optimized.
 
     """
         INDEXED SETS.
@@ -247,14 +247,14 @@ class StandardDCOPF(UnitConverter, PyomoMixin):
     """
 
     def _build_variables(self):
-        self._build_variable_standard_delta()  # Bus voltage angles and bounds
-        self._build_variable_standard_line()  # Power line flows and bounds
+        self._build_variables_standard_delta()  # Bus voltage angles and bounds
+        self._build_variables_standard_line()  # Power line flows and bounds
         self._build_variables_standard_generators()  # Generator productions and bounds
 
         if len(self.ext_grid.index):
             self._build_variables_standard_ext_grids()
 
-    def _build_variable_standard_delta(self):
+    def _build_variables_standard_delta(self):
         # Bus voltage angle
         def _bounds_delta(model, bus_id):
             if bus_id == pyo.value(model.slack_bus_id):
@@ -271,7 +271,7 @@ class StandardDCOPF(UnitConverter, PyomoMixin):
             ),
         )
 
-    def _build_variable_standard_line(self):
+    def _build_variables_standard_line(self):
         # Line power flows
         def _bounds_flow_max(model, line_id):
             if model.line_status[line_id]:
@@ -378,39 +378,15 @@ class StandardDCOPF(UnitConverter, PyomoMixin):
         OBJECTIVE.
     """
 
-    def _build_objective(self, gen_cost=True, line_margin=False):
+    def _build_objective_standard(self):
         # Minimize generator costs
-        def _objective_gen_p(model):
+        def _objective(model):
             return sum(
                 [
                     model.gen_p[gen_id] * model.gen_costs[gen_id]
                     for gen_id in model.gen_set
                 ]
             )
-
-        # Maximize line margins
-        def _objective_line_margin(model):
-            return sum(
-                [
-                    model.line_flow[line_id] ** 2 / model.line_flow_max[line_id] ** 2
-                    for line_id in model.line_set
-                ]
-            )
-
-        if gen_cost and line_margin and self.solver_name == "gurobi":
-
-            def _objective(model):
-                return _objective_gen_p(model) + _objective_line_margin(model)
-
-        elif line_margin and self.solver_name == "gurobi":
-
-            def _objective(model):
-                return _objective_line_margin(model)
-
-        else:
-
-            def _objective(model):
-                return _objective_gen_p(model)
 
         self.model.objective = pyo.Objective(rule=_objective, sense=pyo.minimize)
 
@@ -512,7 +488,7 @@ class StandardDCOPF(UnitConverter, PyomoMixin):
         )
         self.grid_backend.res_trafo["max_p_pu"] = self.grid.trafo["max_p_pu"]
 
-    def _solve(self, verbose=False, tol=1e-9, time_limit=200):
+    def _solve(self, verbose=False, tol=1e-9, time_limit=20):
         """
         Set options to solver and solve the MIP.
         Gurobi parameters: https://www.gurobi.com/documentation/9.0/refman/parameters.html

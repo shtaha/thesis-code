@@ -666,7 +666,7 @@ class OPFL2RPN2019(OPFAbstractCase, UnitConverter, OPFCaseMixin):
     def __init__(self, env=None):
         UnitConverter.__init__(self, base_unit_p=1e6, base_unit_v=1e5)
 
-        self.name = "Case L2RPN 2019"
+        self.name = "Case L2RPN 2019 - IEEE 14"
 
         if not env:
             self.env = grid2op.make(dataset="l2rpn_2019")
@@ -704,7 +704,7 @@ class OPFL2RPN2020(OPFAbstractCase, UnitConverter, OPFCaseMixin):
     def __init__(self, env=None):
         UnitConverter.__init__(self, base_unit_p=1e6, base_unit_v=138000.0)
 
-        self.name = "Case L2RPN 2020 WCCI"
+        self.name = "Case L2RPN 2020 WCCI - IEEE 118"
 
         if not env:
             self.env = grid2op.make(dataset="l2rpn_wcci_2020")

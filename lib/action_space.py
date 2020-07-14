@@ -59,7 +59,7 @@ class ActionSpaceGenerator(object):
     """
 
     def get_all_unitary_topologies_set(
-        self, n_bus=2, verbose=False
+        self, n_bus=2, filter_one_line_disconnections=True, verbose=False,
     ) -> Tuple[List[TopologyAction], List[Dict]]:
         """
         Returns a list of valid topology substation splitting actions. Currently, it returns
@@ -86,6 +86,12 @@ class ActionSpaceGenerator(object):
 
         # Check if every actions has it corresponding information.
         assert len(actions) == len(actions_info)
+
+        if filter_one_line_disconnections:
+            actions, actions_info = self.filter_one_line_disconnections(
+                actions, actions_info
+            )
+
         return actions, actions_info
 
     def get_all_unitary_topologies_set_sub_id(

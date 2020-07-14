@@ -41,9 +41,13 @@ actions_do_nothing = env.action_space({})
 
 np.random.seed(1)
 obs = env.reset()
-topo_vect = obs.topo_vect
-line_status = obs.line_status
 for t in range(10):
+    topo_vect = obs.topo_vect
+    line_status = obs.line_status
+
+    """
+        Action selection.
+    """
     if t == 0:
         action_idx = np.random.randint(0, len(actions_topology_set_filtered))
         action = actions_topology_set_filtered[action_idx]
@@ -57,14 +61,14 @@ for t in range(10):
     else:
         action = actions_do_nothing
 
+    """
+        Act.
+    """
+    obs_next, reward, done, info = env.step(action)
+
     print(f"\n\nSTEP {t}")
     print(action)
-
     print("{:<35}{}\t{}".format("ENV", str(topo_vect), str(line_status.astype(int))))
-
-    obs_next, reward, done, info = env.step(action)
-    topo_vect_next = obs_next.topo_vect
-    line_status_next = obs_next.line_status
     print_info(info, done, reward)
 
     """
@@ -72,15 +76,11 @@ for t in range(10):
     """
     grid.update(obs_next, reset=False, verbose=True)
 
-    topo_vect = topo_vect_next
-    line_status = line_status_next
     obs = obs_next
 
     if done:
         print("\n\nDONE")
         obs = env.reset()
-        topo_vect_next = obs.topo_vect
-        line_status_next = obs.line_status
         grid.update(obs_next, reset=True, verbose=True)
 
     if t == 3:
