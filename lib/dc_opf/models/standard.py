@@ -12,7 +12,7 @@ from ..unit_converter import UnitConverter
 
 class StandardDCOPF(UnitConverter, PyomoMixin):
     def __init__(
-        self, name, grid, grid_backend, solver_name="gurobi", verbose=False, **kwargs
+        self, name, grid, grid_backend, solver_name="mosek", verbose=False, **kwargs
     ):
         UnitConverter.__init__(self, **kwargs)
         if verbose:
@@ -37,6 +37,7 @@ class StandardDCOPF(UnitConverter, PyomoMixin):
 
         self.solver_name = solver_name
         self.solver = pyo_opt.SolverFactory(solver_name)
+        self.solver_status = None
 
         # Results
         self.res_cost = 0.0
@@ -502,7 +503,9 @@ class StandardDCOPF(UnitConverter, PyomoMixin):
         else:
             options = {}
 
-        self.solver.solve(self.model, tee=verbose, options=options)
+        self.solver_status = self.solver.solve(
+            self.model, tee=verbose, options=options, warmstart=True
+        )
 
     def solve(self, verbose=False, tol=1e-9, time_limit=20):
         self._solve(verbose=verbose, tol=tol, time_limit=20)

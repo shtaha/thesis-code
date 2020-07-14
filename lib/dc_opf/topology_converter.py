@@ -122,7 +122,7 @@ class TopologyConverter:
     def _count_topology_changes(
         self, topo_vect, line_status, topo_vect_next, line_status_next, verbose=False
     ):
-        n_substation_topology_switch = 0
+        n_max_sub_changed = 0
         for sub_id in range(self.n_sub):
             sub_topo_vect = self._get_substation_topology_vector(topo_vect, sub_id)
             sub_topo_vect_next = self._get_substation_topology_vector(
@@ -144,16 +144,16 @@ class TopologyConverter:
             switch = np.greater(
                 np.abs(sub_topo_vect - sub_topo_vect_next).sum(), 0
             ).astype(int)
-            n_substation_topology_switch += switch
+            n_max_sub_changed += switch
 
-        n_line_status_switch = np.logical_xor(line_status, line_status_next).sum()
+        n_max_line_status_changed = np.logical_xor(line_status, line_status_next).sum()
 
         if verbose:
-            print("{:<35}{:<10}".format("LINE STATUS CHANGES", n_line_status_switch))
             print(
-                "{:<35}{:<10}".format(
-                    "SUBSTATION TOPOLOGY CHANGES:", n_substation_topology_switch
-                )
+                "{:<35}{:<10}".format("LINE STATUS CHANGES", n_max_line_status_changed)
+            )
+            print(
+                "{:<35}{:<10}".format("SUBSTATION TOPOLOGY CHANGES:", n_max_sub_changed)
             )
 
     def convert_mip_to_topology_vector(self, mip_solution):

@@ -2,6 +2,7 @@ import pyomo.environ as pyo
 
 from lib.data_utils import parse_gurobi_log
 from .standard import StandardDCOPF
+import numpy as np
 
 
 class LineSwitchingDCOPF(StandardDCOPF):
@@ -10,15 +11,15 @@ class LineSwitchingDCOPF(StandardDCOPF):
         name,
         grid,
         grid_backend,
-        n_line_status_changes=1,
-        solver_name="gurobi",
+        n_max_line_status_changed=1,
+        solver_name="mosek",
         verbose=False,
         **kwargs,
     ):
         super().__init__(name, grid, grid_backend, solver_name, verbose, **kwargs)
 
         # Limit on the number of line status changes
-        self.n_line_status_changes = n_line_status_changes
+        self.n_max_line_status_changed = n_max_line_status_changed
 
         # Optimal line status
         self.x = None
@@ -169,7 +170,7 @@ class LineSwitchingDCOPF(StandardDCOPF):
                 for line_id in model.line_set
             ]
 
-            return sum(line_status_change) <= self.n_line_status_changes
+            return sum(line_status_change) <= self.n_max_line_status_changed
 
         self.model.constraint_max_line_status_changes = pyo.Constraint(
             rule=_constraint_max_line_status_change
@@ -222,10 +223,15 @@ class LineSwitchingDCOPF(StandardDCOPF):
     def solve(self, verbose=False, tol=1e-9, time_limit=20):
         self._solve(verbose=verbose, tol=tol, time_limit=20)
 
-        # Parse Gurobi log for additional information
-        gap = parse_gurobi_log(self.solver._log)["gap"]
-        if gap < 1e-4:
-            gap = 1e-4
+        # Solution status
+        solution_status = self.solver_status["Solver"][0]["Termination condition"]
+
+        # Duality gap
+        lower_bound = self.solver_status["Problem"][0]["Lower bound"]
+        upper_bound = self.solver_status["Problem"][0]["Upper bound"]
+        gap = np.abs((upper_bound - lower_bound) / lower_bound)
+        if gap < 1e-3:
+            gap = 1e-3
 
         # Save standard DC-OPF variable results
         self._solve_save()
@@ -245,5 +251,6 @@ class LineSwitchingDCOPF(StandardDCOPF):
             "res_gen": self.res_gen,
             "res_x": self.x,
             "res_gap": gap,
+            "solution_status": solution_status,
         }
         return result

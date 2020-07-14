@@ -4,7 +4,7 @@ from lib.data_utils import create_results_dir
 from lib.dc_opf import load_case
 
 save_dir = create_results_dir(Const.RESULTS_DIR)
-n_measurements = 200
+n_measurements = 10
 n_bins = 25
 time_measurements = dict()
 
@@ -15,7 +15,7 @@ for case_name in ["rte_case5", "l2rpn2019", "l2rpn2020"]:
     experiment.compare_by_solver(
         case=case,
         save_dir=save_dir,
-        solver_names=("gurobi",),
+        solver_names=("mosek", "gurobi"),
         tol=0.01,
         n_bins=n_bins,
         n_measurements=n_measurements,

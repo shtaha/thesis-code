@@ -174,7 +174,10 @@ def print_rho(observation):
 
 
 def print_parameters(environment):
-    print(json.dumps(environment.get_params_for_runner()["parameters_path"], indent=2))
+    parameters = environment.get_params_for_runner()["parameters_path"]
+    print("PARAMETERS")
+    for param in parameters:
+        print("{:<35}{}".format(param + ":", parameters[param]))
 
 
 def print_topology_hot_line(topo_hot_vector, name):

@@ -34,6 +34,7 @@ class GridDCOPF(UnitConverter, TopologyConverter):
                 "load",
                 "ext_grid",
                 "n_elements",
+                "cooldown",
             ]
         )
         self.bus = pd.DataFrame(
@@ -63,6 +64,7 @@ class GridDCOPF(UnitConverter, TopologyConverter):
                 "max_p_pu",
                 "status",
                 "trafo",
+                "cooldown",
             ]
         )
         self.gen = pd.DataFrame(
@@ -164,6 +166,9 @@ class GridDCOPF(UnitConverter, TopologyConverter):
             / self.case.grid_backend.line["parallel"]
         )
         self.line["b_pu"] = 1 / x_pu
+
+        if self.case.name == "Case L2RPN 2020 WCCI - IEEE 118":
+            self.line["b_pu"][[45, 46, 47]] = [5000.0, 1014.19878296, 3311.25827815]
 
         # Power line flow thermal limit
         # P_l_max = I_l_max * V_l
@@ -343,6 +348,10 @@ class GridDCOPF(UnitConverter, TopologyConverter):
                 for sub_id in self.sub.index
             ]
 
+        # Cooldown
+        self.sub["cooldown"] = False
+        self.line["cooldown"] = False
+
         # Fill with 0 if no value
         self.line["p_pu"] = self.line["p_pu"].fillna(0)
         self.gen["p_pu"] = self.gen["p_pu"].fillna(0)
@@ -512,56 +521,6 @@ class GridDCOPF(UnitConverter, TopologyConverter):
             self.load, load_sub_bus, "LOAD", reset=reset, verbose=verbose
         )
 
-        # for gen_id in self.gen.index:
-        #     sub_bus = self.gen["sub_bus"][gen_id]
-        #     bus = self.gen["bus"][gen_id]
-        #
-        #     sub_bus_new = gen_sub_bus[gen_id]
-        #     bus_new = self.sub["bus"][self.gen["sub"][gen_id]][sub_bus_new - 1]
-        #
-        #     if verbose and bus != bus_new:
-        #         print(
-        #             "{:<35}{:<10}".format(
-        #                 f"GEN {gen_id}:",
-        #                 f"{bus}({sub_bus})\t->\t{bus_new}({sub_bus_new})",
-        #             )
-        #         )
-        #
-        #     if not reset:
-        #         assert (bus != bus_new) == (
-        #             sub_bus != sub_bus_new
-        #         )  # If switch, then both have to change
-        #     if bus != bus_new and sub_bus != sub_bus_new:
-        #         self.gen["sub_bus"][gen_id] = sub_bus_new
-        #         self.gen["bus"][gen_id] = bus_new
-        #
-        # assert np.equal(self.gen["sub_bus"], gen_sub_bus).all()
-        #
-        # for load_id in self.load.index:
-        #     sub_bus = self.load["sub_bus"][load_id]
-        #     bus = self.load["bus"][load_id]
-        #
-        #     sub_bus_new = load_sub_bus[load_id]
-        #     bus_new = self.sub["bus"][self.load["sub"][load_id]][sub_bus_new - 1]
-        #
-        #     if verbose and bus != bus_new:
-        #         print(
-        #             "{:<35}{:<10}".format(
-        #                 f"LOAD {load_id}:",
-        #                 f"{bus}({sub_bus})\t->\t{bus_new}({sub_bus_new})",
-        #             )
-        #         )
-        #
-        #     if not reset:
-        #         assert (bus != bus_new) == (
-        #             sub_bus != sub_bus_new
-        #         )  # If switch, then both have to change
-        #     if bus != bus_new and sub_bus != sub_bus_new:
-        #         self.load["sub_bus"][load_id] = sub_bus_new
-        #         self.load["bus"][load_id] = bus_new
-        #
-        # assert np.equal(self.load["sub_bus"], load_sub_bus).all()
-
         # Update power lines
         for line_id in self.line.index:
             status = self.line["status"][line_id]
@@ -627,6 +586,12 @@ class GridDCOPF(UnitConverter, TopologyConverter):
         self.trafo["sub_bus_or"] = self.line["sub_bus_or"].values[self.line["trafo"]]
         self.trafo["bus_ex"] = self.line["bus_ex"].values[self.line["trafo"]]
         self.trafo["sub_bus_ex"] = self.line["sub_bus_ex"].values[self.line["trafo"]]
+
+        # Cooldown
+        # True if time > 0
+        # False if time = 0, then action is legal
+        self.sub["cooldown"] = np.greater(obs_new.time_before_cooldown_sub, 0)
+        self.line["cooldown"] = np.greater(obs_new.time_before_cooldown_line, 0)
 
         if not reset:
             assert np.equal(

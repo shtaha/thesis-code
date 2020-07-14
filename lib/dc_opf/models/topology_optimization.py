@@ -11,15 +11,15 @@ class TopologyOptimizationDCOPF(StandardDCOPF):
         name,
         grid,
         grid_backend,
-        n_line_status_switch=1,
-        n_substation_topology_switch=1,
+        n_max_line_status_changed=1,
+        n_max_sub_changed=1,
         solver_name="gurobi",
         verbose=False,
         **kwargs,
     ):
         super().__init__(name, grid, grid_backend, solver_name, verbose, **kwargs)
-        self.n_line_status_switch = n_line_status_switch
-        self.n_substation_topology_switch = n_substation_topology_switch
+        self.n_max_line_status_changed = n_max_line_status_changed
+        self.n_max_sub_changed = n_max_sub_changed
 
         # Optimal switching status
         self.x_gen = None
@@ -265,7 +265,7 @@ class TopologyOptimizationDCOPF(StandardDCOPF):
             domain=pyo.Binary,
             initialize=self._create_map_ids_to_values(
                 self.gen.index,
-                np.equal(self.bus.sub_bus.values[self.gen.bus.values], 2),
+                np.equal(self.bus.sub_bus.values[self.gen.bus.values], 2).astype(int),
             ),
         )
 
@@ -275,7 +275,7 @@ class TopologyOptimizationDCOPF(StandardDCOPF):
             domain=pyo.Binary,
             initialize=self._create_map_ids_to_values(
                 self.load.index,
-                np.equal(self.bus.sub_bus.values[self.load.bus.values], 2),
+                np.equal(self.bus.sub_bus.values[self.load.bus.values], 2).astype(int),
             ),
         )
 
@@ -332,7 +332,7 @@ class TopologyOptimizationDCOPF(StandardDCOPF):
             self._build_constraint_substation_topology_switch()
 
         if cooldown:
-            pass
+            self._build_constraint_cooldown()
 
         if min_rho:
             self._build_constraint_min_rho()
@@ -457,12 +457,15 @@ class TopologyOptimizationDCOPF(StandardDCOPF):
 
             if len(line_or):
                 line_id = line_or[0]
-                self.model.x_line_or_2[line_id].value = 0
-                self.model.x_line_or_2[line_id].fixed = True
+                self.model.x_line_or_2[line_id].fix(0)
+                self.model.x_line_or_2[line_id].setlb(0)
+                self.model.x_line_or_2[line_id].setub(0)
+
             if len(line_ex):
                 line_id = line_ex[0]
-                self.model.x_line_ex_2[line_id].value = 0
-                self.model.x_line_ex_2[line_id].fixed = True
+                self.model.x_line_ex_2[line_id].fix(0)
+                self.model.x_line_ex_2[line_id].setlb(0)
+                self.model.x_line_ex_2[line_id].setub(0)
 
     def _build_constraint_line_status_switch(self):
         def _constraint_line_status_switch(model, line_id):
@@ -482,7 +485,7 @@ class TopologyOptimizationDCOPF(StandardDCOPF):
         def _constraint_max_line_status_switch(model):
             return (
                 sum([model.x_line_status_switch[line_id] for line_id in model.line_set])
-                <= self.n_line_status_switch
+                <= self.n_max_line_status_changed
             )
 
         # Auxiliary constraint for checking line status switch
@@ -558,7 +561,7 @@ class TopologyOptimizationDCOPF(StandardDCOPF):
                         for sub_id in model.sub_set
                     ]
                 )
-                <= self.n_substation_topology_switch
+                <= self.n_max_sub_changed
             )
 
         # Auxiliary constraint for checking substation topology reconfigurations
@@ -590,6 +593,19 @@ class TopologyOptimizationDCOPF(StandardDCOPF):
         self.model.constraint_min_rho_lower = pyo.Constraint(
             self.model.line_set, rule=_constraint_min_rho_lower
         )
+
+    def _build_constraint_cooldown(self):
+        for line_id in self.line.index:
+            if self.line.cooldown[line_id]:
+                self.model.x_line_status_switch[line_id].fix(0)
+                self.model.x_line_status_switch[line_id].setlb(0)
+                self.model.x_line_status_switch[line_id].setub(0)
+
+        for sub_id in self.sub.index:
+            if self.sub.cooldown[sub_id]:
+                self.model.x_substation_topology_switch[sub_id].fix(0)
+                self.model.x_substation_topology_switch[sub_id].setlb(0)
+                self.model.x_substation_topology_switch[sub_id].setub(0)
 
     """
         OBJECTIVE.
@@ -638,10 +654,15 @@ class TopologyOptimizationDCOPF(StandardDCOPF):
     def solve(self, verbose=False, tol=1e-9, time_limit=20):
         self._solve(verbose=verbose, tol=tol, time_limit=20)
 
-        # Parse Gurobi log for additional information
-        gap = parse_gurobi_log(self.solver._log)["gap"]
-        if gap < 1e-6:
-            gap = 1e-6
+        # Solution status
+        solution_status = self.solver_status["Solver"][0]["Termination condition"]
+
+        # Duality gap
+        lower_bound = self.solver_status["Problem"][0]["Lower bound"]
+        upper_bound = self.solver_status["Problem"][0]["Upper bound"]
+        gap = np.abs((upper_bound - lower_bound) / lower_bound)
+        if gap < 1e-4:
+            gap = 1e-4
 
         # Save standard DC-OPF variable results
         self._solve_save()
@@ -698,6 +719,7 @@ class TopologyOptimizationDCOPF(StandardDCOPF):
             "res_x_line_status_switch": self.x_line_status_switch,
             "res_x_substation_topology_switch": self.x_substation_topology_switch,
             "res_gap": gap,
+            "solution_status": solution_status,
         }
 
         return result

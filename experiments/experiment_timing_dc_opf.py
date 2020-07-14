@@ -20,8 +20,8 @@ class ExperimentDCOPFTiming:
         n_measurements=100,
         tol=0.01,
         solver_name="gurobi",
-        n_line_status_switch=1,
-        n_substation_topology_switch=1,
+        n_max_line_status_changed=1,
+        n_max_sub_changed=1,
         line_disconnection=True,
         symmetry=True,
         switching_limits=True,
@@ -68,8 +68,8 @@ class ExperimentDCOPFTiming:
                 base_unit_p=case.base_unit_p,
                 base_unit_v=case.base_unit_v,
                 solver_name=solver_name,
-                n_line_status_switch=n_line_status_switch,
-                n_substation_topology_switch=n_substation_topology_switch,
+                n_max_line_status_changed=n_max_line_status_changed,
+                n_max_sub_changed=n_max_sub_changed,
             )
             model.build_model(
                 line_disconnection=line_disconnection,
@@ -198,13 +198,13 @@ class ExperimentDCOPFTiming:
         fig, ax = plt.subplots()
         ax.set_title(f"{case.name} - Maximum switching limit comparison")
         for limits in switch_limits:
-            n_line_status_switch, n_substation_topology_switch = limits
-            limits_str = f"{n_line_status_switch}-{n_substation_topology_switch}"
+            n_max_line_status_changed, n_max_sub_changed = limits
+            limits_str = f"{n_max_line_status_changed}-{n_max_sub_changed}"
 
             data[limits_str] = self._runner_timing(
                 case=case,
-                n_line_status_switch=n_line_status_switch,
-                n_substation_topology_switch=n_substation_topology_switch,
+                n_max_line_status_changed=n_max_line_status_changed,
+                n_max_sub_changed=n_max_sub_changed,
                 **kwargs,
             )
 
