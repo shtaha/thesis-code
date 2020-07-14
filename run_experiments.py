@@ -70,4 +70,3 @@ for case_name in ["rte_case5", "l2rpn2019", "l2rpn2020"]:
         n_bins=n_bins,
         n_measurements=n_measurements,
     )
-    break
