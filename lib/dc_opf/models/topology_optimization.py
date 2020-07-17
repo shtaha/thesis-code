@@ -41,6 +41,7 @@ class TopologyOptimizationDCOPF(StandardDCOPF):
         gen_cost=False,
         line_margin=False,
         min_rho=True,
+        bound_max_flow=True,
     ):
         # Model
         self.model = pyo.ConcreteModel(f"{self.name}")
@@ -60,7 +61,8 @@ class TopologyOptimizationDCOPF(StandardDCOPF):
         self._build_parameters()
 
         # Variables
-        self._build_variables(min_rho=min_rho)
+        assert min_rho or bound_max_flow  # Check, at least one must be True
+        self._build_variables(min_rho=min_rho, bound_max_flow=bound_max_flow)
 
         # Constraints
         self._build_constraints(
@@ -203,16 +205,17 @@ class TopologyOptimizationDCOPF(StandardDCOPF):
         VARIABLES.
     """
 
-    def _build_variables(self, min_rho=True):
+    def _build_variables(self, min_rho=True, bound_max_flow=True):
         self._build_variables_standard_generators()  # Generator productions and bounds
         self._build_variables_standard_delta()  # Bus voltage angles and bounds
-        self._build_variables_standard_line()  # Power line flows
+
+        self._build_variables_line(bound_max_flow=bound_max_flow)  # Power line flows
 
         if len(self.ext_grid.index):
             self._build_variables_standard_ext_grids()
 
         if min_rho:
-            self._build_variable_min_rho()
+            self._build_variable_min_rho(bound_max_flow=bound_max_flow)
 
         # Power line OR bus switching
         self.model.x_line_or_1 = pyo.Var(
@@ -295,12 +298,25 @@ class TopologyOptimizationDCOPF(StandardDCOPF):
             ),
         )
 
-    def _build_variable_min_rho(self):
+    def _build_variable_min_rho(self, bound_max_flow=True):
         self.model.min_rho = pyo.Var(
             domain=pyo.NonNegativeReals,
-            bounds=(0.0, 1.0),
+            bounds=(0.0, 1.0) if bound_max_flow else None,
             initialize=np.max(np.abs(self.line.p_pu) / self.line.max_p_pu),
         )
+        self.model.min_rho.setlb(0)
+
+    def _build_variables_line(self, bound_max_flow=True):
+        if bound_max_flow:
+            self._build_variables_standard_line()
+        else:
+            self.model.line_flow = pyo.Var(
+                self.model.line_set,
+                domain=pyo.Reals,
+                initialize=self._create_map_ids_to_values(
+                    self.line.index, self.line.p_pu
+                ),
+            )
 
     """
         CONSTRAINTS.
@@ -478,7 +494,7 @@ class TopologyOptimizationDCOPF(StandardDCOPF):
                 + model.x_line_or_2[line_id]
                 + model.x_line_ex_1[line_id]
                 + model.x_line_ex_2[line_id]
-                <= 2 * x_line_status
+                == 2 * x_line_status
             )
 
         def _constraint_max_line_status_switch(model):
@@ -498,7 +514,7 @@ class TopologyOptimizationDCOPF(StandardDCOPF):
         )
 
     def _build_constraint_substation_topology_switch(self):
-        def _constraint_substation_topology_switch(model, sub_id):
+        def _get_substation_switch_terms(model, sub_id):
             sub_gen_ids = model.sub_ids_to_gen_ids[sub_id]
             sub_load_ids = model.sub_ids_to_load_ids[sub_id]
             sub_line_or_ids = model.sub_ids_to_line_or_ids[sub_id]
@@ -542,7 +558,20 @@ class TopologyOptimizationDCOPF(StandardDCOPF):
                 else:
                     # If line is reconnected, then skip
                     pass
+            return (
+                x_sub_gen_switch,
+                x_sub_load_switch,
+                x_sub_line_or_switch,
+                x_sub_line_ex_switch,
+            )
 
+        def _constraint_substation_topology_switch_upper(model, sub_id):
+            (
+                x_sub_gen_switch,
+                x_sub_load_switch,
+                x_sub_line_or_switch,
+                x_sub_line_ex_switch,
+            ) = _get_substation_switch_terms(model, sub_id)
             return (
                 sum(x_sub_gen_switch)
                 + sum(x_sub_load_switch)
@@ -550,6 +579,22 @@ class TopologyOptimizationDCOPF(StandardDCOPF):
                 + sum(x_sub_line_ex_switch)
                 <= model.sub_n_elements[sub_id]
                 * model.x_substation_topology_switch[sub_id]
+            )
+
+        def _constraint_substation_topology_switch_lower(model, sub_id):
+            (
+                x_sub_gen_switch,
+                x_sub_load_switch,
+                x_sub_line_or_switch,
+                x_sub_line_ex_switch,
+            ) = _get_substation_switch_terms(model, sub_id)
+
+            return (
+                sum(x_sub_gen_switch)
+                + sum(x_sub_load_switch)
+                + sum(x_sub_line_or_switch)
+                + sum(x_sub_line_ex_switch)
+                >= model.x_substation_topology_switch[sub_id]
             )
 
         def _constraint_max_substation_topology_switch(model):
@@ -564,8 +609,11 @@ class TopologyOptimizationDCOPF(StandardDCOPF):
             )
 
         # Auxiliary constraint for checking substation topology reconfigurations
-        self.model.constraint_substation_topology_switch = pyo.Constraint(
-            self.model.sub_set, rule=_constraint_substation_topology_switch
+        self.model.constraint_substation_topology_switch_lower = pyo.Constraint(
+            self.model.sub_set, rule=_constraint_substation_topology_switch_lower
+        )
+        self.model.constraint_substation_topology_switch_upper = pyo.Constraint(
+            self.model.sub_set, rule=_constraint_substation_topology_switch_upper
         )
 
         # Limit the number of substation topology reconfigurations
@@ -650,8 +698,8 @@ class TopologyOptimizationDCOPF(StandardDCOPF):
         SOLVE FUNCTIONS.
     """
 
-    def solve(self, verbose=False, tol=1e-9, time_limit=20):
-        self._solve(verbose=verbose, tol=tol, time_limit=20)
+    def solve(self, verbose=False, tol=1e-9, time_limit=20, warm_start=True):
+        self._solve(verbose=verbose, tol=tol, time_limit=20, warm_start=warm_start)
 
         # Solution status
         solution_status = self.solver_status["Solver"][0]["Termination condition"]
@@ -659,7 +707,9 @@ class TopologyOptimizationDCOPF(StandardDCOPF):
         # Duality gap
         lower_bound = self.solver_status["Problem"][0]["Lower bound"]
         upper_bound = self.solver_status["Problem"][0]["Upper bound"]
-        gap = np.abs((upper_bound - lower_bound) / lower_bound)
+        gap = np.minimum(
+            np.abs((upper_bound - lower_bound) / (lower_bound + 1e-9)), 0.1
+        )
         if gap < 1e-4:
             gap = 1e-4
 
@@ -722,3 +772,40 @@ class TopologyOptimizationDCOPF(StandardDCOPF):
         }
 
         return result
+
+    def compare_with_observation(self, result, obs, verbose=False):
+        res_gen = result["res_gen"][["min_p_pu", "p_pu", "max_p_pu"]].copy()
+        res_gen["env_p_pu"] = self.convert_mw_to_per_unit(obs.prod_p)
+        res_gen["diff"] = np.divide(
+            np.abs(res_gen["p_pu"] - res_gen["env_p_pu"]), res_gen["env_p_pu"] + 1e-9
+        )
+
+        res_line = result["res_line"][["p_pu", "max_p_pu"]].copy()
+        res_line["env_p_pu"] = self.convert_mw_to_per_unit(obs.p_or)
+        res_line["env_max_p_pu"] = np.abs(
+            np.divide(res_line["env_p_pu"], obs.rho + 1e-9)
+        )
+
+        res_line["ratio"] = np.divide(res_line["max_p_pu"], res_line["env_max_p_pu"])
+
+        res_line["rho"] = result["res_line"]["loading_percent"] / 100.0
+        res_line["env_rho"] = obs.rho
+
+        res_line["diff_p"] = np.abs(
+            np.divide(
+                res_line["p_pu"] - res_line["env_p_pu"], res_line["env_p_pu"] + 1e-9
+            )
+        )
+        res_line["diff_rho"] = np.abs(
+            np.divide(res_line["rho"] - res_line["env_rho"], res_line["env_rho"] + 1e-9)
+        )
+
+        max_rho = res_line["rho"].max()
+        env_max_rho = res_line["env_rho"].max()
+
+        if verbose:
+            print("GEN\n" + res_gen.to_string())
+            print("LINE\n" + res_line.to_string())
+            print("RHO:\t{}\t{}".format(max_rho, env_max_rho))
+
+        return res_gen, res_line

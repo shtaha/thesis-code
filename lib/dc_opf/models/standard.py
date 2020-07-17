@@ -305,7 +305,7 @@ class StandardDCOPF(UnitConverter, PyomoMixin):
         if len(self.ext_grid.index):
             self.model.ext_grid_p = pyo.Var(
                 self.model.ext_grid_set,
-                domain=pyo.NonNegativeReals,
+                domain=pyo.Reals,
                 bounds=_bounds_ext_grid_p,
                 initialize=self._create_map_ids_to_values(
                     self.ext_grid.index, self.ext_grid.p_pu
@@ -418,7 +418,9 @@ class StandardDCOPF(UnitConverter, PyomoMixin):
             ~self.line.trafo
         ]
         self.res_line["loading_percent"] = np.abs(
-            self.res_line["p_pu"] / self.line[~self.line.trafo]["max_p_pu"] * 100
+            self.res_line["p_pu"]
+            / (self.line[~self.line.trafo]["max_p_pu"] + 1e-9)
+            * 100.0
         )
 
         # Loads
@@ -437,7 +439,7 @@ class StandardDCOPF(UnitConverter, PyomoMixin):
             ]
 
             self.res_trafo["loading_percent"] = np.abs(
-                self.res_trafo["p_pu"] / self.trafo["max_p_pu"] * 100
+                self.res_trafo["p_pu"] / (self.trafo["max_p_pu"] + 1e-9) * 100.0
             )
             self.res_trafo["max_p_pu"] = self.grid.trafo["max_p_pu"]
 
@@ -489,7 +491,7 @@ class StandardDCOPF(UnitConverter, PyomoMixin):
         )
         self.grid_backend.res_trafo["max_p_pu"] = self.grid.trafo["max_p_pu"]
 
-    def _solve(self, verbose=False, tol=1e-9, time_limit=20):
+    def _solve(self, verbose=False, tol=1e-9, time_limit=20, warm_start=True):
         """
         Set options to solver and solve the MIP.
         Compatible with Gurobi, GLPK, and Mosek.
@@ -507,7 +509,7 @@ class StandardDCOPF(UnitConverter, PyomoMixin):
 
         if self.solver_name != "glpk":
             self.solver_status = self.solver.solve(
-                self.model, tee=verbose, options=options, warmstart=True
+                self.model, tee=verbose, options=options, warmstart=warm_start
             )
         else:
             self.solver_status = self.solver.solve(

@@ -3,7 +3,6 @@ from abc import ABC, abstractmethod
 import grid2op
 import numpy as np
 import pandapower as pp
-import pandapower.networks as pn
 import pandas as pd
 
 from .unit_converter import UnitConverter
@@ -16,8 +15,6 @@ def load_case(case_name):
         return OPFCase6()
     elif case_name == "case4":
         return OPFCase4()
-    elif case_name == "case118":
-        return OPFCase118()
     elif case_name in ["rte_case5", "rte_case5_example"]:
         return OPFRTECase5()
     elif case_name in ["l2rpn2019", "l2rpn_2019"]:
@@ -577,45 +574,6 @@ class OPFCase4(OPFAbstractCase, UnitConverter):
 
         grid.trafo["b_pu"] = 28.0  # Empirically: x = vk_percent / 100 * 1 / sn_mva
         grid.trafo["max_p_pu"] = 3.5  # sn_mva
-
-        return grid
-
-
-class OPFCase118(OPFAbstractCase, UnitConverter):
-    """
-    Test case for power flow computation.
-    Found at: https://pandapower.readthedocs.io/en/v2.2.2/networks/power_system_test_cases.html#case-118.
-    Not used, neither tested.
-    """
-
-    def __init__(self):
-        UnitConverter.__init__(self, base_unit_p=1e6, base_unit_v=138000.0)
-
-        self.name = "Case 118"
-
-        self.env = None
-        self.grid_org = self.build_case_grid()
-        self.grid_backend = self.grid_org.deepcopy()
-
-    def build_case_grid(self):
-        grid = pn.case118()
-        grid.bus.sort_index(inplace=True)
-        print(grid.bus.to_string())
-
-        grid.bus["name"] = [
-            f"bus-{bus_id}-{name}" for bus_id, name in enumerate(grid.bus["name"])
-        ]
-
-        grid.bus.reset_index(inplace=True, drop=True)
-        grid.line.reset_index(inplace=True, drop=True)
-        grid.gen.reset_index(inplace=True, drop=True)
-        grid.load.reset_index(inplace=True, drop=True)
-        grid.ext_grid.reset_index(inplace=True, drop=True)
-        grid.trafo.reset_index(inplace=True, drop=True)
-        grid.shunt.reset_index(inplace=True, drop=True)
-
-        # Remove all costs
-        grid.poly_cost = grid.poly_cost.iloc[0:0]
 
         return grid
 

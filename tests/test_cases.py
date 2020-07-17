@@ -88,7 +88,8 @@ class TestCasesDCOPF(unittest.TestCase):
 
         if verbose:
             print(diff_line.to_string())
-            print(diff_trafo.to_string())
+            if len(diff_trafo.index):
+                print(diff_trafo.to_string())
 
         conds_lines = np.logical_and(
             diff_line["diff_b_pu"] < eps, diff_line["diff_max_p_pu"] < eps
@@ -162,7 +163,7 @@ class TestCasesDCOPF(unittest.TestCase):
             base_unit_v=case.base_unit_v,
         )
 
-        self.runner(model, eps=5e-3, verbose=False)
+        self.runner(model, eps=5e-3, verbose=True)
 
     def test_l2rpn2019(self):
         case = load_case("l2rpn2019")
@@ -190,7 +191,6 @@ class TestCasesDCOPF(unittest.TestCase):
         grid = GridDCOPF(
             case, base_unit_v=case.base_unit_v, base_unit_p=case.base_unit_p
         )
-        grid.line["b_pu"][[45, 46, 47]] = [5000.0, 1014.19878296, 3311.25827815]
 
         model = StandardDCOPF(
             f"{case.name} Standard DC OPF",

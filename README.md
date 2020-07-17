@@ -4,10 +4,11 @@
 
 ## Install
     
-    pip install numpy matplotlib tensorflow jupyter pygame
+    pip install numpy matplotlib pandas seaborn  # Basics 
+    pip tensorflow jupyter pygame
     
     pip install pyomo
-    pip install glpk
+    pip install glpk mosek  # Solvers
     
     pip install grid2op
     

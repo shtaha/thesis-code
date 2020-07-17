@@ -164,6 +164,9 @@ class TopologyConverter:
         x_line_ex_1 = mip_solution["res_x_line_ex_1"]
         x_line_ex_2 = mip_solution["res_x_line_ex_2"]
 
+        x_line_status_switch = mip_solution["res_x_line_status_switch"]
+        x_substation_topology_switch = mip_solution["res_x_substation_topology_switch"]
+
         gen_sub_bus = -np.ones_like(x_gen, dtype=np.int)
         gen_sub_bus[~x_gen] = 1  # if x_gen[gen_id] = 0, then bus 1
         gen_sub_bus[x_gen] = 2  # if x_gen[gen_id] = 1, then bus 2
@@ -172,8 +175,8 @@ class TopologyConverter:
         load_sub_bus[x_load] = 2  # if x_load[load_id] = 1, then bus 2
 
         line_status = np.logical_and(
-            np.logical_and(x_line_or_1, x_line_or_2),
-            np.logical_and(x_line_ex_1, x_line_ex_2),
+            np.logical_or(x_line_or_1, x_line_or_2),
+            np.logical_or(x_line_ex_1, x_line_ex_2),
         )
 
         line_or_sub_bus = -np.ones_like(x_line_or_1, dtype=np.int)
@@ -188,4 +191,31 @@ class TopologyConverter:
             gen_sub_bus, load_sub_bus, line_or_sub_bus, line_ex_sub_bus, line_status
         )
 
-        return topo_vect, line_status
+        # print("1", x_line_or_1, x_line_ex_1)
+        # print("2", x_line_or_2, x_line_ex_2)
+        # print(line_status)
+        # print(x_line_status_switch)
+        # print(x_substation_topology_switch)
+
+        # Construct grid2op action
+        action_dict = dict()
+        sub_topology_set = []
+        line_status_set = []
+        for sub_id, sub_switch in enumerate(x_substation_topology_switch):
+            if sub_switch:
+                sub_topology = self._get_substation_topology_vector(topo_vect, sub_id)
+                sub_topology_set.append((sub_id, sub_topology))
+
+        if sub_topology_set:
+            action_dict["set_bus"] = {"substations_id": sub_topology_set}
+
+        for line_id, line_switch in enumerate(x_line_status_switch):
+            if line_switch:
+                line_status_set.append((line_id, line_status[line_id]))
+
+        if line_status_set:
+            action_dict["set_line_status"] = line_status_set
+
+        action = self.env.action_space(action_dict)
+
+        return topo_vect, line_status, action

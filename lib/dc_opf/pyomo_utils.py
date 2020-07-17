@@ -6,6 +6,7 @@ class PyomoMixin:
     @staticmethod
     def _round_solution(x):
         x = np.round(x)
+        x = x.astype(np.bool)
         return x
 
     @staticmethod

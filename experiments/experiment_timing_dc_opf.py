@@ -5,6 +5,7 @@ from decimal import Decimal
 from timeit import default_timer as timer
 
 import matplotlib.pyplot as plt
+import numpy as np
 import pandas as pd
 import seaborn as sns
 
@@ -29,9 +30,11 @@ class ExperimentDCOPFTiming:
         gen_cost=False,
         line_margin=False,
         min_rho=True,
-        verbose=False,
+        warm_start=True,
+        verbose=True,
     ):
         random.seed(0)
+        np.random.seed(0)
 
         measurements = list()
         env = case.env
@@ -83,12 +86,12 @@ class ExperimentDCOPFTiming:
             time_build = timer() - start_build
 
             start_solve = timer()
-            model.solve(tol=tol, verbose=verbose)
+            model.solve(tol=tol, verbose=verbose, warm_start=warm_start)
             time_solve = timer() - start_solve
 
             start_step = timer()
             obs_next, reward, done, info = env.step(action)
-            grid.update(obs_next, reset=False, verbose=verbose)
+            grid.update(obs_next, reset=False)
             time_step = timer() - start_step
 
             print(f"\n\nSTEP {t}")
@@ -105,7 +108,7 @@ class ExperimentDCOPFTiming:
             if done:
                 print("\n\nDONE")
                 obs = env.reset()
-                grid.update(obs_next, reset=True, verbose=verbose)
+                grid.update(obs_next, reset=True)
 
             time_total = timer() - start_total
 
@@ -311,3 +314,37 @@ class ExperimentDCOPFTiming:
 
         fig.show()
         fig.savefig(os.path.join(save_dir, f"{case.name}_objectives.png"))
+
+    def compare_by_warmstart(
+        self, case, save_dir, n_bins=25, **kwargs,
+    ):
+        data = dict()
+
+        fig, ax = plt.subplots()
+        ax.set_title(f"{case.name} - Solver warm start comparison")
+
+        for warm_start in [True, False]:
+            data[str(warm_start)] = self._runner_timing(
+                case=case, warm_start=warm_start, **kwargs,
+            )
+
+            sns.distplot(
+                data[str(warm_start)]["solve"],
+                label=str(warm_start),
+                ax=ax,
+                hist=True,
+                kde=True,
+                bins=n_bins,
+                norm_hist=True,
+            )
+            data[str(warm_start)].to_csv(
+                os.path.join(save_dir, f"{case.name}_warm-{str(warm_start)}.csv")
+            )
+
+        ax.set_xlabel("Time [s]")
+        ax.set_ylabel("PDF")
+        ax.legend(title="Warm start")
+        ax.set_xlim(left=0)
+
+        fig.show()
+        fig.savefig(os.path.join(save_dir, f"{case.name}_warm_start.png",))
