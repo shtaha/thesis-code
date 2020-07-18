@@ -39,10 +39,62 @@ class TopologyOptimizationDCOPF(StandardDCOPF):
         switching_limits=True,
         cooldown=True,
         gen_cost=False,
-        line_margin=False,
-        min_rho=True,
-        bound_max_flow=True,
+        lin_line_margins=True,
+        quad_line_margins=False,
+        lambd=10.0,
+        lin_gen_penalty=True,
+        quad_gen_penalty=False,
     ):
+        """
+        Arguments for activation of constraints.
+            line_disconnection:
+                If True, then we allow only for line disconnection on both ends, i.e.
+                x_or_1 + x_or_2 == x_ex_1 + x_ex_2.
+
+            symmetry:
+                If True, then the first element at a substation is fixed on bus 1.
+
+            switching_limits:
+                If True, then constraints on the number of line status and substation topology changes are activated.
+
+            cooldown:
+                If True, then constraints on power line cooldown are activated.
+
+
+        Arguments for objective function formulation.
+            gen_cost:
+                If True, then cost of generator power productions are included in the objective function. Only used
+                for testing.
+
+            quad_line_margins:
+                If True, then the objective function includes the quadratic cost on line margins, i.e.
+                sum_l (F_l / F_l^max)^2.
+
+            lin_line_margins:
+                If True, then the objective function includes a term corresponding to the maximum absolute value
+                of power line relative flows, i.e. abs(F_l / F_l^max) <= mu.
+
+            bound_max_flow:
+                If True, then the constraint abs(F_l) <= F_l^max is activated. True if and only if lin_line_margins is
+                False.
+
+            lambd:
+                Regulatization parameter for generator power production error.
+
+            lin_gen_penalty:
+                If True, then the maximum absolute value of the generator power production error is included in
+                the objective function, i.e. (P_g - P_g_ref) / P_g^max <= mu_gen, with lambd * mu_gen as the term
+                in the objective function.
+
+            quad_gen_penalty:
+                If True, then a quadratic penalty is added to the objective function for generator power production
+                error, i.e. lambd * ((P_g - P_g_ref) / P_g^max)^2.
+        """
+        if lin_line_margins:
+            bound_max_flow = False
+        else:
+            bound_max_flow = True
+
         # Model
         self.model = pyo.ConcreteModel(f"{self.name}")
 
@@ -58,11 +110,16 @@ class TopologyOptimizationDCOPF(StandardDCOPF):
         )
 
         # Parameters
-        self._build_parameters()
+        self._build_parameters(
+            gen_penalty=lin_gen_penalty or quad_gen_penalty, lambd=lambd
+        )
 
         # Variables
-        assert min_rho or bound_max_flow  # Check, at least one must be True
-        self._build_variables(min_rho=min_rho, bound_max_flow=bound_max_flow)
+        self._build_variables(
+            lin_line_margins=lin_line_margins,
+            bound_max_flow=bound_max_flow,
+            lin_gen_penalty=lin_gen_penalty,
+        )
 
         # Constraints
         self._build_constraints(
@@ -70,21 +127,30 @@ class TopologyOptimizationDCOPF(StandardDCOPF):
             symmmetry=symmetry,
             switching_limits=switching_limits,
             cooldown=cooldown,
-            min_rho=min_rho,
+            lin_line_margins=lin_line_margins,
+            lin_gen_penalty=lin_gen_penalty,
         )
 
         # Objective
         self._build_objective(
-            gen_cost=gen_cost, line_margin=line_margin, min_rho=min_rho
-        )  # Objective to be optimized.
+            gen_cost=gen_cost,
+            lin_line_margins=lin_line_margins,
+            quad_line_margins=quad_line_margins,
+            lin_gen_penalty=lin_gen_penalty,
+            quad_gen_penalty=quad_gen_penalty,
+        )
 
     """
         PARAMETERS.
     """
 
-    def _build_parameters(self):
+    def _build_parameters(self, gen_penalty=False, lambd=1.0):
+        assert lambd >= 0  # Non-negative regularization parameter
+
         self._build_parameters_delta()  # Bus voltage angle bounds and reference node
-        self._build_parameters_generators()  # Bounds on generator production
+        self._build_parameters_generators(
+            gen_penalty=gen_penalty, lambd=lambd
+        )  # Bounds on generator production
         self._build_parameters_lines()  # Power line thermal limit and susceptance
         self._build_parameters_objective()  # Objective parameters
 
@@ -205,7 +271,9 @@ class TopologyOptimizationDCOPF(StandardDCOPF):
         VARIABLES.
     """
 
-    def _build_variables(self, min_rho=True, bound_max_flow=True):
+    def _build_variables(
+        self, lin_line_margins=True, bound_max_flow=True, lin_gen_penalty=True
+    ):
         self._build_variables_standard_generators()  # Generator productions and bounds
         self._build_variables_standard_delta()  # Bus voltage angles and bounds
 
@@ -214,8 +282,11 @@ class TopologyOptimizationDCOPF(StandardDCOPF):
         if len(self.ext_grid.index):
             self._build_variables_standard_ext_grids()
 
-        if min_rho:
-            self._build_variable_min_rho(bound_max_flow=bound_max_flow)
+        if lin_line_margins:
+            self._build_variable_mu(bound_max_flow=bound_max_flow)
+
+        if lin_gen_penalty:
+            self._build_variable_mu_gen()
 
         # Power line OR bus switching
         self.model.x_line_or_1 = pyo.Var(
@@ -298,13 +369,18 @@ class TopologyOptimizationDCOPF(StandardDCOPF):
             ),
         )
 
-    def _build_variable_min_rho(self, bound_max_flow=True):
-        self.model.min_rho = pyo.Var(
+    def _build_variable_mu(self, bound_max_flow=True):
+        self.model.mu = pyo.Var(
             domain=pyo.NonNegativeReals,
             bounds=(0.0, 1.0) if bound_max_flow else None,
             initialize=np.max(np.abs(self.line.p_pu) / self.line.max_p_pu),
         )
-        self.model.min_rho.setlb(0)
+        self.model.mu.setlb(0)
+
+    def _build_variable_mu_gen(self):
+        self.model.mu_gen = pyo.Var(
+            domain=pyo.NonNegativeReals, bounds=(0.0, 1.0), initialize=1.0
+        )
 
     def _build_variables_line(self, bound_max_flow=True):
         if bound_max_flow:
@@ -328,7 +404,8 @@ class TopologyOptimizationDCOPF(StandardDCOPF):
         symmmetry=True,
         switching_limits=True,
         cooldown=True,
-        min_rho=True,
+        lin_line_margins=True,
+        lin_gen_penalty=True,
     ):
         self._build_constraint_line_flows()  # Power flow definition
         self._build_constraint_bus_balance()  # Bus power balance
@@ -349,8 +426,11 @@ class TopologyOptimizationDCOPF(StandardDCOPF):
         if cooldown:
             self._build_constraint_cooldown()
 
-        if min_rho:
-            self._build_constraint_min_rho()
+        if lin_line_margins:
+            self._build_constraint_lin_line_margins()
+
+        if lin_gen_penalty:
+            self._build_constraint_lin_gen_penalty()
 
     def _build_constraint_line_flows(self):
         # Power flow equation with topology switching
@@ -621,24 +701,19 @@ class TopologyOptimizationDCOPF(StandardDCOPF):
             rule=_constraint_max_substation_topology_switch
         )
 
-    def _build_constraint_min_rho(self):
-        def _constraint_min_rho_upper(model, line_id):
-            return (
-                model.line_flow[line_id] <= model.line_flow_max[line_id] * model.min_rho
-            )
+    def _build_constraint_lin_line_margins(self):
+        def _constraint_lin_line_margins_upper(model, line_id):
+            return model.line_flow[line_id] <= model.line_flow_max[line_id] * model.mu
 
-        def _constraint_min_rho_lower(model, line_id):
-            return (
-                -model.line_flow_max[line_id] * model.min_rho
-                <= model.line_flow[line_id]
-            )
+        def _constraint_lin_line_margins_lower(model, line_id):
+            return -model.line_flow_max[line_id] * model.mu <= model.line_flow[line_id]
 
-        self.model.constraint_min_rho_upper = pyo.Constraint(
-            self.model.line_set, rule=_constraint_min_rho_upper
+        self.model.constraint_lin_line_margins_upper = pyo.Constraint(
+            self.model.line_set, rule=_constraint_lin_line_margins_upper
         )
 
-        self.model.constraint_min_rho_lower = pyo.Constraint(
-            self.model.line_set, rule=_constraint_min_rho_lower
+        self.model.constraint_lin_line_margins_lower = pyo.Constraint(
+            self.model.line_set, rule=_constraint_lin_line_margins_lower
         )
 
     def _build_constraint_cooldown(self):
@@ -654,12 +729,58 @@ class TopologyOptimizationDCOPF(StandardDCOPF):
                 self.model.x_substation_topology_switch[sub_id].setlb(0)
                 self.model.x_substation_topology_switch[sub_id].setub(0)
 
+    def _build_constraint_lin_gen_penalty(self):
+        def _constraint_lin_gen_penalty_upper(model, gen_id):
+            return (model.gen_p[gen_id] - model.gen_p_ref[gen_id]) / model.gen_p_max[
+                gen_id
+            ] <= model.mu_gen
+
+        def _constraint_lin_gen_penalty_lower(model, gen_id):
+            return (
+                -model.mu_gen
+                <= (model.gen_p[gen_id] - model.gen_p_ref[gen_id])
+                / model.gen_p_max[gen_id]
+            )
+
+        self.model.constraint_lin_gen_penalty_lower = pyo.Constraint(
+            self.model.gen_set, rule=_constraint_lin_gen_penalty_upper
+        )
+
+        self.model.constraint_lin_gen_penalty_upper = pyo.Constraint(
+            self.model.gen_set, rule=_constraint_lin_gen_penalty_lower
+        )
+
     """
         OBJECTIVE.
     """
 
-    def _build_objective(self, gen_cost=False, line_margin=False, min_rho=True):
-        # Minimize generator costs
+    def _build_objective(
+        self,
+        gen_cost=False,
+        lin_line_margins=True,
+        quad_line_margins=False,
+        lin_gen_penalty=True,
+        quad_gen_penalty=True,
+    ):
+        assert (
+            gen_cost
+            or lin_line_margins
+            or quad_line_margins
+            or lin_gen_penalty
+            or quad_gen_penalty
+        )
+
+        assert np.logical_xor(
+            lin_line_margins, quad_line_margins
+        )  # Only one penalty on margins
+        assert not (
+            lin_gen_penalty and quad_gen_penalty
+        )  # Only one penalty on generators
+
+        """
+            Generator power production cost. As in standard OPF.
+        """
+
         def _objective_gen_p(model):
             return sum(
                 [
@@ -668,8 +789,16 @@ class TopologyOptimizationDCOPF(StandardDCOPF):
                 ]
             )
 
-        # Maximize line margins
-        def _objective_line_margin(model):
+        """
+            Line margins.
+        """
+
+        # Linear
+        def _objective_lin_line_margins(model):
+            return model.mu
+
+        # Quadratic
+        def _objective_quad_line_margins(model):
             return sum(
                 [
                     model.line_flow[line_id] ** 2 / model.line_flow_max[line_id] ** 2
@@ -677,20 +806,44 @@ class TopologyOptimizationDCOPF(StandardDCOPF):
                 ]
             )
 
-        # Maximize line margins
-        def _objective_min_rho(model):
-            return model.min_rho
+        """
+            Generator power production error.
+        """
+        # Linear penalty on generator power productions
+        def _objective_lin_gen_penalty(model):
+            return model.lambd * model.mu_gen
+
+        # Quadratic penalty on generator power productions
+        def _objective_quad_gen_penalty(model):
+            penalty = sum(
+                [
+                    (
+                        (model.gen_p[gen_id] - model.gen_p_ref[gen_id])
+                        / (model.gen_p_max[gen_id])
+                    )
+                    ** 2
+                    for gen_id in model.gen_set
+                ]
+            )
+
+            return model.lambd * penalty
 
         def _objective(model):
-            if min_rho:
-                return _objective_min_rho(model)
-            else:
-                if gen_cost and line_margin:
-                    return _objective_gen_p(model) + _objective_line_margin(model)
-                elif line_margin:
-                    return _objective_line_margin(model)
-                else:
-                    return _objective_gen_p(model)
+            obj = 0
+            if gen_cost:
+                obj = obj + _objective_gen_p(model)
+
+            if lin_line_margins:
+                obj = obj + _objective_lin_line_margins(model)
+            elif quad_line_margins:
+                obj = obj + _objective_quad_line_margins(model)
+
+            if lin_gen_penalty:
+                obj = obj + _objective_lin_gen_penalty(model)
+            elif quad_gen_penalty:
+                obj = obj + _objective_quad_gen_penalty(model)
+
+            return obj
 
         self.model.objective = pyo.Objective(rule=_objective, sense=pyo.minimize)
 
@@ -781,12 +934,19 @@ class TopologyOptimizationDCOPF(StandardDCOPF):
         )
 
         res_line = result["res_line"][["p_pu", "max_p_pu"]].copy()
-        res_line["env_p_pu"] = self.convert_mw_to_per_unit(obs.p_or)
+        res_line["env_p_pu"] = self.convert_mw_to_per_unit(
+            obs.p_or
+        )  # i_pu * v_pu * sqrt(3)
         res_line["env_max_p_pu"] = np.abs(
             np.divide(res_line["env_p_pu"], obs.rho + 1e-9)
         )
-
-        res_line["ratio"] = np.divide(res_line["max_p_pu"], res_line["env_max_p_pu"])
+        # res_line["env_i_pu"] = self.convert_a_to_per_unit(obs.a_or)
+        # res_line["env_max_i_pu"] = np.abs(
+        #     np.divide(res_line["env_i_pu"], obs.rho + 1e-9)
+        # )
+        # res_line["env_v_pu"] = self.convert_kv_to_per_unit(obs.v_or)
+        #
+        # res_line["ratio"] = np.divide(res_line["max_p_pu"], res_line["env_max_p_pu"])
 
         res_line["rho"] = result["res_line"]["loading_percent"] / 100.0
         res_line["env_rho"] = obs.rho

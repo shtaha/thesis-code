@@ -137,7 +137,7 @@ class StandardDCOPF(UnitConverter, PyomoMixin):
             initialize=self.grid.slack_bus, within=self.model.bus_set,
         )
 
-    def _build_parameters_generators(self):
+    def _build_parameters_generators(self, gen_penalty=False, lambd=1.0):
         """
         Initialize generator parameters: lower and upper limits on generator power production.
         """
@@ -156,6 +156,16 @@ class StandardDCOPF(UnitConverter, PyomoMixin):
             ),
             within=pyo.NonNegativeReals,
         )
+
+        if gen_penalty:
+            self.model.gen_p_ref = pyo.Param(
+                self.model.gen_set,
+                initialize=self._create_map_ids_to_values(
+                    self.gen.index, self.gen.p_pu
+                ),
+                within=pyo.NonNegativeReals,
+            )
+            self.model.lambd = pyo.Param(initialize=lambd, within=pyo.NonNegativeReals)
 
     def _build_parameters_lines(self):
         """

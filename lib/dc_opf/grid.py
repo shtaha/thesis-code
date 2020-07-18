@@ -201,7 +201,9 @@ class GridDCOPF(UnitConverter, TopologyConverter):
         self.gen["min_p_pu"] = self.convert_mw_to_per_unit(
             self.case.grid_backend.gen["min_p_mw"]
         )
-        self.gen["min_p_pu"] = np.maximum(0.0, self.gen["min_p_pu"].values)
+        # TODO: HACK
+        # self.gen["min_p_pu"] = np.maximum(0.0, self.gen["min_p_pu"].values)
+        self.gen["min_p_pu"] = self.gen["min_p_pu"].values
         self.gen["cost_pu"] = 1.0
 
         """

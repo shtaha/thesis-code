@@ -4,13 +4,13 @@
 
 ## Install
     
-    pip install numpy matplotlib pandas seaborn  # Basics 
-    pip tensorflow jupyter pygame
-    
+    pip install numpy numba matplotlib pandas seaborn  # Basics     
+    pip install grid2op
+
     pip install pyomo
     pip install glpk mosek  # Solvers
     
-    pip install grid2op
+    pip tensorflow jupyter pygame
     
     pip install l2rpn-baselines
     pip install imageio

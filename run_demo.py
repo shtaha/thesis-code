@@ -1,4 +1,5 @@
 import os
+import pandas as pd
 
 import grid2op
 import numpy as np
@@ -19,16 +20,20 @@ from lib.visualizer import (
     print_parameters,
 )
 
+pd.options.display.float_format = "{:.3f}".format
+
 """
     Load environment and initialize grid.
 """
-case_name = "rte_case5_example"
-# case_name = "l2rpn_2019"
+
+# case_name = "rte_case5_example"
+case_name = "l2rpn_2019"
 # case_name = "l2rpn_wcci_2020"
 
 parameters = grid2op.Parameters.Parameters()
 parameters.ENV_DC = True
 parameters.FORECAST_DC = True
+parameters.MAX_LINE_STATUS_CHANGED = 0
 
 env: Environment = grid2op.make_from_dataset_path(
     dataset_path=os.path.join(os.path.expanduser("~"), "data_grid2op", case_name),
@@ -98,7 +103,7 @@ print(
     "\n{:<35}{}\t{}".format("ENV", str(obs.topo_vect), str(obs.line_status.astype(int)))
 )
 
-for t in range(10):
+for t in range(100):
     """
         Action selection.
     """
@@ -117,11 +122,13 @@ for t in range(10):
         switching_limits=True,
         cooldown=True,
         gen_cost=False,
-        line_margin=False,
-        min_rho=False,
-        bound_max_flow=True,
+        quad_line_margins=False,
+        lin_line_margins=True,
+        lambd=10.0,
+        lin_gen_penalty=True,
+        quad_gen_penalty=False,
     )
-
+    # model.print_model()
     result = model.solve(tol=0.001, verbose=False)
     mip_topo_vect, mip_line_status, action = grid.convert_mip_to_topology_vector(result)
 
@@ -129,6 +136,7 @@ for t in range(10):
         Act.
     """
     print(f"\n\nSTEP {t}")
+    # action = actions_do_nothing
     print(action)
     obs_next, reward, done, info = env.step(action)
     print(
@@ -144,7 +152,7 @@ for t in range(10):
         )
     )
     print_info(info, done, reward)
-    model.compare_with_observation(result, obs_next, verbose=True)
+    model.compare_with_observation(result, obs_next, verbose=False)
 
     """
         Update grid.
@@ -165,4 +173,3 @@ for t in range(10):
 
     # if t == 3:
     #     break
-    break

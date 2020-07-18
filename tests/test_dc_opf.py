@@ -512,17 +512,21 @@ class TestTopologyOptimizationDCOPF(unittest.TestCase):
         return cond_line_or and cond_line_ex and cond_line_disconnected
 
     def runner_opf_topology_optimization(
-        self,
-        model,
-        gen_cost=True,
-        line_margin=True,
-        min_rho=False,
-        verbose=False,
-        tol=1e-2,
+        self, model, gen_cost=True, quad_line_margins=True, verbose=False, tol=1e-2,
     ):
         np.random.seed(0)
         model.gen["cost_pu"] = np.random.uniform(1.0, 5.0, (model.grid.gen.shape[0],))
-        model.build_model(gen_cost=gen_cost, line_margin=line_margin, min_rho=min_rho)
+        model.build_model(
+            line_disconnection=True,
+            symmetry=True,
+            switching_limits=True,
+            cooldown=True,
+            gen_cost=gen_cost,
+            lin_line_margins=False,
+            quad_line_margins=quad_line_margins,
+            lin_gen_penalty=False,
+            quad_gen_penalty=False,
+        )
 
         if verbose or True:
             model.print_model()
@@ -654,7 +658,7 @@ class TestTopologyOptimizationDCOPF(unittest.TestCase):
                 gen_p = model.convert_mw_to_per_unit(grid_tmp.res_gen["p_mw"].sum())
                 valid = valid and np.abs(gen_p - load_p) < 1e-6
 
-                if gen_cost and line_margin and model.solver_name != "glpk":
+                if gen_cost and quad_line_margins and model.solver_name != "glpk":
                     objective = (
                         grid_tmp.res_cost
                         + np.square(
@@ -662,7 +666,7 @@ class TestTopologyOptimizationDCOPF(unittest.TestCase):
                             / model.grid.line["max_p_pu"]
                         ).sum()
                     )
-                elif line_margin and model.solver_name != "glpk":
+                elif quad_line_margins and model.solver_name != "glpk":
                     objective = +np.square(
                         model.convert_mw_to_per_unit(grid_tmp.res_line["p_from_mw"])
                         / model.grid.line["max_p_pu"]

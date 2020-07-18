@@ -1,7 +1,6 @@
 import itertools
 import os
 import random
-from decimal import Decimal
 from timeit import default_timer as timer
 
 import matplotlib.pyplot as plt
@@ -16,6 +15,52 @@ from lib.visualizer import print_info
 
 class ExperimentDCOPFTiming:
     @staticmethod
+    def _plot_and_save(
+        times, labels, n_bins=25, title=None, legend_title=None, save_path=None
+    ):
+        fig, ax = plt.subplots()
+        ax.set_title(title)
+        for time, label in zip(times, labels):
+            sns.distplot(
+                time,
+                label=label,
+                ax=ax,
+                bins=n_bins,
+                hist=True,
+                kde=True,
+                norm_hist=True,
+            )
+
+        ax.set_xlabel("Time [s]")
+        ax.set_ylabel("PDF")
+        ax.set_xlim(left=0)
+
+        ax.legend(title=legend_title)
+
+        fig.show()
+        if save_path:
+            file_extension = os.path.splitext(save_path)[1]
+            if not file_extension:
+                save_path = save_path + ".png"
+
+            fig.savefig(save_path)
+
+    @staticmethod
+    def _save_csv(data_dict, save_path):
+        data = pd.DataFrame(columns=["params", "total", "build", "solve", "step"])
+        for key in data_dict:
+            sub_data = data_dict[key]
+            sub_data["params"] = key
+            data = data.append(sub_data)
+
+        if save_path:
+            file_extension = os.path.splitext(save_path)[1]
+            if not file_extension:
+                save_path = save_path + ".csv"
+
+            data.to_csv(save_path)
+
+    @staticmethod
     def _runner_timing(
         case,
         n_measurements=100,
@@ -28,10 +73,13 @@ class ExperimentDCOPFTiming:
         switching_limits=True,
         cooldown=True,
         gen_cost=False,
-        line_margin=False,
-        min_rho=True,
+        lin_line_margins=True,
+        quad_line_margins=False,
+        lambd=1.0,
+        lin_gen_penalty=True,
+        quad_gen_penalty=False,
         warm_start=True,
-        verbose=True,
+        verbose=False,
     ):
         random.seed(0)
         np.random.seed(0)
@@ -58,9 +106,6 @@ class ExperimentDCOPFTiming:
         while len(measurements) < n_measurements:
             start_total = timer()
 
-            topo_vect = obs.topo_vect
-            line_status = obs.line_status
-
             action = random.choice(actions)
 
             start_build = timer()
@@ -80,8 +125,11 @@ class ExperimentDCOPFTiming:
                 switching_limits=switching_limits,
                 cooldown=cooldown,
                 gen_cost=gen_cost,
-                line_margin=line_margin,
-                min_rho=min_rho,
+                lin_line_margins=lin_line_margins,
+                quad_line_margins=quad_line_margins,
+                lambd=lambd,
+                lin_gen_penalty=lin_gen_penalty,
+                quad_gen_penalty=quad_gen_penalty,
             )
             time_build = timer() - start_build
 
@@ -96,11 +144,6 @@ class ExperimentDCOPFTiming:
 
             print(f"\n\nSTEP {t}")
             print(action)
-            print(
-                "{:<35}{}\t{}".format(
-                    "ENV", str(topo_vect), str(line_status.astype(int))
-                )
-            )
             print_info(info, done, reward)
 
             obs = obs_next
@@ -124,126 +167,90 @@ class ExperimentDCOPFTiming:
         return pd.DataFrame(measurements)
 
     def compare_by_solver(
-        self, case, save_dir, solver_names, n_bins=25, **kwargs,
+        self, case, save_dir, solver_names, n_bins, **kwargs,
     ):
-        data = dict()
+        file_name = f"{case.name}_solvers"
 
-        fig, ax = plt.subplots()
-        ax.set_title(f"{case.name} - MIP solver comparison")
-        tol_str = "{:.2e}".format(Decimal(kwargs["tol"]))
-        for solver_name in solver_names:
-            data[solver_name] = self._runner_timing(
+        data_dict = dict()
+        for idx, solver_name in enumerate(solver_names):
+            data_dict[f"{solver_name}-{idx}"] = self._runner_timing(
                 case=case, solver_name=solver_name, **kwargs,
             )
 
-            sns.distplot(
-                data[solver_name]["solve"],
-                label=solver_name.capitalize(),
-                ax=ax,
-                hist=True,
-                kde=True,
-                bins=n_bins,
-                norm_hist=True,
-            )
-            data[solver_name].to_csv(
-                os.path.join(save_dir, f"{case.name}_tol-{tol_str}_{solver_name}.csv")
-            )
-
-        ax.set_xlabel("Time [s]")
-        ax.set_ylabel("PDF")
-        ax.legend(title="Solver")
-        ax.set_xlim(left=0)
-
-        fig.show()
-        fig.savefig(
-            os.path.join(
-                save_dir,
-                f"{case.name}_tol-{tol_str}_" + "-".join(solver_names) + ".png",
-            )
+        self._plot_and_save(
+            times=[data_dict[param]["solve"] for param in data_dict],
+            labels=[param.capitalize() for param in data_dict],
+            n_bins=n_bins,
+            title=f"{case.name} - MIP solver comparison",
+            legend_title="Solver",
+            save_path=os.path.join(save_dir, file_name + ".png"),
         )
 
-    def compare_by_tolerance(self, case, save_dir, tols, n_bins=25, **kwargs):
-        data = dict()
+        self._save_csv(
+            data_dict=data_dict, save_path=os.path.join(save_dir, file_name + ".csv")
+        )
 
-        fig, ax = plt.subplots()
-        ax.set_title(f"{case.name} - Duality gap tolerance comparison")
+    def compare_by_tolerance(self, case, save_dir, tols, n_bins, **kwargs):
+        file_name = f"{case.name}_tols"
+
+        data_dict = dict()
         for tol in tols:
-            data[str(tol)] = self._runner_timing(case=case, tol=tol, **kwargs,)
+            data_dict[str(tol)] = self._runner_timing(case=case, tol=tol, **kwargs,)
 
-            sns.distplot(
-                data[str(tol)]["solve"],
-                label=str(tol),
-                ax=ax,
-                hist=True,
-                kde=True,
-                bins=n_bins,
-                norm_hist=True,
-            )
+        self._plot_and_save(
+            times=[data_dict[param]["solve"] for param in data_dict],
+            labels=[param for param in data_dict],
+            n_bins=n_bins,
+            title=f"{case.name} - Duality gap tolerance comparison",
+            legend_title="Tolerance",
+            save_path=os.path.join(save_dir, file_name + ".png"),
+        )
 
-            tol_str = "{:.2e}".format(Decimal(tol))
-            data[str(tol)].to_csv(
-                os.path.join(save_dir, f"{case.name}_tol-{tol_str}.csv")
-            )
-
-        ax.set_xlabel("Time [s]")
-        ax.set_ylabel("PDF")
-        ax.legend(title="Tolerance")
-        ax.set_xlim(left=0)
-
-        fig.show()
-        fig.savefig(os.path.join(save_dir, f"{case.name}_tols.png"))
+        self._save_csv(
+            data_dict=data_dict, save_path=os.path.join(save_dir, file_name + ".csv")
+        )
 
     def compare_by_switching_limits(
-        self, case, save_dir, switch_limits, n_bins=25, **kwargs,
+        self, case, save_dir, switch_limits, n_bins, **kwargs,
     ):
-        data = dict()
+        file_name = f"{case.name}_limits"
 
-        fig, ax = plt.subplots()
-        ax.set_title(f"{case.name} - Maximum switching limit comparison")
+        data_dict = dict()
         for limits in switch_limits:
             n_max_line_status_changed, n_max_sub_changed = limits
             limits_str = f"{n_max_line_status_changed}-{n_max_sub_changed}"
 
-            data[limits_str] = self._runner_timing(
+            data_dict[limits_str] = self._runner_timing(
                 case=case,
                 n_max_line_status_changed=n_max_line_status_changed,
                 n_max_sub_changed=n_max_sub_changed,
                 **kwargs,
             )
 
-            sns.distplot(
-                data[limits_str]["solve"],
-                label=limits_str,
-                ax=ax,
-                hist=True,
-                kde=True,
-                bins=n_bins,
-                norm_hist=True,
-            )
-            data[limits_str].to_csv(
-                os.path.join(save_dir, f"{case.name}_{limits_str}.csv")
-            )
+        self._plot_and_save(
+            times=[data_dict[param]["solve"] for param in data_dict],
+            labels=[param for param in data_dict],
+            n_bins=n_bins,
+            title=f"{case.name} - Maximum switching limit comparison",
+            legend_title="Line-Substation",
+            save_path=os.path.join(save_dir, file_name + ".png"),
+        )
 
-        ax.set_xlabel("Time [s]")
-        ax.set_ylabel("PDF")
-        ax.legend(title="Line-Substation")
-        ax.set_xlim(left=0)
-
-        fig.show()
-        fig.savefig(os.path.join(save_dir, f"{case.name}_limits.png"))
+        self._save_csv(
+            data_dict=data_dict, save_path=os.path.join(save_dir, file_name + ".csv")
+        )
 
     def compare_by_constraint_activations(
         self, case, save_dir, constraint_activations, n_bins=25, **kwargs,
     ):
-        data = dict()
+        file_name = f"{case.name}_activations"
 
-        fig, ax = plt.subplots()
-        ax.set_title(f"{case.name} - Constraint activations comparison")
+        data_dict = dict()
         for activations in constraint_activations:
             line_disconnection, symmmetry, switching_limits, cooldown = activations
             activations_str = "-".join(["T" if a else "F" for a in activations])
 
-            data[activations_str] = self._runner_timing(
+            data_dict[activations_str] = self._runner_timing(
                 case=case,
                 line_disconnection=line_disconnection,
                 symmetry=symmmetry,
@@ -252,99 +259,98 @@ class ExperimentDCOPFTiming:
                 **kwargs,
             )
 
-            sns.distplot(
-                data[activations_str]["solve"],
-                label=activations_str,
-                ax=ax,
-                hist=True,
-                kde=True,
-                bins=n_bins,
-                norm_hist=True,
-            )
+        self._plot_and_save(
+            times=[data_dict[param]["solve"] for param in data_dict],
+            labels=[param for param in data_dict],
+            n_bins=n_bins,
+            title=f"{case.name} - Constraint activations comparison",
+            legend_title="Line-Symmetry-Switching-Cooldown",
+            save_path=os.path.join(save_dir, file_name + ".png"),
+        )
 
-            data[activations_str].to_csv(
-                os.path.join(save_dir, f"{case.name}_{activations_str}.csv")
-            )
-
-        ax.set_xlabel("Time [s]")
-        ax.set_ylabel("PDF")
-        ax.legend(title="Line-Symmetry-Switching-Cooldown")
-        ax.set_xlim(left=0)
-
-        fig.show()
-        fig.savefig(os.path.join(save_dir, f"{case.name}_activations.png"))
+        self._save_csv(
+            data_dict=data_dict, save_path=os.path.join(save_dir, file_name + ".csv")
+        )
 
     def compare_by_objective(
         self, case, save_dir, objectives, n_bins=25, **kwargs,
     ):
-        data = dict()
+        file_name = f"{case.name}_objectives"
 
-        fig, ax = plt.subplots()
-        ax.set_title(f"{case.name} - Objective function comparison")
+        data_dict = dict()
         for objective in objectives:
-            gen_cost, line_margin, min_rho = objective
-
+            (
+                gen_cost,
+                lin_line_margins,
+                quad_line_margins,
+                lin_gen_penalty,
+                quad_gen_penalty,
+            ) = objective
             objective_str = "-".join(["T" if obj else "F" for obj in objective])
-            data[objective_str] = self._runner_timing(
+
+            data_dict[objective_str] = self._runner_timing(
                 case=case,
                 gen_cost=gen_cost,
-                line_margin=line_margin,
-                min_rho=min_rho,
+                lin_line_margins=lin_line_margins,
+                quad_line_margins=quad_line_margins,
+                lin_gen_penalty=lin_gen_penalty,
+                quad_gen_penalty=quad_gen_penalty,
                 **kwargs,
             )
 
-            sns.distplot(
-                data[objective_str]["solve"],
-                label=objective_str,
-                ax=ax,
-                hist=True,
-                kde=True,
-                bins=n_bins,
-                norm_hist=True,
-            )
+        self._plot_and_save(
+            times=[data_dict[param]["solve"] for param in data_dict],
+            labels=[param for param in data_dict],
+            n_bins=n_bins,
+            title=f"{case.name} - Objective function comparison",
+            legend_title="GenCost-LinMar-QuadMar-LinGen-QuadGen",
+            save_path=os.path.join(save_dir, file_name + ".png"),
+        )
 
-            data[objective_str].to_csv(
-                os.path.join(save_dir, f"{case.name}_{objective_str}.csv")
-            )
-
-        ax.set_xlabel("Time [s]")
-        ax.set_ylabel("PDF")
-        ax.legend(title="Generator-Margins-Rho")
-        ax.set_xlim(left=0)
-
-        fig.show()
-        fig.savefig(os.path.join(save_dir, f"{case.name}_objectives.png"))
+        self._save_csv(
+            data_dict=data_dict, save_path=os.path.join(save_dir, file_name + ".csv")
+        )
 
     def compare_by_warmstart(
         self, case, save_dir, n_bins=25, **kwargs,
     ):
-        data = dict()
+        file_name = f"{case.name}_warmstart"
 
-        fig, ax = plt.subplots()
-        ax.set_title(f"{case.name} - Solver warm start comparison")
-
+        data_dict = dict()
         for warm_start in [True, False]:
-            data[str(warm_start)] = self._runner_timing(
+            data_dict[str(warm_start)] = self._runner_timing(
                 case=case, warm_start=warm_start, **kwargs,
             )
 
-            sns.distplot(
-                data[str(warm_start)]["solve"],
-                label=str(warm_start),
-                ax=ax,
-                hist=True,
-                kde=True,
-                bins=n_bins,
-                norm_hist=True,
-            )
-            data[str(warm_start)].to_csv(
-                os.path.join(save_dir, f"{case.name}_warm-{str(warm_start)}.csv")
-            )
+        self._plot_and_save(
+            times=[data_dict[param]["solve"] for param in data_dict],
+            labels=[param for param in data_dict],
+            n_bins=n_bins,
+            title=f"{case.name} - Solver warm start comparison",
+            legend_title="Warm start",
+            save_path=os.path.join(save_dir, file_name + ".png"),
+        )
 
-        ax.set_xlabel("Time [s]")
-        ax.set_ylabel("PDF")
-        ax.legend(title="Warm start")
-        ax.set_xlim(left=0)
+        self._save_csv(
+            data_dict=data_dict, save_path=os.path.join(save_dir, file_name + ".csv")
+        )
 
-        fig.show()
-        fig.savefig(os.path.join(save_dir, f"{case.name}_warm_start.png",))
+    def compare_by_lambda(self, case, save_dir, lambdas, n_bins, **kwargs):
+        file_name = f"{case.name}_lambdas"
+
+        data_dict = dict()
+        for lambd in lambdas:
+            data_dict[str(lambd)] = self._runner_timing(case=case, lambd=lambd, **kwargs,)
+
+        self._plot_and_save(
+            times=[data_dict[param]["solve"] for param in data_dict],
+            labels=[param for param in data_dict],
+            n_bins=n_bins,
+            title=f"{case.name} - Penalty scaling comparison",
+            legend_title="Regularization parameter",
+            save_path=os.path.join(save_dir, file_name + ".png"),
+        )
+
+        self._save_csv(
+            data_dict=data_dict, save_path=os.path.join(save_dir, file_name + ".csv")
+        )

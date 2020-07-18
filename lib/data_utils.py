@@ -11,11 +11,14 @@ def make_dir(directory):
     return directory
 
 
-def create_results_dir(results_dir_path):
+def create_results_dir(results_dir_path, model_name=None):
+    if not model_name:
+        model_name = "results"
+
     results_dir = make_dir(
         os.path.join(
             results_dir_path,
-            datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S_model"),
+            datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S_" + model_name),
         )
     )
     return results_dir
