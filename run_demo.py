@@ -33,7 +33,6 @@ case_name = "l2rpn_2019"
 parameters = grid2op.Parameters.Parameters()
 parameters.ENV_DC = True
 parameters.FORECAST_DC = True
-parameters.MAX_LINE_STATUS_CHANGED = 0
 
 env: Environment = grid2op.make_from_dataset_path(
     dataset_path=os.path.join(os.path.expanduser("~"), "data_grid2op", case_name),
@@ -68,7 +67,7 @@ for key in env.get_params_for_runner():
     GRID AND MIP MODEL.
 """
 grid = GridDCOPF(case, base_unit_v=case.base_unit_v, base_unit_p=case.base_unit_p)
-grid.print_grid()
+# grid.print_grid()
 
 """
     Generate actions.
@@ -93,8 +92,6 @@ actions_do_nothing = env.action_space({})
 """
     Initialize topology converter.
 """
-# TODO: Maintenance support, CHECK constraints
-# TODO: Infeasible problem?
 # TODO: Reconnection of a powerline: status + buses
 
 np.random.seed(1)
@@ -121,6 +118,7 @@ for t in range(100):
         symmetry=True,
         switching_limits=True,
         cooldown=True,
+        unitary_action=True,
         gen_cost=False,
         quad_line_margins=False,
         lin_line_margins=True,
@@ -130,13 +128,14 @@ for t in range(100):
     )
     # model.print_model()
     result = model.solve(tol=0.001, verbose=False)
-    mip_topo_vect, mip_line_status, action = grid.convert_mip_to_topology_vector(result)
+    mip_topo_vect, mip_line_status, action = grid.convert_mip_to_topology_vector(
+        result, obs
+    )
 
     """
         Act.
     """
     print(f"\n\nSTEP {t}")
-    # action = actions_do_nothing
     print(action)
     obs_next, reward, done, info = env.step(action)
     print(
@@ -157,7 +156,7 @@ for t in range(100):
     """
         Update grid.
     """
-    grid.update(obs_next, reset=False, verbose=True)
+    grid.update(obs_next, reset=False, verbose=False)
 
     obs = obs_next
 
@@ -169,7 +168,8 @@ for t in range(100):
                 "ENV", str(obs.topo_vect), str(obs.line_status.astype(int))
             )
         )
-        grid.update(obs_next, reset=True, verbose=True)
+        grid.update(obs, reset=True, verbose=False)
 
     # if t == 3:
     #     break
+    # break

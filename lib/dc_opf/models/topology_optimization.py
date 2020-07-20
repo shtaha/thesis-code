@@ -9,7 +9,7 @@ class TopologyOptimizationDCOPF(StandardDCOPF):
         self,
         name,
         grid,
-        grid_backend,
+        grid_backend=None,
         n_max_line_status_changed=1,
         n_max_sub_changed=1,
         solver_name="gurobi",
@@ -38,6 +38,7 @@ class TopologyOptimizationDCOPF(StandardDCOPF):
         symmetry=True,
         switching_limits=True,
         cooldown=True,
+        unitary_action=True,
         gen_cost=False,
         lin_line_margins=True,
         quad_line_margins=False,
@@ -60,6 +61,9 @@ class TopologyOptimizationDCOPF(StandardDCOPF):
             cooldown:
                 If True, then constraints on power line cooldown are activated.
 
+            unitary_action:
+                If True, then only one type of actions is allowed either line status switching or substation topology
+                reconfiguration.
 
         Arguments for objective function formulation.
             gen_cost:
@@ -119,6 +123,7 @@ class TopologyOptimizationDCOPF(StandardDCOPF):
             lin_line_margins=lin_line_margins,
             bound_max_flow=bound_max_flow,
             lin_gen_penalty=lin_gen_penalty,
+            unitary_action=unitary_action,
         )
 
         # Constraints
@@ -127,6 +132,7 @@ class TopologyOptimizationDCOPF(StandardDCOPF):
             symmmetry=symmetry,
             switching_limits=switching_limits,
             cooldown=cooldown,
+            unitary_action=unitary_action,
             lin_line_margins=lin_line_margins,
             lin_gen_penalty=lin_gen_penalty,
         )
@@ -272,7 +278,11 @@ class TopologyOptimizationDCOPF(StandardDCOPF):
     """
 
     def _build_variables(
-        self, lin_line_margins=True, bound_max_flow=True, lin_gen_penalty=True
+        self,
+        lin_line_margins=True,
+        bound_max_flow=True,
+        lin_gen_penalty=True,
+        unitary_action=True,
     ):
         self._build_variables_standard_generators()  # Generator productions and bounds
         self._build_variables_standard_delta()  # Bus voltage angles and bounds
@@ -369,6 +379,13 @@ class TopologyOptimizationDCOPF(StandardDCOPF):
             ),
         )
 
+        # Auxiliary variables for indicating whether a line status or substation topology switching has occured
+        if unitary_action:
+            self.model.y_line_status_switch = pyo.Var(domain=pyo.Binary, initialize=0)
+            self.model.y_substation_topology_switch = pyo.Var(
+                domain=pyo.Binary, initialize=0
+            )
+
     def _build_variable_mu(self, bound_max_flow=True):
         self.model.mu = pyo.Var(
             domain=pyo.NonNegativeReals,
@@ -404,6 +421,7 @@ class TopologyOptimizationDCOPF(StandardDCOPF):
         symmmetry=True,
         switching_limits=True,
         cooldown=True,
+        unitary_action=True,
         lin_line_margins=True,
         lin_gen_penalty=True,
     ):
@@ -425,6 +443,9 @@ class TopologyOptimizationDCOPF(StandardDCOPF):
 
         if cooldown:
             self._build_constraint_cooldown()
+
+        if unitary_action:
+            self._build_constraint_unitary_action()
 
         if lin_line_margins:
             self._build_constraint_lin_line_margins()
@@ -561,6 +582,79 @@ class TopologyOptimizationDCOPF(StandardDCOPF):
                 self.model.x_line_ex_2[line_id].fix(0)
                 self.model.x_line_ex_2[line_id].setlb(0)
                 self.model.x_line_ex_2[line_id].setub(0)
+
+    def _build_constraint_cooldown(self):
+        for line_id in self.line.index:
+            if self.line.cooldown[line_id]:
+                self.model.x_line_status_switch[line_id].fix(0)
+                self.model.x_line_status_switch[line_id].setlb(0)
+                self.model.x_line_status_switch[line_id].setub(0)
+
+        for sub_id in self.sub.index:
+            if self.sub.cooldown[sub_id]:
+                self.model.x_substation_topology_switch[sub_id].fix(0)
+                self.model.x_substation_topology_switch[sub_id].setlb(0)
+                self.model.x_substation_topology_switch[sub_id].setub(0)
+
+    def _build_constraint_unitary_action(self):
+        # Allow only one type of actions
+        def _constraint_unitary_action(model):
+            return pyo.inequality(
+                0, model.y_line_status_switch + model.y_substation_topology_switch, 1
+            )
+
+        def _constraint_unitary_action_line_upper(model):
+            n_line = len(model.line_set)
+            return (
+                sum([model.x_line_status_switch[line_id] for line_id in model.line_set])
+                <= n_line * model.y_line_status_switch
+            )
+
+        def _constraint_unitary_action_line_lower(model):
+            return (
+                sum([model.x_line_status_switch[line_id] for line_id in model.line_set])
+                >= model.y_line_status_switch
+            )
+
+        def _constraint_unitary_action_substation_upper(model):
+            n_sub = len(model.sub_set)
+            return (
+                sum(
+                    [
+                        model.x_substation_topology_switch[sub_id]
+                        for sub_id in model.sub_set
+                    ]
+                )
+                <= n_sub * model.y_substation_topology_switch
+            )
+
+        def _constraint_unitary_action_substation_lower(model):
+            return (
+                sum(
+                    [
+                        model.x_substation_topology_switch[sub_id]
+                        for sub_id in model.sub_set
+                    ]
+                )
+                >= model.y_substation_topology_switch
+            )
+
+        self.model.constraint_unitary_action = pyo.Constraint(
+            rule=_constraint_unitary_action
+        )
+        self.model.constraint_unitary_action_line_upper = pyo.Constraint(
+            rule=_constraint_unitary_action_line_upper
+        )
+        self.model.constraint_unitary_action_line_lower = pyo.Constraint(
+            rule=_constraint_unitary_action_line_lower
+        )
+
+        self.model.constraint_unitary_action_substation_upper = pyo.Constraint(
+            rule=_constraint_unitary_action_substation_upper
+        )
+        self.model.constraint_unitary_action_substation_lower = pyo.Constraint(
+            rule=_constraint_unitary_action_substation_lower
+        )
 
     def _build_constraint_line_status_switch(self):
         def _constraint_line_status_switch(model, line_id):
@@ -716,19 +810,6 @@ class TopologyOptimizationDCOPF(StandardDCOPF):
             self.model.line_set, rule=_constraint_lin_line_margins_lower
         )
 
-    def _build_constraint_cooldown(self):
-        for line_id in self.line.index:
-            if self.line.cooldown[line_id]:
-                self.model.x_line_status_switch[line_id].fix(0)
-                self.model.x_line_status_switch[line_id].setlb(0)
-                self.model.x_line_status_switch[line_id].setub(0)
-
-        for sub_id in self.sub.index:
-            if self.sub.cooldown[sub_id]:
-                self.model.x_substation_topology_switch[sub_id].fix(0)
-                self.model.x_substation_topology_switch[sub_id].setlb(0)
-                self.model.x_substation_topology_switch[sub_id].setub(0)
-
     def _build_constraint_lin_gen_penalty(self):
         def _constraint_lin_gen_penalty_upper(model, gen_id):
             return (model.gen_p[gen_id] - model.gen_p_ref[gen_id]) / model.gen_p_max[
@@ -770,8 +851,8 @@ class TopologyOptimizationDCOPF(StandardDCOPF):
             or quad_gen_penalty
         )
 
-        assert np.logical_xor(
-            lin_line_margins, quad_line_margins
+        assert not (
+            lin_line_margins and quad_line_margins
         )  # Only one penalty on margins
         assert not (
             lin_gen_penalty and quad_gen_penalty
@@ -809,6 +890,7 @@ class TopologyOptimizationDCOPF(StandardDCOPF):
         """
             Generator power production error.
         """
+
         # Linear penalty on generator power productions
         def _objective_lin_gen_penalty(model):
             return model.lambd * model.mu_gen
@@ -858,11 +940,14 @@ class TopologyOptimizationDCOPF(StandardDCOPF):
         solution_status = self.solver_status["Solver"][0]["Termination condition"]
 
         # Duality gap
-        lower_bound = self.solver_status["Problem"][0]["Lower bound"]
-        upper_bound = self.solver_status["Problem"][0]["Upper bound"]
-        gap = np.minimum(
-            np.abs((upper_bound - lower_bound) / (lower_bound + 1e-9)), 0.1
-        )
+        lower_bound, upper_bound, gap = 0.0, 0.0, 0.0
+        if solution_status != "infeasible":
+            lower_bound = self.solver_status["Problem"][0]["Lower bound"]
+            upper_bound = self.solver_status["Problem"][0]["Upper bound"]
+            gap = np.minimum(
+                np.abs((upper_bound - lower_bound) / (lower_bound + 1e-9)), 0.1
+            )
+
         if gap < 1e-4:
             gap = 1e-4
 
@@ -925,47 +1010,3 @@ class TopologyOptimizationDCOPF(StandardDCOPF):
         }
 
         return result
-
-    def compare_with_observation(self, result, obs, verbose=False):
-        res_gen = result["res_gen"][["min_p_pu", "p_pu", "max_p_pu"]].copy()
-        res_gen["env_p_pu"] = self.convert_mw_to_per_unit(obs.prod_p)
-        res_gen["diff"] = np.divide(
-            np.abs(res_gen["p_pu"] - res_gen["env_p_pu"]), res_gen["env_p_pu"] + 1e-9
-        )
-
-        res_line = result["res_line"][["p_pu", "max_p_pu"]].copy()
-        res_line["env_p_pu"] = self.convert_mw_to_per_unit(
-            obs.p_or
-        )  # i_pu * v_pu * sqrt(3)
-        res_line["env_max_p_pu"] = np.abs(
-            np.divide(res_line["env_p_pu"], obs.rho + 1e-9)
-        )
-        # res_line["env_i_pu"] = self.convert_a_to_per_unit(obs.a_or)
-        # res_line["env_max_i_pu"] = np.abs(
-        #     np.divide(res_line["env_i_pu"], obs.rho + 1e-9)
-        # )
-        # res_line["env_v_pu"] = self.convert_kv_to_per_unit(obs.v_or)
-        #
-        # res_line["ratio"] = np.divide(res_line["max_p_pu"], res_line["env_max_p_pu"])
-
-        res_line["rho"] = result["res_line"]["loading_percent"] / 100.0
-        res_line["env_rho"] = obs.rho
-
-        res_line["diff_p"] = np.abs(
-            np.divide(
-                res_line["p_pu"] - res_line["env_p_pu"], res_line["env_p_pu"] + 1e-9
-            )
-        )
-        res_line["diff_rho"] = np.abs(
-            np.divide(res_line["rho"] - res_line["env_rho"], res_line["env_rho"] + 1e-9)
-        )
-
-        max_rho = res_line["rho"].max()
-        env_max_rho = res_line["env_rho"].max()
-
-        if verbose:
-            print("GEN\n" + res_gen.to_string())
-            print("LINE\n" + res_line.to_string())
-            print("RHO:\t{}\t{}".format(max_rho, env_max_rho))
-
-        return res_gen, res_line

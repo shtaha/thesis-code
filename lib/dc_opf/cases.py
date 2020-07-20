@@ -8,7 +8,7 @@ import pandas as pd
 from .unit_converter import UnitConverter
 
 
-def load_case(case_name):
+def load_case(case_name, env=None):
     if case_name == "case3":
         return OPFCase3()
     elif case_name == "case6":
@@ -16,11 +16,11 @@ def load_case(case_name):
     elif case_name == "case4":
         return OPFCase4()
     elif case_name in ["rte_case5", "rte_case5_example"]:
-        return OPFRTECase5()
+        return OPFRTECase5(env=env)
     elif case_name in ["l2rpn2019", "l2rpn_2019"]:
-        return OPFL2RPN2019()
+        return OPFL2RPN2019(env=env)
     elif case_name in ["l2rpn2020", "l2rpn_wcci_2020", "l2rpn_2020"]:
-        return OPFL2RPN2020()
+        return OPFL2RPN2020(env=env)
     else:
         raise ValueError(f"Invalid case name. Case {case_name} does not exist.")
 

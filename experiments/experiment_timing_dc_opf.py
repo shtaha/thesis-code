@@ -72,6 +72,7 @@ class ExperimentDCOPFTiming:
         symmetry=True,
         switching_limits=True,
         cooldown=True,
+        unitary_action=True,
         gen_cost=False,
         lin_line_margins=True,
         quad_line_margins=False,
@@ -98,7 +99,7 @@ class ExperimentDCOPFTiming:
 
         actions = list(itertools.chain([actions_do_nothing], actions_topology_set))
 
-        obs = env.reset()
+        _ = env.reset()
         grid = GridDCOPF(
             case, base_unit_v=case.base_unit_v, base_unit_p=case.base_unit_p
         )
@@ -124,6 +125,7 @@ class ExperimentDCOPFTiming:
                 symmetry=symmetry,
                 switching_limits=switching_limits,
                 cooldown=cooldown,
+                unitary_action=unitary_action,
                 gen_cost=gen_cost,
                 lin_line_margins=lin_line_margins,
                 quad_line_margins=quad_line_margins,
@@ -146,11 +148,10 @@ class ExperimentDCOPFTiming:
             print(action)
             print_info(info, done, reward)
 
-            obs = obs_next
             t = t + 1
             if done:
                 print("\n\nDONE")
-                obs = env.reset()
+                _ = env.reset()
                 grid.update(obs_next, reset=True)
 
             time_total = timer() - start_total
@@ -247,7 +248,13 @@ class ExperimentDCOPFTiming:
 
         data_dict = dict()
         for activations in constraint_activations:
-            line_disconnection, symmmetry, switching_limits, cooldown = activations
+            (
+                line_disconnection,
+                symmmetry,
+                switching_limits,
+                cooldown,
+                unitary_action,
+            ) = activations
             activations_str = "-".join(["T" if a else "F" for a in activations])
 
             data_dict[activations_str] = self._runner_timing(
@@ -256,6 +263,7 @@ class ExperimentDCOPFTiming:
                 symmetry=symmmetry,
                 switching_limits=switching_limits,
                 cooldown=cooldown,
+                unitary_action=unitary_action,
                 **kwargs,
             )
 
@@ -264,7 +272,7 @@ class ExperimentDCOPFTiming:
             labels=[param for param in data_dict],
             n_bins=n_bins,
             title=f"{case.name} - Constraint activations comparison",
-            legend_title="Line-Symmetry-Switching-Cooldown",
+            legend_title="Line-Symmetry-Switching-Cooldown-Unitary",
             save_path=os.path.join(save_dir, file_name + ".png"),
         )
 
@@ -340,7 +348,9 @@ class ExperimentDCOPFTiming:
 
         data_dict = dict()
         for lambd in lambdas:
-            data_dict[str(lambd)] = self._runner_timing(case=case, lambd=lambd, **kwargs,)
+            data_dict[str(lambd)] = self._runner_timing(
+                case=case, lambd=lambd, **kwargs,
+            )
 
         self._plot_and_save(
             times=[data_dict[param]["solve"] for param in data_dict],

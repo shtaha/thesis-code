@@ -1,6 +1,6 @@
 import os
 
-from experiments.experiment_timing_dc_opf import ExperimentDCOPFTiming
+from experiments import ExperimentDCOPFTiming, ExperimentMIPControl
 from lib.constants import Constants as Const
 from lib.data_utils import create_results_dir, make_dir
 from lib.dc_opf import load_case
@@ -8,25 +8,24 @@ from lib.dc_opf import load_case
 save_dir = create_results_dir(Const.RESULTS_DIR)
 n_measurements = 100
 n_bins = 25
-time_measurements = dict()
 
-experiment = ExperimentDCOPFTiming()
+experiment_timing = ExperimentDCOPFTiming()
+experiment_mip = ExperimentMIPControl()
 
-# for case_name in ["rte_case5", "l2rpn2019", "l2rpn2020"]:
-# for case_name in ["l2rpn2020"]:
-for case_name in ["rte_case5"]:
+for case_name in ["rte_case5", "l2rpn2019", "l2rpn2020"]:
     case = load_case(case_name)
     case_save_dir = make_dir(os.path.join(save_dir, case_name))
 
-    experiment.compare_by_solver(
+    experiment_timing.compare_by_solver(
         case=case,
         save_dir=case_save_dir,
         solver_names=("gurobi",),
         n_bins=n_bins,
         n_measurements=n_measurements,
+        verbose=True,
     )
 
-    experiment.compare_by_tolerance(
+    experiment_timing.compare_by_tolerance(
         case=case,
         save_dir=case_save_dir,
         tols=(10 ** (-i) for i in range(2, 6)),
@@ -34,7 +33,7 @@ for case_name in ["rte_case5"]:
         n_measurements=n_measurements,
     )
 
-    experiment.compare_by_switching_limits(
+    experiment_timing.compare_by_switching_limits(
         case=case,
         save_dir=case_save_dir,
         switch_limits=[(1, 0), (0, 1), (1, 1), (2, 1), (3, 1), (1, 2), (1, 3), (2, 2)],
@@ -42,21 +41,22 @@ for case_name in ["rte_case5"]:
         n_measurements=n_measurements,
     )
 
-    experiment.compare_by_constraint_activations(
+    experiment_timing.compare_by_constraint_activations(
         case=case,
         save_dir=case_save_dir,
         constraint_activations=[
-            (True, True, True, True),
-            (False, True, True, True),
-            (True, False, True, True),
-            (True, True, False, True),
-            (True, True, True, False),
+            (True, True, True, True, True),
+            (False, True, True, True, True),
+            (True, False, True, True, True),
+            (True, True, False, True, True),
+            (True, True, True, False, True),
+            (True, True, True, True, False),
         ],
         n_bins=n_bins,
         n_measurements=n_measurements,
     )
 
-    experiment.compare_by_objective(
+    experiment_timing.compare_by_objective(
         case=case,
         save_dir=case_save_dir,
         objectives=[
@@ -96,11 +96,11 @@ for case_name in ["rte_case5"]:
         n_measurements=n_measurements,
     )
 
-    experiment.compare_by_warmstart(
+    experiment_timing.compare_by_warmstart(
         case=case, save_dir=case_save_dir, n_bins=n_bins, n_measurements=n_measurements,
     )
 
-    experiment.compare_by_lambda(
+    experiment_timing.compare_by_lambda(
         case=case,
         save_dir=case_save_dir,
         lambdas=(10 ** i for i in range(-1, 4)),

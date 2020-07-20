@@ -12,7 +12,13 @@ from ..unit_converter import UnitConverter
 
 class StandardDCOPF(UnitConverter, PyomoMixin):
     def __init__(
-        self, name, grid, grid_backend, solver_name="mosek", verbose=False, **kwargs
+        self,
+        name,
+        grid,
+        grid_backend=None,
+        solver_name="mosek",
+        verbose=False,
+        **kwargs,
     ):
         UnitConverter.__init__(self, **kwargs)
         if verbose:
@@ -163,7 +169,7 @@ class StandardDCOPF(UnitConverter, PyomoMixin):
                 initialize=self._create_map_ids_to_values(
                     self.gen.index, self.gen.p_pu
                 ),
-                within=pyo.NonNegativeReals,
+                within=pyo.Reals,
             )
             self.model.lambd = pyo.Param(initialize=lambd, within=pyo.NonNegativeReals)
 
@@ -305,7 +311,9 @@ class StandardDCOPF(UnitConverter, PyomoMixin):
             self.model.gen_set,
             domain=pyo.NonNegativeReals,
             bounds=_bounds_gen_p,
-            initialize=self._create_map_ids_to_values(self.gen.index, self.gen.p_pu),
+            initialize=self._create_map_ids_to_values(
+                self.gen.index, np.maximum(self.gen.p_pu, 0.0)
+            ),
         )
 
     def _build_variables_standard_ext_grids(self):

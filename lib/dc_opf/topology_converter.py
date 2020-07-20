@@ -156,7 +156,13 @@ class TopologyConverter:
                 "{:<35}{:<10}".format("SUBSTATION TOPOLOGY CHANGES:", n_max_sub_changed)
             )
 
-    def convert_mip_to_topology_vector(self, mip_solution):
+    def convert_mip_to_topology_vector(self, mip_solution, obs):
+        solution_status = mip_solution["solution_status"]
+
+        # If infeasible problem, then return a do-nothing action
+        if solution_status == "infeasible":
+            return obs.topo_vect, obs.line_status, self.env.action_space({})
+
         x_gen = mip_solution["res_x_gen"]
         x_load = mip_solution["res_x_load"]
         x_line_or_1 = mip_solution["res_x_line_or_1"]
@@ -191,32 +197,41 @@ class TopologyConverter:
             gen_sub_bus, load_sub_bus, line_or_sub_bus, line_ex_sub_bus, line_status
         )
 
-        print("1", x_line_or_1.astype(int), x_line_ex_1.astype(int))
-        print("2", x_line_or_2.astype(int), x_line_ex_2.astype(int))
-        print("status", line_status.astype(int))
-        print("switch status", x_line_status_switch.astype(int))
-        print("switch sub", x_substation_topology_switch.astype(int))
-
         # Construct grid2op action
         action_dict = dict()
         sub_topology_set = []
         line_status_set = []
+        line_or_bus_set = []
+        line_ex_bus_set = []
         for line_id, line_switch in enumerate(x_line_status_switch):
             if line_switch:
-                line_status_set.append((line_id, line_status[line_id]))
-
-        if line_status_set:
-            action_dict["set_line_status"] = line_status_set
+                if not line_status[line_id]:  # Disconnection
+                    line_status_set.append((line_id, -1))
+                else:  # Reconnection
+                    line_status_set.append((line_id, 1))
+                    line_or_bus_set.append((line_id, line_or_sub_bus[line_id]))
+                    line_ex_bus_set.append((line_id, line_ex_sub_bus[line_id]))
 
         for sub_id, sub_switch in enumerate(x_substation_topology_switch):
             if sub_switch:
                 sub_topology = self._get_substation_topology_vector(topo_vect, sub_id)
                 sub_topology_set.append((sub_id, sub_topology))
 
-        if sub_topology_set:
-            action_dict["set_bus"] = {"substations_id": sub_topology_set}
+        # Construct action dictionary
+        if line_or_bus_set or line_ex_bus_set or sub_topology_set:
+            action_dict["set_bus"] = dict()
 
-        print(action_dict)
+        if line_status_set:
+            action_dict["set_line_status"] = line_status_set
+
+            if line_or_bus_set:
+                action_dict["set_bus"]["lines_or_id"] = line_or_bus_set
+            if line_ex_bus_set:
+                action_dict["set_bus"]["lines_ex_id"] = line_ex_bus_set
+
+        if sub_topology_set:
+            action_dict["set_bus"]["substations_id"] = sub_topology_set
+
         action = self.env.action_space(action_dict)
 
         return topo_vect, line_status, action

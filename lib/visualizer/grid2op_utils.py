@@ -174,7 +174,7 @@ def print_rho(observation):
 
 
 def print_parameters(environment):
-    parameters = environment.get_params_for_runner()["parameters_path"]
+    parameters = environment.parameters.to_dict()
     print("PARAMETERS")
     for param in parameters:
         print("{:<35}{}".format(param + ":", parameters[param]))
