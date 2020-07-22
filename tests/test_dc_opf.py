@@ -517,7 +517,8 @@ class TestTopologyOptimizationDCOPF(unittest.TestCase):
         np.random.seed(0)
         model.gen["cost_pu"] = np.random.uniform(1.0, 5.0, (model.grid.gen.shape[0],))
         model.build_model(
-            line_disconnection=True,
+            allow_onesided_disconnection=False,
+            allow_implicit_diconnection=False,
             symmetry=True,
             switching_limits=True,
             cooldown=True,

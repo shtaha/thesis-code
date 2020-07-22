@@ -34,7 +34,8 @@ class TopologyOptimizationDCOPF(StandardDCOPF):
 
     def build_model(
         self,
-        line_disconnection=True,
+        allow_onesided_disconnection=False,
+        allow_implicit_diconnection=False,
         symmetry=True,
         switching_limits=True,
         cooldown=True,
@@ -48,9 +49,12 @@ class TopologyOptimizationDCOPF(StandardDCOPF):
     ):
         """
         Arguments for activation of constraints.
-            line_disconnection:
-                If True, then we allow only for line disconnection on both ends, i.e.
+            allow_onesided_disconnection:
+                If False, then we allow only for line disconnection on both ends, i.e.
                 x_or_1 + x_or_2 == x_ex_1 + x_ex_2.
+
+            allow_implicit_diconnection:
+                If False, then we enforce that each element is connected to a bus with at least 2 elements.
 
             symmetry:
                 If True, then the first element at a substation is fixed on bus 1.
@@ -120,6 +124,7 @@ class TopologyOptimizationDCOPF(StandardDCOPF):
 
         # Variables
         self._build_variables(
+            allow_implicit_diconnection=allow_implicit_diconnection,
             lin_line_margins=lin_line_margins,
             bound_max_flow=bound_max_flow,
             lin_gen_penalty=lin_gen_penalty,
@@ -128,7 +133,8 @@ class TopologyOptimizationDCOPF(StandardDCOPF):
 
         # Constraints
         self._build_constraints(
-            line_disconnection=line_disconnection,
+            allow_onesided_disconnection=allow_onesided_disconnection,
+            allow_implicit_diconnection=allow_implicit_diconnection,
             symmmetry=symmetry,
             switching_limits=switching_limits,
             cooldown=cooldown,
@@ -279,6 +285,7 @@ class TopologyOptimizationDCOPF(StandardDCOPF):
 
     def _build_variables(
         self,
+        allow_implicit_diconnection=False,
         lin_line_margins=True,
         bound_max_flow=True,
         lin_gen_penalty=True,
@@ -386,6 +393,18 @@ class TopologyOptimizationDCOPF(StandardDCOPF):
                 domain=pyo.Binary, initialize=0
             )
 
+        # TODO
+        self._build_constraint_onesided_line_reconnection()
+
+        if not allow_implicit_diconnection:
+            self.model.y_bus_activation = pyo.Var(
+                self.model.bus_set,
+                domain=pyo.Binary,
+                initialize=self._create_map_ids_to_values(
+                    self.bus.index, np.greater(self.bus.n_elements, 1.0).astype(int)
+                ),
+            )
+
     def _build_variable_mu(self, bound_max_flow=True):
         self.model.mu = pyo.Var(
             domain=pyo.NonNegativeReals,
@@ -417,7 +436,8 @@ class TopologyOptimizationDCOPF(StandardDCOPF):
 
     def _build_constraints(
         self,
-        line_disconnection=True,
+        allow_onesided_disconnection=False,
+        allow_implicit_diconnection=False,
         symmmetry=True,
         switching_limits=True,
         cooldown=True,
@@ -430,8 +450,11 @@ class TopologyOptimizationDCOPF(StandardDCOPF):
         self._build_constraint_line_or()
         self._build_constraint_line_ex()
 
-        if line_disconnection:
-            self._build_constraint_line_disconnection()
+        if not allow_onesided_disconnection:
+            self._build_constraint_onesided_line_disconnection()
+
+        if not allow_implicit_diconnection:
+            self._build_constraint_implicit_line_disconnection()
 
         # Constraints to eliminate symmetric topologies
         if symmmetry:
@@ -555,15 +578,71 @@ class TopologyOptimizationDCOPF(StandardDCOPF):
             self.model.line_set, rule=_constraint_line_ex
         )
 
-    def _build_constraint_line_disconnection(self):
-        def _constraint_line_disconnection(model, line_id):
+    def _build_constraint_onesided_line_disconnection(self):
+        def _constraint_onesided_line_disconnection(model, line_id):
             return (
                 model.x_line_or_1[line_id] + model.x_line_or_2[line_id]
                 == model.x_line_ex_1[line_id] + model.x_line_ex_2[line_id]
             )
 
-        self.model.constraint_line_disconnection = pyo.Constraint(
-            self.model.line_set, rule=_constraint_line_disconnection
+        self.model.constraint_onesided_line_disconnection = pyo.Constraint(
+            self.model.line_set, rule=_constraint_onesided_line_disconnection
+        )
+
+    def _build_constraint_implicit_line_disconnection(self):
+        def _get_bus_elements(model, bus_id):
+            sub_id = model.bus_ids_to_sub_ids[bus_id]
+            sub_bus = model.bus_ids_to_sub_bus_ids[bus_id]
+
+            gens = [
+                1 - model.x_gen[gen_id] if sub_bus == 1 else model.x_gen[gen_id]
+                for gen_id in model.sub_ids_to_gen_ids[sub_id]
+            ]
+            loads = [
+                1 - model.x_load[load_id] if sub_bus == 1 else model.x_load[load_id]
+                for load_id in model.sub_ids_to_load_ids[sub_id]
+            ]
+
+            lines_or = [
+                model.x_line_or_1[line_id]
+                if sub_bus == 1
+                else model.x_line_or_2[line_id]
+                for line_id in model.sub_ids_to_line_or_ids[sub_id]
+            ]
+            lines_ex = [
+                model.x_line_ex_1[line_id]
+                if sub_bus == 1
+                else model.x_line_ex_2[line_id]
+                for line_id in model.sub_ids_to_line_ex_ids[sub_id]
+            ]
+            return sub_id, sub_bus, gens, loads, lines_or, lines_ex
+
+        def _constraint_implicit_line_disconnection_lower(model, bus_id):
+            sub_id, sub_bus, gens, loads, lines_or, lines_ex = _get_bus_elements(
+                model, bus_id
+            )
+
+            return 2 * model.y_bus_activation[bus_id] <= sum(gens) + sum(loads) + sum(
+                lines_or
+            ) + sum(lines_ex)
+
+        def _constraint_implicit_line_disconnection_upper(model, bus_id):
+            sub_id, sub_bus, gens, loads, lines_or, lines_ex = _get_bus_elements(
+                model, bus_id
+            )
+            n_elements = model.sub_n_elements[sub_id]
+
+            return (
+                sum(gens) + sum(loads) + sum(lines_or) + sum(lines_ex)
+                <= n_elements * model.y_bus_activation[bus_id]
+            )
+
+        self.model.constraint_implicit_line_disconnection_lower = pyo.Constraint(
+            self.model.bus_set, rule=_constraint_implicit_line_disconnection_lower
+        )
+
+        self.model.constraint_implicit_line_disconnection_upper = pyo.Constraint(
+            self.model.bus_set, rule=_constraint_implicit_line_disconnection_upper
         )
 
     def _build_constraint_symmetry(self):
@@ -831,6 +910,24 @@ class TopologyOptimizationDCOPF(StandardDCOPF):
             self.model.gen_set, rule=_constraint_lin_gen_penalty_lower
         )
 
+    # TODO
+    def _build_constraint_onesided_line_reconnection(self):
+        for sub_id in self.model.sub_set:
+            lines_or = self.model.sub_ids_to_line_or_ids[sub_id]
+            lines_ex = self.model.sub_ids_to_line_ex_ids[sub_id]
+
+            lines_or_disconnected = [
+                not self.model.line_status[line_id] for line_id in lines_or
+            ]
+            lines_ex_disconnected = [
+                not self.model.line_status[line_id] for line_id in lines_ex
+            ]
+
+            if any(lines_or_disconnected) or any(lines_ex_disconnected):
+                self.model.x_substation_topology_switch[sub_id].fix(0)
+                self.model.x_substation_topology_switch[sub_id].setlb(0)
+                self.model.x_substation_topology_switch[sub_id].setub(0)
+
     """
         OBJECTIVE.
     """
@@ -987,6 +1084,9 @@ class TopologyOptimizationDCOPF(StandardDCOPF):
             "res_bus": self.res_bus,
             "res_line": self.res_line,
             "res_gen": self.res_gen,
+            "res_load": self.res_load,
+            "res_ext_grid": self.res_ext_grid,
+            "res_trafo": self.res_trafo,
             "res_x": np.concatenate(
                 (
                     self.x_gen,

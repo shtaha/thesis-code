@@ -48,6 +48,7 @@ class GridDCOPF(UnitConverter, TopologyConverter):
                 "gen",
                 "load",
                 "ext_grid",
+                "n_elements",
             ]
         )
         self.line = pd.DataFrame(
@@ -201,8 +202,7 @@ class GridDCOPF(UnitConverter, TopologyConverter):
         self.gen["min_p_pu"] = self.convert_mw_to_per_unit(
             self.case.grid_backend.gen["min_p_mw"]
         )
-        # TODO: HACK
-        # self.gen["min_p_pu"] = np.maximum(0.0, self.gen["min_p_pu"].values)
+
         self.gen["min_p_pu"] = self.gen["min_p_pu"].values
         self.gen["cost_pu"] = 1.0
 
@@ -349,6 +349,14 @@ class GridDCOPF(UnitConverter, TopologyConverter):
                 + len(self.sub.load[sub_id])
                 for sub_id in self.sub.index
             ]
+
+        self.bus["n_elements"] = [
+            len(self.bus.line_or[bus_id])
+            + len(self.bus.line_ex[bus_id])
+            + len(self.bus.gen[bus_id])
+            + len(self.bus.load[bus_id])
+            for bus_id in self.bus.index
+        ]
 
         # Cooldown
         self.sub["cooldown"] = False

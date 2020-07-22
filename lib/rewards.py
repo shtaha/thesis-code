@@ -1,4 +1,5 @@
 import numpy as np
+import pandas as pd
 
 
 class RewardL2RPN2019:
@@ -19,8 +20,13 @@ class RewardL2RPN2019:
         def f(x):
             return 1.0 - np.square((1.0 - x))
 
-        line_flow = result["res_line"]["p_pu"]
-        max_line_flow = result["res_line"]["max_p_pu"]
+        line_flow = pd.concat(
+            [result["res_line"]["p_pu"], result["res_trafo"]["p_pu"]], ignore_index=True
+        )
+        max_line_flow = pd.concat(
+            [result["res_line"]["max_p_pu"], result["res_trafo"]["max_p_pu"]],
+            ignore_index=True,
+        )
 
         relative_flows = np.abs(
             np.divide(line_flow, max_line_flow)

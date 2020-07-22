@@ -6,23 +6,35 @@ import pandapower as pp
 import pandas as pd
 
 from .unit_converter import UnitConverter
+from lib.visualizer import describe_environment, print_parameters
 
 
-def load_case(case_name, env=None):
+def load_case(case_name, env=None, env_dc=False, verbose=False):
+    if env_dc:
+        env.env_dc = env_dc
+        env.parameters.ENV_DC = env_dc
+        env.parameters.FORECAST_DC = env_dc
+
     if case_name == "case3":
-        return OPFCase3()
+        case = OPFCase3()
     elif case_name == "case6":
-        return OPFCase6()
+        case = OPFCase6()
     elif case_name == "case4":
-        return OPFCase4()
+        case = OPFCase4()
     elif case_name in ["rte_case5", "rte_case5_example"]:
-        return OPFRTECase5(env=env)
+        case = OPFRTECase5(env=env)
     elif case_name in ["l2rpn2019", "l2rpn_2019"]:
-        return OPFL2RPN2019(env=env)
+        case = OPFL2RPN2019(env=env)
     elif case_name in ["l2rpn2020", "l2rpn_wcci_2020", "l2rpn_2020"]:
-        return OPFL2RPN2020(env=env)
+        case = OPFL2RPN2020(env=env)
     else:
         raise ValueError(f"Invalid case name. Case {case_name} does not exist.")
+
+    if verbose and case.env:
+        describe_environment(env)
+        print_parameters(env)
+
+    return case
 
 
 class OPFAbstractCase(ABC):
@@ -591,6 +603,7 @@ class OPFRTECase5(OPFAbstractCase, UnitConverter, OPFCaseMixin):
 
         self.grid_org = self.build_case_grid()
         self.grid_backend = self.update_backend(self.env)
+        self.env.backend._grid = self.grid_backend
 
     def build_case_grid(self):
         return self.env.backend._grid
@@ -633,6 +646,7 @@ class OPFL2RPN2019(OPFAbstractCase, UnitConverter, OPFCaseMixin):
 
         self.grid_org = self.build_case_grid()
         self.grid_backend = self.update_backend(self.env)
+        self.env.backend._grid = self.grid_backend
 
     def build_case_grid(self):
         return self.env.backend._grid
@@ -671,6 +685,7 @@ class OPFL2RPN2020(OPFAbstractCase, UnitConverter, OPFCaseMixin):
 
         self.grid_org = self.build_case_grid()
         self.grid_backend = self.update_backend(self.env)
+        self.env.backend._grid = self.grid_backend
 
     def build_case_grid(self):
         return self.env.backend._grid
