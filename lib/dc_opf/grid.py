@@ -168,7 +168,8 @@ class GridDCOPF(UnitConverter, TopologyConverter):
         )
         self.line["b_pu"] = 1 / x_pu
 
-        if self.case.name == "Case L2RPN 2020 WCCI - IEEE 118":
+        # TODO: Manually set.
+        if self.case.name == "Case L2RPN 2020 WCCI":
             self.line["b_pu"][[45, 46, 47]] = [5000.0, 1014.19878296, 3311.25827815]
 
         # Power line flow thermal limit

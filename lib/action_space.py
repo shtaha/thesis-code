@@ -11,6 +11,7 @@ from grid2op.Action import (
 from grid2op.dtypes import dt_int
 
 from lib.data_utils import indices_to_hot
+from lib.visualizer import pprint
 
 
 class ActionSpaceGenerator(object):
@@ -80,9 +81,10 @@ class ActionSpaceGenerator(object):
                 actions_info.extend(substation_actions_info)
                 actions.extend(substation_actions)
             else:
-                print(
-                    f"Substation id {sub_id} has only a single valid topology, thus no actions are affecting it."
-                )
+                if verbose:
+                    print(
+                        f"Substation id {sub_id} has only a single valid topology, thus no actions are affecting it."
+                    )
 
         # Check if every actions has it corresponding information.
         assert len(actions) == len(actions_info)
@@ -508,3 +510,28 @@ class ActionSpaceGenerator(object):
         # Since this is a valid topology, therefore the standalone element is a line.
         check = np.equal(counts_per_bus, 1).any()
         return check
+
+    def get_topology_action_set(self, verbose=False):
+        (
+            actions_line_set,
+            actions_line_set_info,
+        ) = self.get_all_unitary_line_status_set()
+
+        (
+            actions_topology_set,
+            actions_topology_set_info,
+        ) = self.get_all_unitary_topologies_set(filter_one_line_disconnections=True)
+
+        action_do_nothing = self.env.action_space({})
+
+        actions = list(
+            itertools.chain([action_do_nothing], actions_line_set, actions_topology_set)
+        )
+        actions_info = list(
+            itertools.chain([{}], actions_line_set_info, actions_topology_set_info)
+        )
+
+        if verbose:
+            pprint("Action set:", len(actions), "\n")
+
+        return actions, actions_info

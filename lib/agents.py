@@ -1,13 +1,13 @@
-import numpy as np
-import itertools
 from timeit import default_timer as timer
+
+import numpy as np
+import pandas as pd
 
 from lib.dc_opf import (
     GridDCOPF,
     TopologyOptimizationDCOPF,
 )
 from lib.rewards import RewardL2RPN2019
-from lib.action_space import ActionSpaceGenerator
 
 
 class AgentMIPTest:
@@ -18,10 +18,13 @@ class AgentMIPTest:
     def __init__(
         self,
         case,
+        action_set,
         n_max_line_status_changed=1,
         n_max_sub_changed=1,
         reward_class=RewardL2RPN2019,
     ):
+        self.name = "Agent MIP"
+
         self.case = case
         self.env = case.env
 
@@ -36,37 +39,10 @@ class AgentMIPTest:
 
         self.reward_function = reward_class()
 
-        self.actions, self.actions_info = self.construct_action_space()
-
-    def construct_action_space(self):
-        action_generator = ActionSpaceGenerator(self.env)
-
-        (
-            actions_line_set,
-            actions_line_set_info,
-        ) = action_generator.get_all_unitary_line_status_set()
-
-        (
-            actions_topology_set,
-            actions_topology_set_info,
-        ) = action_generator.get_all_unitary_topologies_set(
-            filter_one_line_disconnections=True
-        )
-
-        action_do_nothing = self.env.action_space({})
-
-        actions = list(
-            itertools.chain([action_do_nothing], actions_line_set, actions_topology_set)
-        )
-        actions_info = list(
-            itertools.chain([{}], actions_line_set_info, actions_topology_set_info)
-        )
-
-        print("{:<35}{}".format("Action space:", len(actions)))
-        return actions, actions_info
+        self.actions, self.actions_info = action_set
 
     def act(self, obs, done, **kwargs):
-        self.update(obs, reset=done)
+        self._update(obs, reset=done)
         self.model = TopologyOptimizationDCOPF(
             f"{self.case.env.name} DC OPF Topology Optimization",
             grid=self.grid,
@@ -76,7 +52,7 @@ class AgentMIPTest:
             n_max_sub_changed=self.n_max_sub_changed,
         )
         self.model.build_model(**kwargs)
-        self.result = self.model.solve(verbose=False)
+        self.result = self.model.solve()
 
         action = self.grid.convert_mip_to_topology_vector(self.result, obs)[-1]
         return action
@@ -96,7 +72,7 @@ class AgentMIPTest:
         timing = dict()
 
         start_build = timer()
-        self.update(obs, reset=done)
+        self._update(obs, reset=done)
         timing["update"] = timer() - start_build
 
         self.model = TopologyOptimizationDCOPF(
@@ -118,7 +94,7 @@ class AgentMIPTest:
 
         return action, timing
 
-    def update(self, obs, reset=False, verbose=False):
+    def _update(self, obs, reset=False, verbose=False):
         self.grid.update(obs, reset=reset, verbose=verbose)
 
     def get_reward(self):
@@ -153,6 +129,12 @@ class AgentMIPTest:
         res_line["rho"] = self.result["res_line"]["loading_percent"] / 100.0
         res_line["env_rho"] = obs.rho
 
+        # Reactive/Active power ratio
+        res_gen["env_q_pu"] = self.grid.convert_mw_to_per_unit(obs.prod_q)
+        res_gen["env_gen_q_p"] = np.greater(obs.prod_p, 1e-9).astype(float) * np.abs(
+            np.divide(obs.prod_q, obs.prod_p + 1e-9)
+        )
+
         res_line["diff_p"] = np.abs(
             np.divide(
                 res_line["p_pu"] - res_line["env_p_pu"], res_line["env_p_pu"] + 1e-9
@@ -162,12 +144,85 @@ class AgentMIPTest:
             np.divide(res_line["rho"] - res_line["env_rho"], res_line["env_rho"] + 1e-9)
         )
 
-        max_rho = res_line["rho"].max()
-        env_max_rho = res_line["env_rho"].max()
+        if verbose:
+            print("GEN\n" + res_gen.to_string())
+            print("LINE\n" + res_line.to_string())
+
+        return res_line, res_gen
+
+
+class AgentDoNothing:
+    def __init__(self, case, action_set):
+        self.name = "Do-nothing Agent"
+
+        self.env = case.env
+
+        self.grid = GridDCOPF(
+            case, base_unit_v=case.base_unit_v, base_unit_p=case.base_unit_p
+        )
+
+        self.actions = [self.env.action_space({})]
+
+        self.reward = None
+        self.obs_next = None
+
+        self.actions, self.actions_info = action_set
+
+    def act(self, obs, done, **kwargs):
+        action = self.actions[0]
+
+        obs_next, reward, done, info = obs.simulate(action)
+        self.reward = reward
+        self.obs_next = obs_next
+
+        return action
+
+    def get_reward(self):
+        return self.reward
+
+    def compare_with_observation(self, obs, verbose=False):
+        res_gen = pd.DataFrame()
+        res_gen["p_pu"] = self.grid.convert_mw_to_per_unit(self.obs_next.prod_p)
+        res_gen["max_p_pu"] = self.grid.gen["max_p_pu"]
+        res_gen["min_p_pu"] = self.grid.gen["min_p_pu"]
+
+        res_gen["env_p_pu"] = self.grid.convert_mw_to_per_unit(obs.prod_p)
+        res_gen["diff"] = np.divide(
+            np.abs(res_gen["p_pu"] - res_gen["env_p_pu"]), res_gen["env_p_pu"] + 1e-9
+        )
+
+        res_line = pd.DataFrame()
+        res_line["p_pu"] = self.grid.convert_mw_to_per_unit(
+            self.obs_next.p_or
+        )  # i_pu * v_pu * sqrt(3)
+        res_line["max_p_pu"] = np.abs(
+            np.divide(res_line["p_pu"], self.obs_next.rho + 1e-9)
+        )
+
+        res_line["env_p_pu"] = self.grid.convert_mw_to_per_unit(
+            obs.p_or
+        )  # i_pu * v_pu * sqrt(3)
+        res_line["env_max_p_pu"] = np.abs(
+            np.divide(res_line["env_p_pu"], obs.rho + 1e-9)
+        )
+
+        res_line["rho"] = self.obs_next.rho
+        res_line["env_rho"] = obs.rho
+
+        # Reactive/Active power ratio
+        res_gen["env_q_pu"] = self.grid.convert_mw_to_per_unit(obs.prod_q)
+        res_gen["env_gen_q_p"] = np.greater(obs.prod_p, 1e-9).astype(float) * np.abs(
+            np.divide(obs.prod_q, obs.prod_p + 1e-9)
+        )
+
+        res_line["diff_p"] = np.abs(
+            np.divide(
+                res_line["p_pu"] - res_line["env_p_pu"], res_line["env_p_pu"] + 1e-9
+            )
+        )
 
         if verbose:
             print("GEN\n" + res_gen.to_string())
             print("LINE\n" + res_line.to_string())
-            print("RHO:\t{}\t{}".format(max_rho, env_max_rho))
 
         return res_line, res_gen

@@ -5,16 +5,11 @@ import numpy as np
 import pandapower as pp
 import pandas as pd
 
+from lib.visualizer import describe_environment
 from .unit_converter import UnitConverter
-from lib.visualizer import describe_environment, print_parameters
 
 
-def load_case(case_name, env=None, env_dc=False, verbose=False):
-    if env_dc:
-        env.env_dc = env_dc
-        env.parameters.ENV_DC = env_dc
-        env.parameters.FORECAST_DC = env_dc
-
+def load_case(case_name, env=None, verbose=False):
     if case_name == "case3":
         case = OPFCase3()
     elif case_name == "case6":
@@ -32,7 +27,6 @@ def load_case(case_name, env=None, env_dc=False, verbose=False):
 
     if verbose and case.env:
         describe_environment(env)
-        print_parameters(env)
 
     return case
 
@@ -606,7 +600,7 @@ class OPFRTECase5(OPFAbstractCase, UnitConverter, OPFCaseMixin):
         self.env.backend._grid = self.grid_backend
 
     def build_case_grid(self):
-        return self.env.backend._grid
+        return self.env.backend._grid.deepcopy()
 
     def update_backend(self, env):
         """
@@ -637,7 +631,7 @@ class OPFL2RPN2019(OPFAbstractCase, UnitConverter, OPFCaseMixin):
     def __init__(self, env=None):
         UnitConverter.__init__(self, base_unit_p=1e6, base_unit_v=1e5)
 
-        self.name = "Case L2RPN 2019 - IEEE 14"
+        self.name = "Case L2RPN 2019"
 
         if not env:
             self.env = grid2op.make(dataset="l2rpn_2019")
@@ -649,7 +643,7 @@ class OPFL2RPN2019(OPFAbstractCase, UnitConverter, OPFCaseMixin):
         self.env.backend._grid = self.grid_backend
 
     def build_case_grid(self):
-        return self.env.backend._grid
+        return self.env.backend._grid.deepcopy()
 
     def update_backend(self, env):
         """
@@ -676,7 +670,7 @@ class OPFL2RPN2020(OPFAbstractCase, UnitConverter, OPFCaseMixin):
     def __init__(self, env=None):
         UnitConverter.__init__(self, base_unit_p=1e6, base_unit_v=138000.0)
 
-        self.name = "Case L2RPN 2020 WCCI - IEEE 118"
+        self.name = "Case L2RPN 2020 WCCI"
 
         if not env:
             self.env = grid2op.make(dataset="l2rpn_wcci_2020")
@@ -688,7 +682,7 @@ class OPFL2RPN2020(OPFAbstractCase, UnitConverter, OPFCaseMixin):
         self.env.backend._grid = self.grid_backend
 
     def build_case_grid(self):
-        return self.env.backend._grid
+        return self.env.backend._grid.deepcopy()
 
     def update_backend(self, env):
         """

@@ -4,30 +4,35 @@ import grid2op
 from grid2op.Environment import Environment
 
 from experiments import ExperimentDCOPFTiming, ExperimentMIPControl
-from lib.agents import AgentMIPTest
+from lib.agents import AgentMIPTest, AgentDoNothing
+from lib.action_space import ActionSpaceGenerator
 from lib.constants import Constants as Const
 from lib.data_utils import create_results_dir, make_dir
-from lib.dc_opf import load_case
+from lib.dc_opf import load_case, CaseParameters
 
 save_dir = create_results_dir(Const.RESULTS_DIR)
 
-
 do_experiment_timing = True
-do_experiment_mip_control = True
+do_experiment_mip_control = False
 
+n_timings = 5
 n_steps = 100
-n_timings = 100
+
 verbose = False
 env_dc = True
 lambd = 50.0
 
-
 # for case_name in ["rte_case5_example", "l2rpn_2019", "l2rpn_wcci_2020"]:
-for case_name in ["l2rpn_2019"]:
+for case_name in ["rte_case5_example"]:
     case_save_dir = make_dir(os.path.join(save_dir, case_name))
 
     """
-        Initialize environment.
+        Initialize environment parameters.    
+    """
+    parameters = CaseParameters(case_name=case_name, env_dc=env_dc)
+
+    """
+        Initialize environment and case.
     """
     env: Environment = grid2op.make_from_dataset_path(
         dataset_path=os.path.join(os.path.expanduser("~"), "data_grid2op", case_name),
@@ -35,17 +40,26 @@ for case_name in ["l2rpn_2019"]:
         action_class=grid2op.Action.TopologyAction,
         observation_class=grid2op.Observation.CompleteObservation,
         reward_class=grid2op.Reward.L2RPNReward,
+        param=parameters,
     )
-    case = load_case(case_name, env=env, env_dc=env_dc, verbose=verbose)
+    case = load_case(case_name, env=env, verbose=verbose)
+
+    """
+        Initialize action set.
+    """
+    action_generator = ActionSpaceGenerator(env)
+    action_set = action_generator.get_topology_action_set(verbose=verbose)
 
     """
         Initialize agent.
     """
     agent = AgentMIPTest(
         case=case,
+        action_set=action_set,
         n_max_line_status_changed=env.parameters.MAX_LINE_STATUS_CHANGED,
         n_max_sub_changed=env.parameters.MAX_SUB_CHANGED,
     )
+    agent_do_nothing = AgentDoNothing(case=case, action_set=action_set)
 
     """
         Experiments.
@@ -85,14 +99,15 @@ for case_name in ["l2rpn_2019"]:
             agent=agent,
             save_dir=case_save_dir,
             constraint_activations=[
-                (False, False, True, True, True, True),
-                (True, False, True, True, True, True),
-                (False, True, True, True, True, True),
-                (False, False, False, True, True, True),
-                (False, False, True, False, True, True),
-                (False, False, True, True, False, True),
-                (False, False, True, True, True, False),
-            ],  # Onesided-Implicit-Symmetry-Switching-Cooldown-Unitary
+                (False, False, True, True, True, True, True),
+                (True, False, True, True, True, True, True),
+                (False, True, True, True, True, True, True),
+                (False, False, False, True, True, True, True),
+                (False, False, True, False, True, True, True),
+                (False, False, True, True, False, True, True),
+                (False, False, True, True, True, False, True),
+                (False, False, True, True, True, True, False),
+            ],  # Onesided-Implicit-Symmetry-Balance-Switching-Cooldown-Unitary
             n_timings=n_timings,
             verbose=verbose,
         )
@@ -164,5 +179,13 @@ for case_name in ["l2rpn_2019"]:
             save_dir=case_save_dir,
             n_steps=n_steps,
             lambd=lambd,
+            verbose=verbose,
+        )
+
+        experiment_mip.evaluate_performance(
+            case=case,
+            agent=agent_do_nothing,
+            save_dir=case_save_dir,
+            n_steps=n_steps,
             verbose=verbose,
         )

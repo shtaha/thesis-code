@@ -50,3 +50,11 @@ def print_dict(dictionary):
             return json.JSONEncoder.default(self, obj)
 
     print(json.dumps(dictionary, indent=1, cls=NumpyEncoder))
+
+
+def pprint(*args):
+    if len(args) < 2:
+        raise ValueError("At least two arguments for printing.")
+
+    format_str = "{:<35}" + "\t".join(["{}" for _ in range(len(args) - 1)])
+    print(format_str.format(*args))

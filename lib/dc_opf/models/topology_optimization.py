@@ -36,7 +36,9 @@ class TopologyOptimizationDCOPF(StandardDCOPF):
         self,
         allow_onesided_disconnection=False,
         allow_implicit_diconnection=False,
+        allow_onesided_reconnection=False,
         symmetry=True,
+        gen_load_bus_balance=True,
         switching_limits=True,
         cooldown=True,
         unitary_action=True,
@@ -56,6 +58,9 @@ class TopologyOptimizationDCOPF(StandardDCOPF):
             allow_implicit_diconnection:
                 If False, then we enforce that each element is connected to a bus with at least 2 elements.
 
+            allow_onesided_reconnection:
+                If False, then substation topology with one disconnected line cannot be modified.
+
             symmetry:
                 If True, then the first element at a substation is fixed on bus 1.
 
@@ -68,6 +73,10 @@ class TopologyOptimizationDCOPF(StandardDCOPF):
             unitary_action:
                 If True, then only one type of actions is allowed either line status switching or substation topology
                 reconfiguration.
+
+            gen_load_bus_balance:
+                If True, then if there is at least one generator or load connected to a bus, then there must be at
+                least one power line connected to that bus.
 
         Arguments for objective function formulation.
             gen_cost:
@@ -125,6 +134,7 @@ class TopologyOptimizationDCOPF(StandardDCOPF):
         # Variables
         self._build_variables(
             allow_implicit_diconnection=allow_implicit_diconnection,
+            gen_load_bus_balance=gen_load_bus_balance,
             lin_line_margins=lin_line_margins,
             bound_max_flow=bound_max_flow,
             lin_gen_penalty=lin_gen_penalty,
@@ -135,7 +145,9 @@ class TopologyOptimizationDCOPF(StandardDCOPF):
         self._build_constraints(
             allow_onesided_disconnection=allow_onesided_disconnection,
             allow_implicit_diconnection=allow_implicit_diconnection,
+            allow_onesided_reconnection=allow_onesided_reconnection,
             symmmetry=symmetry,
+            gen_load_bus_balance=gen_load_bus_balance,
             switching_limits=switching_limits,
             cooldown=cooldown,
             unitary_action=unitary_action,
@@ -286,6 +298,7 @@ class TopologyOptimizationDCOPF(StandardDCOPF):
     def _build_variables(
         self,
         allow_implicit_diconnection=False,
+        gen_load_bus_balance=True,
         lin_line_margins=True,
         bound_max_flow=True,
         lin_gen_penalty=True,
@@ -393,15 +406,27 @@ class TopologyOptimizationDCOPF(StandardDCOPF):
                 domain=pyo.Binary, initialize=0
             )
 
-        # TODO
-        self._build_constraint_onesided_line_reconnection()
-
         if not allow_implicit_diconnection:
             self.model.y_bus_activation = pyo.Var(
                 self.model.bus_set,
                 domain=pyo.Binary,
                 initialize=self._create_map_ids_to_values(
                     self.bus.index, np.greater(self.bus.n_elements, 1.0).astype(int)
+                ),
+            )
+
+        if gen_load_bus_balance:
+            self.model.y_gen_load_bus_balance = pyo.Var(
+                self.model.bus_set,
+                domain=pyo.Binary,
+                initialize=self._create_map_ids_to_values(
+                    self.bus.index,
+                    [
+                        np.greater(
+                            len(self.bus.gen[bus_id]) + len(self.bus.load[bus_id]), 0
+                        ).astype(int)
+                        for bus_id in self.bus.index
+                    ],
                 ),
             )
 
@@ -438,7 +463,9 @@ class TopologyOptimizationDCOPF(StandardDCOPF):
         self,
         allow_onesided_disconnection=False,
         allow_implicit_diconnection=False,
+        allow_onesided_reconnection=False,
         symmmetry=True,
+        gen_load_bus_balance=True,
         switching_limits=True,
         cooldown=True,
         unitary_action=True,
@@ -456,9 +483,15 @@ class TopologyOptimizationDCOPF(StandardDCOPF):
         if not allow_implicit_diconnection:
             self._build_constraint_implicit_line_disconnection()
 
+        if not allow_onesided_reconnection:
+            self._build_constraint_onesided_line_reconnection()
+
         # Constraints to eliminate symmetric topologies
         if symmmetry:
             self._build_constraint_symmetry()
+
+        if gen_load_bus_balance:
+            self._build_constraint_gen_load_bus_balance()
 
         if switching_limits:
             self._build_constraint_line_status_switch()
@@ -661,6 +694,68 @@ class TopologyOptimizationDCOPF(StandardDCOPF):
                 self.model.x_line_ex_2[line_id].fix(0)
                 self.model.x_line_ex_2[line_id].setlb(0)
                 self.model.x_line_ex_2[line_id].setub(0)
+
+    # TODO
+    def _build_constraint_gen_load_bus_balance(self):
+        def _get_bus_elements(model, bus_id):
+            sub_id = model.bus_ids_to_sub_ids[bus_id]
+            sub_bus = model.bus_ids_to_sub_bus_ids[bus_id]
+
+            gens = [
+                1 - model.x_gen[gen_id] if sub_bus == 1 else model.x_gen[gen_id]
+                for gen_id in model.sub_ids_to_gen_ids[sub_id]
+            ]
+            loads = [
+                1 - model.x_load[load_id] if sub_bus == 1 else model.x_load[load_id]
+                for load_id in model.sub_ids_to_load_ids[sub_id]
+            ]
+
+            lines_or = [
+                model.x_line_or_1[line_id]
+                if sub_bus == 1
+                else model.x_line_or_2[line_id]
+                for line_id in model.sub_ids_to_line_or_ids[sub_id]
+            ]
+            lines_ex = [
+                model.x_line_ex_1[line_id]
+                if sub_bus == 1
+                else model.x_line_ex_2[line_id]
+                for line_id in model.sub_ids_to_line_ex_ids[sub_id]
+            ]
+            return sub_id, sub_bus, gens, loads, lines_or, lines_ex
+
+        def _constraint_gen_load_bus_lower(model, bus_id):
+            _, _, gens, loads, _, _ = _get_bus_elements(model, bus_id)
+            if len(gens) or len(loads):
+                return model.y_gen_load_bus_balance[bus_id] <= sum(gens) + sum(loads)
+            else:
+                return pyo.Constraint.Skip
+
+        def _constraint_gen_load_bus_upper(model, bus_id):
+            _, _, gens, loads, _, _ = _get_bus_elements(model, bus_id)
+            if len(gens) or len(loads):
+                return (
+                    sum(gens) + sum(loads)
+                    <= (len(gens) + len(loads)) * model.y_gen_load_bus_balance[bus_id]
+                )
+            else:
+                return pyo.Constraint.Skip
+
+        def _constraint_at_least_one_line(model, bus_id):
+            _, _, _, _, lines_or, lines_ex = _get_bus_elements(model, bus_id)
+            return model.y_gen_load_bus_balance[bus_id] <= sum(lines_or) + sum(lines_ex)
+
+        self.model.constraint_at_least_one_line = pyo.Constraint(
+            self.model.bus_set, rule=_constraint_at_least_one_line
+        )
+
+        self.model.constraint_gen_load_bus_lower = pyo.Constraint(
+            self.model.bus_set, rule=_constraint_gen_load_bus_lower
+        )
+
+        self.model.constraint_gen_load_bus_upper = pyo.Constraint(
+            self.model.bus_set, rule=_constraint_gen_load_bus_upper
+        )
 
     def _build_constraint_cooldown(self):
         for line_id in self.line.index:
@@ -910,7 +1005,6 @@ class TopologyOptimizationDCOPF(StandardDCOPF):
             self.model.gen_set, rule=_constraint_lin_gen_penalty_lower
         )
 
-    # TODO
     def _build_constraint_onesided_line_reconnection(self):
         for sub_id in self.model.sub_set:
             lines_or = self.model.sub_ids_to_line_or_ids[sub_id]
@@ -1030,7 +1124,7 @@ class TopologyOptimizationDCOPF(StandardDCOPF):
         SOLVE FUNCTIONS.
     """
 
-    def solve(self, verbose=False, tol=1e-9, time_limit=20, warm_start=True):
+    def solve(self, verbose=False, tol=1e-3, time_limit=10, warm_start=False):
         self._solve(verbose=verbose, tol=tol, time_limit=20, warm_start=warm_start)
 
         # Solution status

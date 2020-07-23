@@ -1,8 +1,9 @@
-import json
 import os
 import warnings
 
 import numpy as np
+
+from .visualizer import pprint
 
 
 def custom_formatwarning(msg, *args, **kwargs):
@@ -134,28 +135,22 @@ def print_topology_changes(
 def print_action(action):
     representation = action.__str__()
     representation = [
-        line.strip() for line in representation.split("\n")[1:] if "NOT" not in line
+        line for line in representation.split("\n")[1:] if "NOT" not in line
     ]
     if len(representation) > 0:
         assert not action.is_ambiguous()[0]
-        print("action", "\n".join(representation))
+        print("Action:\n" + "\n".join(representation) + "\n")
     else:
-        print("action: do nothing")
+        print("Action: Do nothing\n")
 
 
 def print_info(info, done, reward):
     is_illegal = info["is_illegal"]
     is_ambiguous = info["is_ambiguous"]
-    # is_dispatching_illegal = info["is_dispatching_illegal"]
-    # is_illegal_reco = info["is_illegal_reco"]
     exceptions = info["exception"]
 
-    print("{:<35}{}\t{}".format("REWARD:", str(reward), str(done)))
-    print(
-        "{:<35}{}\t{}".format(
-            "ACTION:", f"ILLEGAL {is_illegal}", f"AMBIGUOUS {is_ambiguous}"
-        )
-    )
+    pprint("REWARD:", reward, done)
+    pprint("ACTION:", f"ILLEGAL {is_illegal}", f"AMBIGUOUS {is_ambiguous}")
     if exceptions:
         for exception in exceptions:
             warnings.warn("{:<35}{}".format(f"EXCEPTION:", str(exception)))
@@ -175,9 +170,10 @@ def print_rho(observation):
 
 def print_parameters(environment):
     parameters = environment.parameters.to_dict()
-    print("PARAMETERS")
+    print("Parameters")
     for param in parameters:
-        print("{:<35}{}".format(param + ":", parameters[param]))
+        pprint(param + ":", parameters[param])
+    print("")
 
 
 def print_topology_hot_line(topo_hot_vector, name):
@@ -267,33 +263,45 @@ def describe_substation(subid, environment):
 
 def describe_environment(environment):
     if environment:
-        print("\n" + environment.name.upper())
-        print(f"obs_space {environment.observation_space.size()}")
-        print(f"action_space {environment.action_space.n}")
-        print("obs " + ", ".join(environment.get_obs().to_dict().keys()))
+        print(f"\n{environment.name.upper()}\n")
 
-        print(f"n_gen {environment.n_gen}")
-        print(f"n_load {environment.n_load}")
-        print(f"n_line {environment.n_line}")
-        print(f"n_sub {len(environment.sub_info)}")
+        pprint("Action space:", environment.action_space.n)
+        pprint("Observation space:", environment.observation_space.size())
+
+        pprint("Generators n_gen:", environment.n_gen)
+        pprint("Loads n_load:", environment.n_load)
+        pprint("Power lines n_line:", environment.n_line)
+        pprint("Substations n_sub:", environment.n_sub)
 
         sub_info = ", ".join(
-            ["{}:{:>2}".format(i, sub) for i, sub in enumerate(environment.sub_info)]
+            [
+                "{:<3}{:<2}".format(f"{i}:", sub)
+                for i, sub in enumerate(environment.sub_info)
+            ]
         )
-        print(f"sub_info {sub_info}")
-        print(f"dim_topo {environment.dim_topo}")
+        pprint("Substation info:", sub_info)
 
-        print(f"load_to_subid {environment.action_space.load_to_subid}")
-        print(f"gen_to_subid {environment.action_space.gen_to_subid}")
+        pprint("Topology dimension:", environment.dim_topo)
 
-        line_or_to_subid = ", ".join(
-            ["{:>3}".format(subid) for subid in environment.line_or_to_subid]
+        gen_to_subid = " ".join(
+            ["{:<3}".format(subid) for subid in environment.gen_to_subid]
         )
-        line_ex_to_subid = ", ".join(
-            ["{:>3}".format(subid) for subid in environment.line_ex_to_subid]
+        load_to_subid = " ".join(
+            ["{:<3}".format(subid) for subid in environment.load_to_subid]
         )
-        print(f"line_or_to_subid {line_or_to_subid}")
-        print(f"line_ex_to_subid {line_ex_to_subid}\n")
+        line_or_to_subid = " ".join(
+            ["{:<3}".format(subid) for subid in environment.line_or_to_subid]
+        )
+        line_ex_to_subid = " ".join(
+            ["{:<3}".format(subid) for subid in environment.line_ex_to_subid]
+        )
+        pprint("Generators to sub_id:", gen_to_subid)
+        pprint("Loads to sub_id:", load_to_subid)
+        pprint("Line OR to sub_id:", line_or_to_subid)
+        pprint("Line EX to sub_id:", line_ex_to_subid, "\n")
+
+        if environment.parameters:
+            print_parameters(environment)
 
 
 def print_grid(grid):

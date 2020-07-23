@@ -4,7 +4,8 @@ import pandas as pd
 from io import StringIO
 
 
-case_name = "rte_case5_example"
+# case_name = "rte_case5_example"
+case_name = "l2rpn_2019"
 dataset_path = os.path.join(
     os.path.expanduser("~"), "data_grid2op", case_name, "chronics"
 )
@@ -17,15 +18,17 @@ def read_bz2_to_dataframe(file_path, sep=";"):
     return pd.read_csv(StringIO(data_csv), sep=sep)
 
 
+data = pd.DataFrame()
+
 for chronic in os.listdir(dataset_path):
     chronic_dir = os.path.join(dataset_path, chronic)
 
     for file in os.listdir(chronic_dir):
-        file_path = os.path.join(chronic_dir, file)
-        data = read_bz2_to_dataframe(file_path, sep=";")
-        # print(data.to_string())
+        if ("prod_p" in file or "prods_p" in file) and not "planned" in file:
+            file_path = os.path.join(chronic_dir, file)
+            data_chronic = read_bz2_to_dataframe(file_path, sep=";")
+            data = data.append(data_chronic)
+            print(file_path)
 
-        print(file)
-        print(data)
-        print("\n")
-    break
+print(data.max())
+print(data.min())
