@@ -1,6 +1,30 @@
 import json
 
 import numpy as np
+import matplotlib as mpl
+from matplotlib import style
+
+from ..constants import Constants as Const
+
+
+class Visualizer:
+    def __init__(self):
+        style.use(Const.MATPLOTLIB_STYLE)
+        mpl.rcParams.update(
+            {
+                "pgf.texsystem": "pdflatex",
+                "font.family": "serif",
+                "text.usetex": True,
+                "pgf.rcfonts": False,
+                "pgf.preamble": "\n".join(
+                    [
+                        "\\usepackage[utf8]{inputenc}",
+                        "\\DeclareUnicodeCharacter{2212}{-}",
+                    ]
+                ),
+            }
+        )
+        mpl.rcParams["savefig.format"] = Const.OUT_FORMAT
 
 
 def print_matrix(matrix, name=None, spacing=None, decimals=4):
@@ -52,9 +76,11 @@ def print_dict(dictionary):
     print(json.dumps(dictionary, indent=1, cls=NumpyEncoder))
 
 
-def pprint(*args):
+def pprint(*args, shift=35):
     if len(args) < 2:
         raise ValueError("At least two arguments for printing.")
 
-    format_str = "{:<35}" + "\t".join(["{}" for _ in range(len(args) - 1)])
+    format_str = (
+        "{:<" + str(shift) + "}" + "\t".join(["{}" for _ in range(len(args) - 1)])
+    )
     print(format_str.format(*args))

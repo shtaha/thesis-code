@@ -10,30 +10,11 @@ class TopologyOptimizationDCOPF(StandardDCOPF):
         name,
         grid,
         grid_backend=None,
+        solver_name="gurobi",
+        tol=0.01,
+        warm_start=False,
         n_max_line_status_changed=1,
         n_max_sub_changed=1,
-        solver_name="gurobi",
-        verbose=False,
-        **kwargs,
-    ):
-        super().__init__(name, grid, grid_backend, solver_name, verbose, **kwargs)
-        self.n_max_line_status_changed = n_max_line_status_changed
-        self.n_max_sub_changed = n_max_sub_changed
-
-        # Optimal switching status
-        self.x_gen = None
-        self.x_load = None
-        self.x_line_or_1 = None
-        self.x_line_or_2 = None
-        self.x_line_ex_1 = None
-        self.x_line_ex_2 = None
-
-        # Auxiliary
-        self.x_line_status_switch = None
-        self.x_substation_topology_switch = None
-
-    def build_model(
-        self,
         allow_onesided_disconnection=False,
         allow_implicit_diconnection=False,
         allow_onesided_reconnection=False,
@@ -48,7 +29,45 @@ class TopologyOptimizationDCOPF(StandardDCOPF):
         lambd=10.0,
         lin_gen_penalty=True,
         quad_gen_penalty=False,
+        verbose=False,
+        **kwargs,
     ):
+        super().__init__(
+            name, grid, grid_backend, solver_name, tol, warm_start, verbose, **kwargs
+        )
+
+        # Model parameters
+        self.n_max_line_status_changed = n_max_line_status_changed
+        self.n_max_sub_changed = n_max_sub_changed
+
+        self.allow_onesided_disconnection = allow_onesided_disconnection
+        self.allow_implicit_diconnection = allow_implicit_diconnection
+        self.allow_onesided_reconnection = allow_onesided_reconnection
+        self.symmetry = symmetry
+        self.gen_load_bus_balance = gen_load_bus_balance
+        self.switching_limits = switching_limits
+        self.cooldown = cooldown
+        self.unitary_action = unitary_action
+        self.gen_cost = gen_cost
+        self.lin_line_margins = lin_line_margins
+        self.quad_line_margins = quad_line_margins
+        self.lambd = lambd
+        self.lin_gen_penalty = lin_gen_penalty
+        self.quad_gen_penalty = quad_gen_penalty
+
+        # Optimal switching status
+        self.x_gen = None
+        self.x_load = None
+        self.x_line_or_1 = None
+        self.x_line_or_2 = None
+        self.x_line_ex_1 = None
+        self.x_line_ex_2 = None
+
+        # Auxiliary
+        self.x_line_status_switch = None
+        self.x_substation_topology_switch = None
+
+    def build_model(self):
         """
         Arguments for activation of constraints.
             allow_onesided_disconnection:
@@ -107,7 +126,7 @@ class TopologyOptimizationDCOPF(StandardDCOPF):
                 If True, then a quadratic penalty is added to the objective function for generator power production
                 error, i.e. lambd * ((P_g - P_g_ref) / P_g^max)^2.
         """
-        if lin_line_margins:
+        if self.lin_line_margins:
             bound_max_flow = False
         else:
             bound_max_flow = True
@@ -128,40 +147,40 @@ class TopologyOptimizationDCOPF(StandardDCOPF):
 
         # Parameters
         self._build_parameters(
-            gen_penalty=lin_gen_penalty or quad_gen_penalty, lambd=lambd
+            gen_penalty=self.lin_gen_penalty or self.quad_gen_penalty, lambd=self.lambd
         )
 
         # Variables
         self._build_variables(
-            allow_implicit_diconnection=allow_implicit_diconnection,
-            gen_load_bus_balance=gen_load_bus_balance,
-            lin_line_margins=lin_line_margins,
+            allow_implicit_diconnection=self.allow_implicit_diconnection,
+            gen_load_bus_balance=self.gen_load_bus_balance,
+            lin_line_margins=self.lin_line_margins,
             bound_max_flow=bound_max_flow,
-            lin_gen_penalty=lin_gen_penalty,
-            unitary_action=unitary_action,
+            lin_gen_penalty=self.lin_gen_penalty,
+            unitary_action=self.unitary_action,
         )
 
         # Constraints
         self._build_constraints(
-            allow_onesided_disconnection=allow_onesided_disconnection,
-            allow_implicit_diconnection=allow_implicit_diconnection,
-            allow_onesided_reconnection=allow_onesided_reconnection,
-            symmmetry=symmetry,
-            gen_load_bus_balance=gen_load_bus_balance,
-            switching_limits=switching_limits,
-            cooldown=cooldown,
-            unitary_action=unitary_action,
-            lin_line_margins=lin_line_margins,
-            lin_gen_penalty=lin_gen_penalty,
+            allow_onesided_disconnection=self.allow_onesided_disconnection,
+            allow_implicit_diconnection=self.allow_implicit_diconnection,
+            allow_onesided_reconnection=self.allow_onesided_reconnection,
+            symmmetry=self.symmetry,
+            gen_load_bus_balance=self.gen_load_bus_balance,
+            switching_limits=self.switching_limits,
+            cooldown=self.cooldown,
+            unitary_action=self.unitary_action,
+            lin_line_margins=self.lin_line_margins,
+            lin_gen_penalty=self.lin_gen_penalty,
         )
 
         # Objective
         self._build_objective(
-            gen_cost=gen_cost,
-            lin_line_margins=lin_line_margins,
-            quad_line_margins=quad_line_margins,
-            lin_gen_penalty=lin_gen_penalty,
-            quad_gen_penalty=quad_gen_penalty,
+            gen_cost=self.gen_cost,
+            lin_line_margins=self.lin_line_margins,
+            quad_line_margins=self.quad_line_margins,
+            lin_gen_penalty=self.lin_gen_penalty,
+            quad_gen_penalty=self.quad_gen_penalty,
         )
 
     """
@@ -1124,8 +1143,13 @@ class TopologyOptimizationDCOPF(StandardDCOPF):
         SOLVE FUNCTIONS.
     """
 
-    def solve(self, verbose=False, tol=1e-3, time_limit=10, warm_start=False):
-        self._solve(verbose=verbose, tol=tol, time_limit=20, warm_start=warm_start)
+    def solve(self, verbose=False, time_limit=7):
+        self._solve(
+            verbose=verbose,
+            tol=self.tol,
+            warm_start=self.warm_start,
+            time_limit=time_limit,
+        )
 
         # Solution status
         solution_status = self.solver_status["Solver"][0]["Termination condition"]
@@ -1204,3 +1228,29 @@ class TopologyOptimizationDCOPF(StandardDCOPF):
         }
 
         return result
+
+    def get_model_parameters(self):
+        params = dict()
+        params["solver_name"] = self.solver_name
+        params["tol"] = self.tol
+        params["warm_start"] = self.warm_start
+
+        params["n_max_line_status_changed"] = self.n_max_line_status_changed
+        params["n_max_sub_changed"] = self.n_max_sub_changed
+
+        params["allow_onesided_disconnection"] = self.allow_onesided_disconnection
+        params["allow_implicit_diconnection"] = self.allow_implicit_diconnection
+        params["allow_onesided_reconnection"] = self.allow_onesided_reconnection
+        params["symmetry"] = self.symmetry
+        params["gen_load_bus_balance"] = self.gen_load_bus_balance
+        params["switching_limits"] = self.switching_limits
+        params["cooldown"] = self.cooldown
+        params["unitary_action"] = self.unitary_action
+        params["gen_cost"] = self.gen_cost
+        params["lin_line_margins"] = self.lin_line_margins
+        params["quad_line_margins"] = self.quad_line_margins
+        params["lambd"] = self.lambd
+        params["lin_gen_penalty"] = self.lin_gen_penalty
+        params["quad_gen_penalty"] = self.quad_gen_penalty
+
+        return params

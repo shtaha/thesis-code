@@ -17,6 +17,8 @@ class StandardDCOPF(UnitConverter, PyomoMixin):
         grid,
         grid_backend=None,
         solver_name="mosek",
+        tol=1e-9,
+        warm_start=False,
         verbose=False,
         **kwargs,
     ):
@@ -42,6 +44,8 @@ class StandardDCOPF(UnitConverter, PyomoMixin):
             solver_name = "glpk"
 
         self.solver_name = solver_name
+        self.tol = tol
+        self.warm_start = warm_start
         self.solver = pyo_opt.SolverFactory(solver_name)
         self.solver_status = None
 
@@ -509,7 +513,7 @@ class StandardDCOPF(UnitConverter, PyomoMixin):
         )
         self.grid_backend.res_trafo["max_p_pu"] = self.grid.trafo["max_p_pu"]
 
-    def _solve(self, verbose=False, tol=1e-9, time_limit=20, warm_start=True):
+    def _solve(self, verbose=False, tol=1e-9, time_limit=5, warm_start=True):
         """
         Set options to solver and solve the MIP.
         Compatible with Gurobi, GLPK, and Mosek.
@@ -534,8 +538,13 @@ class StandardDCOPF(UnitConverter, PyomoMixin):
                 self.model, tee=verbose, options=options
             )
 
-    def solve(self, verbose=False, tol=1e-9, time_limit=20):
-        self._solve(verbose=verbose, tol=tol, time_limit=20)
+    def solve(self, verbose=False, time_limit=7):
+        self._solve(
+            verbose=verbose,
+            tol=self.tol,
+            warm_start=self.warm_start,
+            time_limit=time_limit,
+        )
 
         # Save standard DC-OPF variable results
         self._solve_save()
@@ -554,7 +563,7 @@ class StandardDCOPF(UnitConverter, PyomoMixin):
         }
         return result
 
-    def solve_backend(self, verbose=False, tol=1e-9):
+    def solve_backend(self, verbose=False):
         for gen_id in self.gen.index.values:
             pp.create_poly_cost(
                 self.grid_backend,
@@ -565,7 +574,10 @@ class StandardDCOPF(UnitConverter, PyomoMixin):
 
         try:
             pp.rundcopp(
-                self.grid_backend, verbose=verbose, suppress_warnings=True, delta=tol
+                self.grid_backend,
+                verbose=verbose,
+                suppress_warnings=True,
+                delta=self.tol,
             )
             valid = True
         except pp.optimal_powerflow.OPFNotConverged as e:
@@ -596,9 +608,9 @@ class StandardDCOPF(UnitConverter, PyomoMixin):
         }
         return result
 
-    def solve_and_compare(self, verbose=False, tol=1e-9):
-        result = self.solve(verbose=False, tol=tol)
-        result_backend = self.solve_backend()
+    def solve_and_compare(self, verbose=False):
+        result = self.solve(verbose=False)
+        result_backend = self.solve_backend(verbose=False)
 
         res_cost = pd.DataFrame(
             {

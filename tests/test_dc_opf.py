@@ -26,7 +26,7 @@ class TestStandardDCOPF(unittest.TestCase):
     def setUpClass(cls):
         print("\nStandard DC-OPF tests.\n")
 
-    def runner_opf(self, model, n_tests=20, eps=1e-4, verbose=False, tol=1e-9):
+    def runner_opf(self, model, n_tests=20, eps=1e-4, verbose=False):
         conditions = list()
         for i in range(n_tests):
             np.random.seed(i)
@@ -35,7 +35,7 @@ class TestStandardDCOPF(unittest.TestCase):
             )
 
             model.build_model()
-            result = model.solve_and_compare(verbose=verbose, tol=tol)
+            result = model.solve_and_compare(verbose=verbose)
 
             conditions.append(
                 {
@@ -130,10 +130,11 @@ class TestStandardDCOPF(unittest.TestCase):
             grid_backend=case.grid_backend,
             base_unit_p=case.base_unit_p,
             base_unit_v=case.base_unit_v,
+            tol=1e-9,
         )
 
         model.build_model()
-        result = model.solve(verbose=False, tol=1e-9)
+        result = model.solve(verbose=False)
         model.print_results()
 
         time.sleep(0.1)
@@ -512,24 +513,13 @@ class TestTopologyOptimizationDCOPF(unittest.TestCase):
         return cond_line_or and cond_line_ex and cond_line_disconnected
 
     def runner_opf_topology_optimization(
-        self, model, gen_cost=True, quad_line_margins=True, verbose=False, tol=1e-2,
+        self, model, verbose=False,
     ):
         np.random.seed(0)
         model.gen["cost_pu"] = np.random.uniform(1.0, 5.0, (model.grid.gen.shape[0],))
-        model.build_model(
-            allow_onesided_disconnection=False,
-            allow_implicit_diconnection=False,
-            symmetry=True,
-            switching_limits=True,
-            cooldown=True,
-            gen_cost=gen_cost,
-            lin_line_margins=False,
-            quad_line_margins=quad_line_margins,
-            lin_gen_penalty=False,
-            quad_gen_penalty=False,
-        )
+        model.build_model()
 
-        if verbose or True:
+        if verbose:
             model.print_model()
 
         if model.solver_name == "glpk":
@@ -537,12 +527,9 @@ class TestTopologyOptimizationDCOPF(unittest.TestCase):
             self.assertTrue(True)
             return
 
-        result = model.solve(verbose=verbose, tol=tol)
+        result = model.solve(verbose=verbose)
         result_x = result["res_x"]
         result_objective = result["res_cost"]
-        result_gap = result["res_gap"]  # Gap for finding the optimal configuration
-
-        model.print_results()
 
         n_gen = model.grid.gen.shape[0]
         n_load = model.grid.load.shape[0]
@@ -659,7 +646,11 @@ class TestTopologyOptimizationDCOPF(unittest.TestCase):
                 gen_p = model.convert_mw_to_per_unit(grid_tmp.res_gen["p_mw"].sum())
                 valid = valid and np.abs(gen_p - load_p) < 1e-6
 
-                if gen_cost and quad_line_margins and model.solver_name != "glpk":
+                if (
+                    model.gen_cost
+                    and model.quad_line_margins
+                    and model.solver_name != "glpk"
+                ):
                     objective = (
                         grid_tmp.res_cost
                         + np.square(
@@ -667,7 +658,7 @@ class TestTopologyOptimizationDCOPF(unittest.TestCase):
                             / model.grid.line["max_p_pu"]
                         ).sum()
                     )
-                elif quad_line_margins and model.solver_name != "glpk":
+                elif model.quad_line_margins and model.solver_name != "glpk":
                     objective = +np.square(
                         model.convert_mw_to_per_unit(grid_tmp.res_line["p_from_mw"])
                         / model.grid.line["max_p_pu"]
@@ -693,9 +684,9 @@ class TestTopologyOptimizationDCOPF(unittest.TestCase):
                         "line_ex_bus": line_ex_bus,
                         "line_status": line_status.astype(int),
                         "valid": valid,
-                        "objective": np.round(objective, 2),
+                        "objective": np.round(objective, 3),
                         "load_p": load_p,
-                        "gen_p": np.round(gen_p, 2),
+                        "gen_p": np.round(gen_p, 3),
                     }
                 )
 
@@ -703,9 +694,7 @@ class TestTopologyOptimizationDCOPF(unittest.TestCase):
 
         # Check with brute force solution
         objective_brute = results_backend["objective"][results_backend["valid"]].min()
-        hot_brute = (
-            np.abs(results_backend["objective"].values - objective_brute) < result_gap
-        )
+        hot_brute = np.abs(results_backend["objective"].values - objective_brute) < 0.05
         indices_brute = hot_to_indices(hot_brute)
         status_brute = results_backend["x"][indices_brute]
 
@@ -718,7 +707,7 @@ class TestTopologyOptimizationDCOPF(unittest.TestCase):
         # Compare
         results_backend["candidates"] = hot_brute
         results_backend["result_objective"] = np.nan
-        results_backend["result_objective"][match_idx] = np.round(result_objective, 2)
+        results_backend["result_objective"][match_idx] = np.round(result_objective, 3)
 
         print(f"\n{model.name}\n")
         print(f"Solver: {result_objective}")
@@ -755,6 +744,18 @@ class TestTopologyOptimizationDCOPF(unittest.TestCase):
             grid_backend=case.grid_backend,
             base_unit_p=case.base_unit_p,
             base_unit_v=case.base_unit_v,
+            solver_name="gurobi",
+            tol=1e-2,
+            allow_onesided_disconnection=False,
+            allow_implicit_diconnection=False,
+            symmetry=True,
+            switching_limits=True,
+            cooldown=True,
+            gen_cost=True,
+            lin_line_margins=False,
+            quad_line_margins=True,
+            lin_gen_penalty=False,
+            quad_gen_penalty=False,
         )
 
-        self.runner_opf_topology_optimization(model, grid, verbose=False)
+        self.runner_opf_topology_optimization(model, verbose=False)

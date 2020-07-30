@@ -6,6 +6,7 @@ class Constants(object):
 
     ENV_NAME = "l2rpn_wcci_2020"
 
-    FIG_SIZE = (8, 4)
-    OUT_FORMAT = ".pdf"
+    MATPLOTLIB_STYLE = "seaborn"
     COLORS = list(mcolors.TABLEAU_COLORS)
+    FIG_SIZE = (8, 4)
+    OUT_FORMAT = "pdf"

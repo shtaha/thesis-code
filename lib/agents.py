@@ -8,6 +8,7 @@ from lib.dc_opf import (
     TopologyOptimizationDCOPF,
 )
 from lib.rewards import RewardL2RPN2019
+from lib.visualizer import pprint
 
 
 class AgentMIPTest:
@@ -16,63 +17,48 @@ class AgentMIPTest:
     """
 
     def __init__(
-        self,
-        case,
-        action_set,
-        n_max_line_status_changed=1,
-        n_max_sub_changed=1,
-        reward_class=RewardL2RPN2019,
+        self, case, action_set, reward_class=RewardL2RPN2019, **kwargs,
     ):
         self.name = "Agent MIP"
-
         self.case = case
         self.env = case.env
 
         self.grid = GridDCOPF(
             case, base_unit_v=case.base_unit_v, base_unit_p=case.base_unit_p
         )
+
         self.model = None
+        self.default_kwargs = kwargs
+        self.model_kwargs = self.default_kwargs
+
         self.result = None
 
-        self.n_max_line_status_changed = n_max_line_status_changed
-        self.n_max_sub_changed = n_max_sub_changed
-
         self.reward_function = reward_class()
-
         self.actions, self.actions_info = action_set
 
-    def act(self, obs, done, **kwargs):
-        self._update(obs, reset=done)
+    def set_kwargs(self, **kwargs):
+        self.model_kwargs = {**self.default_kwargs, **kwargs}
+
+    def act(self, observation, reward, done=False):
+        self._update(observation, reset=done)
         self.model = TopologyOptimizationDCOPF(
             f"{self.case.env.name} DC OPF Topology Optimization",
             grid=self.grid,
             base_unit_p=self.grid.base_unit_p,
             base_unit_v=self.grid.base_unit_v,
-            n_max_line_status_changed=self.n_max_line_status_changed,
-            n_max_sub_changed=self.n_max_sub_changed,
+            **self.model_kwargs,
         )
-        self.model.build_model(**kwargs)
+
+        self.model.build_model()
         self.result = self.model.solve()
 
-        action = self.grid.convert_mip_to_topology_vector(self.result, obs)[-1]
+        action = self.grid.convert_mip_to_topology_vector(self.result, observation)[-1]
         return action
 
-    def act_with_timing(
-        self,
-        obs,
-        done,
-        tol=0.001,
-        solver_name="gurobi",
-        warm_start=False,
-        n_max_line_status_changed=1,
-        n_max_sub_changed=1,
-        verbose=False,
-        **kwargs,
-    ):
+    def act_with_timing(self, observation, reward, done=False):
         timing = dict()
-
         start_build = timer()
-        self._update(obs, reset=done)
+        self._update(observation, reset=done)
         timing["update"] = timer() - start_build
 
         self.model = TopologyOptimizationDCOPF(
@@ -80,16 +66,14 @@ class AgentMIPTest:
             grid=self.grid,
             base_unit_p=self.grid.base_unit_p,
             base_unit_v=self.grid.base_unit_v,
-            solver_name=solver_name,
-            n_max_line_status_changed=n_max_line_status_changed,
-            n_max_sub_changed=n_max_sub_changed,
+            **self.model_kwargs,
         )
-        self.model.build_model(**kwargs)
+        self.model.build_model()
         timing["build"] = timer() - start_build
 
         start_solve = timer()
-        self.result = self.model.solve(tol=tol, verbose=verbose, warm_start=warm_start)
-        action = self.grid.convert_mip_to_topology_vector(self.result, obs)[-1]
+        self.result = self.model.solve(verbose=False)
+        action = self.grid.convert_mip_to_topology_vector(self.result, observation)[-1]
         timing["solve"] = timer() - start_solve
 
         return action, timing
@@ -118,14 +102,6 @@ class AgentMIPTest:
             np.divide(res_line["env_p_pu"], obs.rho + 1e-9)
         )
 
-        # res_line["env_i_pu"] = self.convert_a_to_per_unit(obs.a_or)
-        # res_line["env_max_i_pu"] = np.abs(
-        #     np.divide(res_line["env_i_pu"], obs.rho + 1e-9)
-        # )
-        # res_line["env_v_pu"] = self.convert_kv_to_per_unit(obs.v_or)
-        #
-        # res_line["ratio"] = np.divide(res_line["max_p_pu"], res_line["env_max_p_pu"])
-
         res_line["rho"] = self.result["res_line"]["loading_percent"] / 100.0
         res_line["env_rho"] = obs.rho
 
@@ -150,6 +126,77 @@ class AgentMIPTest:
 
         return res_line, res_gen
 
+    def distance_to_ref_topology(self, topo_vect, line_status):
+        """
+        Count the number of unitary topological actions a topology is from the reference topology.
+        The reference topology is the base case topology, fully meshed, with every line in service and a single
+        electrical node, bus, per substation.
+        """
+        topo_vect = topo_vect.copy()
+        line_status = line_status.copy()
+
+        ref_topo_vect = np.ones_like(topo_vect)
+        ref_line_status = np.ones_like(line_status)
+
+        dist_status = 0
+        for line_id, status in enumerate(line_status):
+            if not status:
+                line_or = self.grid.line_or_topo_pos[line_id]
+                line_ex = self.grid.line_ex_topo_pos[line_id]
+
+                # Reconnect power lines as in reference topology
+                line_status[line_id] = ref_line_status[line_id]
+                topo_vect[line_or] = ref_topo_vect[line_or]
+                topo_vect[line_ex] = ref_topo_vect[line_ex]
+
+                # Reconnection amounts to 1 unitary action
+                dist_status = dist_status + 1
+
+        assert np.equal(topo_vect, -1).sum() == 0  # All element are connected
+
+        dist_sub = 0
+        for sub_id in range(self.grid.n_sub):
+            sub_topology_mask = self.grid.substation_topology_mask[sub_id, :]
+            sub_topo_vect = topo_vect[sub_topology_mask]
+            ref_sub_topo_vect = ref_topo_vect[sub_topology_mask]
+
+            sub_count = np.not_equal(
+                sub_topo_vect, ref_sub_topo_vect
+            ).sum()  # Count difference
+            if sub_count > 0:
+                # Reconfigure buses as in reference topology
+                topo_vect[sub_topology_mask] = ref_sub_topo_vect
+
+                # Substation bus reconfiguration amounts to 1 unitary action
+                dist_sub = dist_sub + 1
+
+        assert np.equal(
+            topo_vect, ref_topo_vect
+        ).all()  # Modified topology must be equal to reference topology
+
+        dist = dist_status + dist_sub
+        return dist, dist_status, dist_sub
+
+    def print_agent(self, default=False):
+        model = TopologyOptimizationDCOPF(name="Default", grid=self.grid)
+        default_kwargs = model.get_model_parameters()
+
+        pprint("\nAgent:", self.name, shift=36)
+        if default:
+            for arg in default_kwargs:
+                model_arg = self.model_kwargs[arg] if arg in self.model_kwargs else "-"
+                pprint(
+                    f"  - {arg}:", "{:<10}".format(str(model_arg)), default_kwargs[arg]
+                )
+        else:
+            for arg in self.model_kwargs:
+                pprint(
+                    f"  - {arg}:",
+                    "{:<10}".format(str(self.model_kwargs[arg])),
+                    default_kwargs[arg],
+                )
+        print("-" * 80)
+
 
 class AgentDoNothing:
     def __init__(self, case, action_set):
@@ -168,14 +215,29 @@ class AgentDoNothing:
 
         self.actions, self.actions_info = action_set
 
-    def act(self, obs, done, **kwargs):
+    def set_kwargs(self, **kwargs):
+        pass
+
+    def act(self, observation, reward, done=False):
         action = self.actions[0]
 
-        obs_next, reward, done, info = obs.simulate(action)
+        obs_next, reward, done, info = observation.simulate(action)
         self.reward = reward
         self.obs_next = obs_next
 
         return action
+
+    def act_with_timing(self, observation, reward, done=False):
+        timing = dict()
+
+        start_solve = timer()
+        action = self.actions[0]
+        obs_next, reward, done, info = observation.simulate(action)
+        self.reward = reward
+        self.obs_next = obs_next
+        timing["solve"] = timer() - start_solve
+
+        return action, timing
 
     def get_reward(self):
         return self.reward
@@ -226,3 +288,11 @@ class AgentDoNothing:
             print("LINE\n" + res_line.to_string())
 
         return res_line, res_gen
+
+    @staticmethod
+    def distance_to_ref_topology(topo_vect, line_status):
+        return 0, 0, 0
+
+    def print_agent(self, default=False):
+        pprint("\nAgent:", self.name, shift=36)
+        print("-" * 80)

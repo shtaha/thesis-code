@@ -6,106 +6,19 @@ import numpy as np
 import pandas as pd
 import seaborn as sns
 
-from lib.visualizer import print_info, print_action, pprint
 from lib.constants import Constants as Const
+from lib.visualizer import print_info, print_action, pprint
+from .experiment_base import ExperimentBase
 
 
-class ExperimentDCOPFTiming:
-    @staticmethod
-    def _plot_and_save(
-        times,
-        labels,
-        n_bins=25,
-        title=None,
-        legend_title=None,
-        save_path=None,
-        fig_format=Const.OUT_FORMAT,
-    ):
-        fig, ax = plt.subplots(figsize=Const.FIG_SIZE)
-        ax.set_title(title)
-        for time, label in zip(times, labels):
-            sns.distplot(
-                time,
-                label=label,
-                ax=ax,
-                bins=n_bins,
-                hist=True,
-                kde=True,
-                norm_hist=True,
-            )
-
-        ax.set_xlabel("Time [s]")
-        ax.set_ylabel("PDF")
-        ax.set_xlim(left=0)
-
-        ax.legend(title=legend_title)
-
-        fig.show()
-        if save_path:
-            file_extension = os.path.splitext(save_path)[1]
-            if not file_extension:
-                save_path = save_path + fig_format
-
-            fig.savefig(save_path)
-
-    @staticmethod
-    def _save_csv(data_dict, save_path):
-        data = pd.DataFrame(
-            columns=["params", "total", "update", "build", "solve", "step"]
-        )
-        for key in data_dict:
-            sub_data = data_dict[key]
-            sub_data["params"] = key
-            data = data.append(sub_data)
-
-        if save_path:
-            file_extension = os.path.splitext(save_path)[1]
-            if not file_extension:
-                save_path = save_path + ".csv"
-
-            data.to_csv(save_path)
-
-    @staticmethod
-    def _runner_timing(
-        env, agent, n_timings=100, verbose=False, **kwargs,
-    ):
-        np.random.seed(0)
-        env.seed(0)
-
-        timings = []
-
-        done = False
-        obs = env.reset()
-        for t in range(n_timings):
-            start_total = timer()
-            action, timing = agent.act_with_timing(
-                obs, done, verbose=verbose, **kwargs,  # Arguments for building a model
-            )
-
-            start_step = timer()
-            obs_next, reward, done, info = env.step(action)
-            timing["step"] = timer() - start_step
-
-            pprint("Step:", t)
-            if verbose:
-                print_action(action)
-                print_info(info, done, reward)
-
-            obs = obs_next
-            if done:
-                print("DONE\n")
-                obs = env.reset()
-
-            timing["total"] = timer() - start_total
-            timings.append(timing)
-
-        return pd.DataFrame(timings)
-
+class ExperimentDCOPFTiming(ExperimentBase):
     def compare_by_solver_and_parts(
         self, case, agent, save_dir, solver_names, n_bins=25, **kwargs,
     ):
         file_name = "solvers"
         case_name = self._get_case_name(case)
+
+        self.print_experiment("Timing - Solver and Parts")
 
         data_dict = dict()
         for idx, solver_name in enumerate(solver_names):
@@ -140,6 +53,8 @@ class ExperimentDCOPFTiming:
         file_name = "tolerances"
         case_name = self._get_case_name(case)
 
+        self.print_experiment("Timing - Tolerances")
+
         data_dict = dict()
         for tol in tols:
             data_dict[str(tol)] = self._runner_timing(
@@ -164,6 +79,8 @@ class ExperimentDCOPFTiming:
     ):
         file_name = "limits"
         case_name = self._get_case_name(case)
+
+        self.print_experiment("Timing - Maximum switching limit")
 
         data_dict = dict()
         for limits in switch_limits:
@@ -197,11 +114,14 @@ class ExperimentDCOPFTiming:
         file_name = "activations"
         case_name = self._get_case_name(case)
 
+        self.print_experiment("Timing - Constraint Activations")
+
         data_dict = dict()
         for activations in constraint_activations:
             (
                 allow_onesided_disconnection,
                 allow_implicit_diconnection,
+                allow_onesided_reconnection,
                 symmmetry,
                 gen_load_bus_balance,
                 switching_limits,
@@ -215,6 +135,7 @@ class ExperimentDCOPFTiming:
                 agent=agent,
                 allow_onesided_disconnection=allow_onesided_disconnection,
                 allow_implicit_diconnection=allow_implicit_diconnection,
+                allow_onesided_reconnection=allow_onesided_reconnection,
                 symmetry=symmmetry,
                 gen_load_bus_balance=gen_load_bus_balance,
                 switching_limits=switching_limits,
@@ -228,7 +149,7 @@ class ExperimentDCOPFTiming:
             labels=[param for param in data_dict],
             n_bins=n_bins,
             title=f"{case_name} - Constraint activations comparison",
-            legend_title="Onesided-Implicit-Symmetry-Balance-Switching-Cooldown-Unitary",
+            legend_title="Onesided-Implicit-Reconnection-Symmetry-Balance-Switching-Cooldown-Unitary",
             save_path=os.path.join(save_dir, file_name),
         )
 
@@ -241,6 +162,8 @@ class ExperimentDCOPFTiming:
     ):
         file_name = "objectives"
         case_name = self._get_case_name(case)
+
+        self.print_experiment("Timing - Objective")
 
         data_dict = dict()
         for objective in objectives:
@@ -283,6 +206,8 @@ class ExperimentDCOPFTiming:
         file_name = "warmstart"
         case_name = self._get_case_name(case)
 
+        self.print_experiment("Timing - Warm Start")
+
         data_dict = dict()
         for warm_start in [True, False]:
             data_dict[str(warm_start)] = self._runner_timing(
@@ -306,6 +231,8 @@ class ExperimentDCOPFTiming:
         file_name = "lambdas"
         case_name = self._get_case_name(case)
 
+        self.print_experiment("Timing - Penalty scaling")
+
         data_dict = dict()
         for lambd in lambdas:
             data_dict[str(lambd)] = self._runner_timing(
@@ -326,9 +253,82 @@ class ExperimentDCOPFTiming:
         )
 
     @staticmethod
-    def _get_case_name(case):
-        env_pf = "AC"
-        if case.env.parameters.ENV_DC:
-            env_pf = "DC"
+    def _runner_timing(
+        env, agent, n_timings=100, verbose=False, **kwargs,
+    ):
+        np.random.seed(0)
+        env.seed(0)
 
-        return f"{case.name} ({env_pf})"
+        agent.set_kwargs(**kwargs)
+        agent.print_agent(default=False)
+
+        timings = []
+
+        done = False
+        obs = env.reset()
+        for t in range(n_timings):
+            start_total = timer()
+            action, timing = agent.act_with_timing(obs, done)
+
+            start_step = timer()
+            obs_next, reward, done, info = env.step(action)
+            timing["step"] = timer() - start_step
+
+            pprint("Step:", t)
+            if verbose:
+                print_action(action)
+                print_info(info, done, reward)
+
+            obs = obs_next
+            if done:
+                print("DONE\n")
+                obs = env.reset()
+
+            timing["total"] = timer() - start_total
+            timings.append(timing)
+
+        return pd.DataFrame(timings)
+
+    @staticmethod
+    def _plot_and_save(
+        times, labels, n_bins=25, title=None, legend_title=None, save_path=None,
+    ):
+        fig, ax = plt.subplots(figsize=Const.FIG_SIZE)
+        ax.set_title(title)
+        for time, label in zip(times, labels):
+            sns.distplot(
+                time,
+                label=label,
+                ax=ax,
+                bins=n_bins,
+                hist=True,
+                kde=True,
+                norm_hist=True,
+            )
+
+        ax.set_xlabel("Time [s]")
+        ax.set_ylabel("PDF")
+        ax.set_xlim(left=0)
+
+        ax.legend(title=legend_title)
+
+        fig.show()
+        if save_path:
+            fig.savefig(save_path)
+
+    @staticmethod
+    def _save_csv(data_dict, save_path):
+        data = pd.DataFrame(
+            columns=["params", "total", "update", "build", "solve", "step"]
+        )
+        for key in data_dict:
+            sub_data = data_dict[key]
+            sub_data["params"] = key
+            data = data.append(sub_data)
+
+        if save_path:
+            file_extension = os.path.splitext(save_path)[1]
+            if not file_extension:
+                save_path = save_path + ".csv"
+
+            data.to_csv(save_path)

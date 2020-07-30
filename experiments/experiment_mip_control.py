@@ -7,12 +7,131 @@ import seaborn as sns
 
 from lib.constants import Constants as Const
 from lib.visualizer import print_action, pprint
+from .experiment_base import ExperimentBase
 
 
-class ExperimentMIPControl:
+class ExperimentMIPControl(ExperimentBase):
+    def evaluate_performance(
+        self, case, agent, save_dir=None, n_steps=100, verbose=False,
+    ):
+        env = case.env
+        case_name = self._get_case_name(case)
+
+        self.print_experiment("Control Performance")
+
+        agent.set_kwargs()
+        agent.print_agent(default=False)
+
+        measurements = self._runner_mip_control(
+            env, agent, n_steps=n_steps, verbose=verbose
+        )
+
+        if verbose:
+            print(
+                "MEASUREMENTS:\n"
+                + measurements[
+                    [
+                        "t",
+                        "e",
+                        "reward",
+                        "reward-est",
+                        "action-id",
+                        "rho",
+                        "env-rho",
+                        "env-gens-p",
+                        "env-loads-p",
+                    ]
+                ].to_string()
+            )
+
+        self._plot_and_save(
+            measurements,
+            env=env,
+            agent=agent,
+            title=f"{case_name} - {agent.name}",
+            save_dir=save_dir,
+            prefix=agent.name.replace(" ", "-").lower(),
+        )
+        self._save_csv(
+            data=measurements,
+            save_dir=save_dir,
+            prefix=agent.name.replace(" ", "-").lower(),
+        )
+
+    @staticmethod
+    def _runner_mip_control(env, agent, n_steps=100, verbose=False):
+        np.random.seed(0)
+        env.seed(0)
+
+        measurements = []
+
+        e = 0  # Episode counter
+        done = False
+        obs = env.reset()
+        for t in range(n_steps):
+            action = agent.act(obs, done)
+            obs_next, reward, done, info = env.step(action)
+
+            pprint("Step:", t)
+            if verbose:
+                print_action(action)
+
+            reward_est = agent.get_reward()
+            res_line, res_gen = agent.compare_with_observation(obs_next, verbose=False)
+            dist, dist_status, dist_sub = agent.distance_to_ref_topology(
+                obs_next.topo_vect, obs_next.line_status
+            )
+
+            action_id = [
+                idx
+                for idx, agent_action in enumerate(agent.actions)
+                if action == agent_action
+            ]
+            if len(action_id) != 1:
+                print(action_id)
+                print(action)
+
+            assert len(action_id) == 1  # Exactly one action should be equivalent
+            action_id = int(action_id[0])
+
+            measurement = dict()
+            measurement["t"] = t
+            measurement["e"] = e
+            measurement["reward"] = reward
+            measurement["reward-est"] = reward_est
+            measurement["dist"] = dist
+            measurement["dist_status"] = dist_status
+            measurement["dist_sub"] = dist_sub
+            measurement["action-id"] = action_id
+            measurement["rho"] = res_line["rho"].max()
+            measurement["env-rho"] = res_line["env_rho"].max()
+            measurement["env-gens-p"] = obs.prod_p.sum()
+            measurement["env-loads-p"] = obs.load_p.sum()
+
+            for gen_id in res_gen.index:
+                measurement[f"gen-{gen_id}"] = res_gen["p_pu"][gen_id]
+                measurement[f"env-gen-{gen_id}"] = res_gen["env_p_pu"][gen_id]
+                measurement[f"env-gen-{gen_id}-q"] = res_gen["env_q_pu"][gen_id]
+                measurement[f"env-q-p-{gen_id}"] = res_gen["env_gen_q_p"][gen_id]
+
+            for line_id in res_line.index:
+                measurement[f"line-{line_id}"] = res_line["p_pu"][line_id]
+                measurement[f"env-line-{line_id}"] = res_line["env_p_pu"][line_id]
+
+            measurements.append(measurement)
+
+            obs = obs_next
+            if done:
+                print("DONE\n")
+                obs = env.reset()
+                e = e + 1
+
+        measurements = pd.DataFrame(measurements)
+        return measurements
+
     @staticmethod
     def _plot_and_save(
-        measurements, env, agent, title=None, save_dir=None, fig_format=Const.OUT_FORMAT
+        measurements, env, agent, title=None, save_dir=None, prefix=None,
     ):
         colors = Const.COLORS
         t = measurements["t"]
@@ -27,7 +146,28 @@ class ExperimentMIPControl:
 
         fig.show()
         if save_dir:
-            fig.savefig(os.path.join(save_dir, "rewards" + fig_format))
+            file_name = "rewards"
+            if prefix:
+                file_name = prefix + "-" + file_name
+
+            fig.savefig(os.path.join(save_dir, file_name))
+
+        fig, ax = plt.subplots(figsize=Const.FIG_SIZE)
+        ax.plot(t, measurements["dist"], label="Overall")
+        ax.plot(t, measurements["dist_status"], label="Line")
+        ax.plot(t, measurements["dist_sub"], label="Substation")
+        ax.set_xlabel("Time step t")
+        ax.set_ylabel("Unitary action distance to reference topology")
+        ax.legend()
+        fig.suptitle(title)
+
+        fig.show()
+        if save_dir:
+            file_name = "distance"
+            if prefix:
+                file_name = prefix + "-" + file_name
+
+            fig.savefig(os.path.join(save_dir, file_name))
 
         fig, ax = plt.subplots(figsize=Const.FIG_SIZE)
         ax.plot(t, measurements["rho"], label="Rho - EST")
@@ -43,7 +183,11 @@ class ExperimentMIPControl:
 
         fig.show()
         if save_dir:
-            fig.savefig(os.path.join(save_dir, "rho" + fig_format))
+            file_name = "rho"
+            if prefix:
+                file_name = prefix + "-" + file_name
+
+            fig.savefig(os.path.join(save_dir, file_name))
 
         fig, ax = plt.subplots(figsize=Const.FIG_SIZE)
         for gen_id in range(env.n_gen):
@@ -73,7 +217,11 @@ class ExperimentMIPControl:
 
         fig.show()
         if save_dir:
-            fig.savefig(os.path.join(save_dir, "generators_p" + fig_format))
+            file_name = "generators_p"
+            if prefix:
+                file_name = prefix + "-" + file_name
+
+            fig.savefig(os.path.join(save_dir, file_name))
 
         fig, ax = plt.subplots(figsize=Const.FIG_SIZE)
         for gen_id in range(env.n_gen):
@@ -95,7 +243,11 @@ class ExperimentMIPControl:
 
         fig.show()
         if save_dir:
-            fig.savefig(os.path.join(save_dir, "generators_q" + fig_format))
+            file_name = "generators_q"
+            if prefix:
+                file_name = prefix + "-" + file_name
+
+            fig.savefig(os.path.join(save_dir, file_name))
 
         fig, ax = plt.subplots(figsize=Const.FIG_SIZE)
         for gen_id in range(env.n_gen):
@@ -117,7 +269,11 @@ class ExperimentMIPControl:
 
         fig.show()
         if save_dir:
-            fig.savefig(os.path.join(save_dir, "generators_q-p" + fig_format))
+            file_name = "generators_q-p"
+            if prefix:
+                file_name = prefix + "-" + file_name
+
+            fig.savefig(os.path.join(save_dir, file_name))
 
         fig, ax = plt.subplots(figsize=Const.FIG_SIZE)
         for line_id in range(env.n_line):
@@ -145,7 +301,11 @@ class ExperimentMIPControl:
 
         fig.show()
         if save_dir:
-            fig.savefig(os.path.join(save_dir, "power-flows" + fig_format))
+            file_name = "power-flows"
+            if prefix:
+                file_name = prefix + "-" + file_name
+
+            fig.savefig(os.path.join(save_dir, file_name))
 
         fig, ax = plt.subplots(figsize=Const.FIG_SIZE)
         ax.plot(
@@ -170,7 +330,11 @@ class ExperimentMIPControl:
 
         fig.show()
         if save_dir:
-            fig.savefig(os.path.join(save_dir, "production-demand" + fig_format))
+            file_name = "production-demand"
+            if prefix:
+                file_name = prefix + "-" + file_name
+
+            fig.savefig(os.path.join(save_dir, file_name))
 
         fig, ax = plt.subplots(figsize=Const.FIG_SIZE)
         sns.distplot(
@@ -187,119 +351,16 @@ class ExperimentMIPControl:
 
         fig.show()
         if save_dir:
-            fig.savefig(os.path.join(save_dir, "action-ids" + fig_format))
+            file_name = "action-ids"
+            if prefix:
+                file_name = prefix + "-" + file_name
+
+            fig.savefig(os.path.join(save_dir, file_name))
 
     @staticmethod
-    def _save_csv(data, save_dir):
-        data.to_csv(os.path.join(save_dir, "measurements.csv"))
+    def _save_csv(data, save_dir, prefix=None):
+        file_name = "measurements"
+        if prefix:
+            file_name = prefix + "-" + file_name
 
-    @staticmethod
-    def _runner_mip_control(
-        env, agent, n_steps=100, verbose=False, **kwargs,
-    ):
-        np.random.seed(0)
-        env.seed(0)
-
-        measurements = []
-
-        e = 0  # Episode counter
-        done = False
-        obs = env.reset()
-        for t in range(n_steps):
-            action = agent.act(obs, done, **kwargs)
-            obs_next, reward, done, info = env.step(action)
-
-            pprint("Step:", t)
-            if verbose:
-                print_action(action)
-
-            reward_est = agent.get_reward()
-            res_line, res_gen = agent.compare_with_observation(obs_next, verbose=False)
-            action_id = [
-                idx
-                for idx, agent_action in enumerate(agent.actions)
-                if action == agent_action
-            ]
-            if len(action_id) != 1:
-                print(action_id)
-                print(action)
-
-            assert len(action_id) == 1  # Exactly one action should be equivalent
-            action_id = int(action_id[0])
-
-            measurement = dict()
-            measurement["t"] = t
-            measurement["e"] = e
-            measurement["reward"] = reward
-            measurement["reward-est"] = reward_est
-            measurement["action-id"] = action_id
-            measurement["rho"] = res_line["rho"].max()
-            measurement["env-rho"] = res_line["env_rho"].max()
-            measurement["env-gens-p"] = obs.prod_p.sum()
-            measurement["env-loads-p"] = obs.load_p.sum()
-
-            for gen_id in res_gen.index:
-                measurement[f"gen-{gen_id}"] = res_gen["p_pu"][gen_id]
-                measurement[f"env-gen-{gen_id}"] = res_gen["env_p_pu"][gen_id]
-                measurement[f"env-gen-{gen_id}-q"] = res_gen["env_q_pu"][gen_id]
-                measurement[f"env-q-p-{gen_id}"] = res_gen["env_gen_q_p"][gen_id]
-
-            for line_id in res_line.index:
-                measurement[f"line-{line_id}"] = res_line["p_pu"][line_id]
-                measurement[f"env-line-{line_id}"] = res_line["env_p_pu"][line_id]
-
-            measurements.append(measurement)
-
-            obs = obs_next
-            if done:
-                print("DONE\n")
-                obs = env.reset()
-                e = e + 1
-
-        measurements = pd.DataFrame(measurements)
-        return measurements
-
-    def evaluate_performance(
-        self, case, agent, save_dir=None, n_steps=100, verbose=False, **kwargs,
-    ):
-        env = case.env
-        case_name = self._get_case_name(case)
-
-        measurements = self._runner_mip_control(
-            env, agent, n_steps=n_steps, verbose=verbose, **kwargs
-        )
-
-        if verbose:
-            print(
-                "MEASUREMENTS:\n"
-                + measurements[
-                    [
-                        "t",
-                        "e",
-                        "reward",
-                        "reward-est",
-                        "action-id",
-                        "rho",
-                        "env-rho",
-                        "env-gens-p",
-                        "env-loads-p",
-                    ]
-                ].to_string()
-            )
-
-        self._plot_and_save(
-            measurements,
-            env=env,
-            agent=agent,
-            title=f"{case_name} - {agent.name}",
-            save_dir=save_dir,
-        )
-        self._save_csv(data=measurements, save_dir=save_dir)
-
-    @staticmethod
-    def _get_case_name(case):
-        env_pf = "AC"
-        if case.env.parameters.ENV_DC:
-            env_pf = "DC"
-
-        return f"{case.name} ({env_pf})"
+        data.to_csv(os.path.join(save_dir, file_name + ".csv"))

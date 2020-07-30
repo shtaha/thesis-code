@@ -1,6 +1,7 @@
 import numpy as np
 
 from ..data_utils import hot_to_indices
+from ..visualizer import pprint
 
 
 class TopologyConverter:
@@ -160,7 +161,14 @@ class TopologyConverter:
         solution_status = mip_solution["solution_status"]
 
         # If infeasible problem, then return a do-nothing action
-        if solution_status == "infeasible":
+        if solution_status in [
+            "infeasible",
+            "aborted",
+            "warning",
+            "error",
+            "maxTimeLimit",
+        ]:
+            pprint("Solver status:", solution_status)
             return obs.topo_vect, obs.line_status, self.env.action_space({})
 
         x_gen = mip_solution["res_x_gen"]
