@@ -74,6 +74,31 @@ class ExperimentDCOPFTiming(ExperimentBase):
             data_dict=data_dict, save_path=os.path.join(save_dir, file_name + ".csv")
         )
 
+    def compare_by_delta_max(self, case, agent, save_dir, deltas, n_bins=25, **kwargs):
+        file_name = "deltas"
+        case_name = self._get_case_name(case)
+
+        self.print_experiment("Timing - Bounds on bus voltage angles")
+
+        data_dict = dict()
+        for delta_max in deltas:
+            data_dict[str(delta_max)] = self._runner_timing(
+                env=case.env, agent=agent, delta_max=delta_max, **kwargs,
+            )
+
+        self._plot_and_save(
+            times=[data_dict[param]["solve"] for param in data_dict],
+            labels=[param for param in data_dict],
+            n_bins=n_bins,
+            title=f"{case_name} - Bounds on bus voltage angles",
+            legend_title="Max delta",
+            save_path=os.path.join(save_dir, file_name),
+        )
+
+        self._save_csv(
+            data_dict=data_dict, save_path=os.path.join(save_dir, file_name + ".csv")
+        )
+
     def compare_by_switching_limits(
         self, case, agent, save_dir, switch_limits, n_bins=25, **kwargs,
     ):
@@ -260,7 +285,7 @@ class ExperimentDCOPFTiming(ExperimentBase):
         env.seed(0)
 
         agent.set_kwargs(**kwargs)
-        agent.print_agent(default=False)
+        agent.print_agent(default=True)
 
         timings = []
 

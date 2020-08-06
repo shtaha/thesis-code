@@ -20,7 +20,7 @@ class ExperimentMIPControl(ExperimentBase):
         self.print_experiment("Control Performance")
 
         agent.set_kwargs()
-        agent.print_agent(default=False)
+        agent.print_agent(default=True)
 
         measurements = self._runner_mip_control(
             env, agent, n_steps=n_steps, verbose=verbose
@@ -77,7 +77,9 @@ class ExperimentMIPControl(ExperimentBase):
                 print_action(action)
 
             reward_est = agent.get_reward()
-            res_line, res_gen = agent.compare_with_observation(obs_next, verbose=False)
+            res_line, res_gen = agent.compare_with_observation(
+                obs_next, verbose=verbose
+            )
             dist, dist_status, dist_sub = agent.distance_to_ref_topology(
                 obs_next.topo_vect, obs_next.line_status
             )
@@ -87,12 +89,19 @@ class ExperimentMIPControl(ExperimentBase):
                 for idx, agent_action in enumerate(agent.actions)
                 if action == agent_action
             ]
-            if len(action_id) != 1:
-                print(action_id)
-                print(action)
 
-            assert len(action_id) == 1  # Exactly one action should be equivalent
-            action_id = int(action_id[0])
+            if "unitary_action" in agent.model_kwargs:
+                if not agent.model_kwargs["unitary_action"] and len(action_id) != 1:
+                    print_action(action)
+                    action_id = np.nan
+                else:
+                    assert (
+                        len(action_id) == 1
+                    )  # Exactly one action should be equivalent
+                    action_id = int(action_id[0])
+            else:
+                assert len(action_id) == 1  # Exactly one action should be equivalent
+                action_id = int(action_id[0])
 
             measurement = dict()
             measurement["t"] = t

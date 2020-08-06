@@ -26,7 +26,10 @@ def load_case(case_name, env=None, verbose=False):
         raise ValueError(f"Invalid case name. Case {case_name} does not exist.")
 
     if verbose and case.env:
-        describe_environment(env)
+        describe_environment(case.env)
+    elif case.env:
+        env_pf = "dc" if case.env.parameters.ENV_DC else "ac"
+        print(f"\n{case.env.name.upper()} ({env_pf})\n")
 
     return case
 

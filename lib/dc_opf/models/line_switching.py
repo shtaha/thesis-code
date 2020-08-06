@@ -12,10 +12,23 @@ class LineSwitchingDCOPF(StandardDCOPF):
         grid_backend,
         n_max_line_status_changed=1,
         solver_name="mosek",
+        tol=1e-9,
+        warm_start=False,
+        delta_max=0.6,
         verbose=False,
         **kwargs,
     ):
-        super().__init__(name, grid, grid_backend, solver_name, verbose, **kwargs)
+        super().__init__(
+            name,
+            grid,
+            grid_backend,
+            solver_name,
+            tol,
+            warm_start,
+            delta_max,
+            verbose,
+            **kwargs,
+        )
 
         # Limit on the number of line status changes
         self.n_max_line_status_changed = n_max_line_status_changed
@@ -118,7 +131,7 @@ class LineSwitchingDCOPF(StandardDCOPF):
             self.model.big_m = pyo.Param(
                 self.model.line_set,
                 initialize=self._create_map_ids_to_values(
-                    self.line.index, self.line.b_pu * 2 * self.grid.delta_max
+                    self.line.index, self.line.b_pu * 2 * self.delta_max
                 ),
                 within=pyo.PositiveReals,
             )
@@ -219,8 +232,13 @@ class LineSwitchingDCOPF(StandardDCOPF):
         SOLVE FUNCTIONS.
     """
 
-    def solve(self, verbose=False, tol=1e-9, time_limit=20):
-        self._solve(verbose=verbose, tol=tol, time_limit=20)
+    def solve(self, verbose=False, time_limit=5):
+        self._solve(
+            verbose=verbose,
+            tol=self.tol,
+            time_limit=time_limit,
+            warm_start=self.warm_start,
+        )
 
         # Solution status
         solution_status = self.solver_status["Solver"][0]["Termination condition"]
@@ -229,8 +247,8 @@ class LineSwitchingDCOPF(StandardDCOPF):
         lower_bound = self.solver_status["Problem"][0]["Lower bound"]
         upper_bound = self.solver_status["Problem"][0]["Upper bound"]
         gap = np.abs((upper_bound - lower_bound) / lower_bound)
-        if gap < 1e-3:
-            gap = 1e-3
+        if gap < 1e-2:
+            gap = 1e-2
 
         # Save standard DC-OPF variable results
         self._solve_save()

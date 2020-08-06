@@ -19,6 +19,7 @@ class StandardDCOPF(UnitConverter, PyomoMixin):
         solver_name="mosek",
         tol=1e-9,
         warm_start=False,
+        delta_max=0.6,
         verbose=False,
         **kwargs,
     ):
@@ -46,6 +47,7 @@ class StandardDCOPF(UnitConverter, PyomoMixin):
         self.solver_name = solver_name
         self.tol = tol
         self.warm_start = warm_start
+        self.delta_max = delta_max
         self.solver = pyo_opt.SolverFactory(solver_name)
         self.solver_status = None
 
@@ -139,7 +141,7 @@ class StandardDCOPF(UnitConverter, PyomoMixin):
     def _build_parameters_delta(self):
         # Bus voltage angles
         self.model.delta_max = pyo.Param(
-            initialize=self.grid.delta_max, within=pyo.NonNegativeReals
+            initialize=self.delta_max, within=pyo.NonNegativeReals
         )
 
         # Slack bus index
@@ -147,7 +149,7 @@ class StandardDCOPF(UnitConverter, PyomoMixin):
             initialize=self.grid.slack_bus, within=self.model.bus_set,
         )
 
-    def _build_parameters_generators(self, gen_penalty=False, lambd=1.0):
+    def _build_parameters_generators(self, gen_penalty=False):
         """
         Initialize generator parameters: lower and upper limits on generator power production.
         """
@@ -175,7 +177,6 @@ class StandardDCOPF(UnitConverter, PyomoMixin):
                 ),
                 within=pyo.Reals,
             )
-            self.model.lambd = pyo.Param(initialize=lambd, within=pyo.NonNegativeReals)
 
     def _build_parameters_lines(self):
         """
@@ -513,7 +514,7 @@ class StandardDCOPF(UnitConverter, PyomoMixin):
         )
         self.grid_backend.res_trafo["max_p_pu"] = self.grid.trafo["max_p_pu"]
 
-    def _solve(self, verbose=False, tol=1e-9, time_limit=5, warm_start=True):
+    def _solve(self, verbose=False, tol=1e-9, time_limit=5, warm_start=False):
         """
         Set options to solver and solve the MIP.
         Compatible with Gurobi, GLPK, and Mosek.

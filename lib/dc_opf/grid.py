@@ -106,7 +106,6 @@ class GridDCOPF(UnitConverter, TopologyConverter):
         )
 
         self.slack_bus = None
-        self.delta_max = None
         self.fixed_elements = None
 
         self.build_grid()
@@ -379,8 +378,6 @@ class GridDCOPF(UnitConverter, TopologyConverter):
                 np.flatnonzero(self.case.grid_backend.gen["slack"])[0]
             ]
 
-        self.delta_max = np.pi / 2
-
         # Substation topological symmetry
         self.fixed_elements = self.get_fixed_elements()
 
@@ -620,9 +617,12 @@ class GridDCOPF(UnitConverter, TopologyConverter):
         """
         Update active power flows, productions and demands.
         """
+        # prod_p_f, _, load_p_f, _ = obs.get_forecasted_inj()
+        prod_p_f = obs.prod_p
+        load_p_f = obs.load_p
 
-        self.gen["p_pu"] = self.convert_mw_to_per_unit(obs.prod_p)
-        self.load["p_pu"] = self.convert_mw_to_per_unit(obs.load_p)
+        self.gen["p_pu"] = self.convert_mw_to_per_unit(prod_p_f)
+        self.load["p_pu"] = self.convert_mw_to_per_unit(load_p_f)
         self.line["p_pu"] = self.convert_mw_to_per_unit(obs.p_or)
         self.trafo["p_pu"] = self.convert_mw_to_per_unit(
             obs.p_or[self.line["trafo"].values]

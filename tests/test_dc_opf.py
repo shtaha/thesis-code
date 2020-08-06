@@ -218,7 +218,6 @@ class TestLineSwitchingDCOPF(unittest.TestCase):
         gen_cost=True,
         line_margin=True,
         verbose=False,
-        tol=1e-9,
     ):
         np.random.seed(0)
         model.gen["cost_pu"] = np.random.uniform(1.0, 5.0, (model.grid.gen.shape[0],))
@@ -284,7 +283,7 @@ class TestLineSwitchingDCOPF(unittest.TestCase):
             )
 
         # Solve for optimal line status configuration
-        result = model.solve(verbose=verbose, tol=tol)
+        result = model.solve(verbose=verbose)
         result_status = result["res_x"]
         result_objective = result["res_cost"]
         result_gap = result["res_gap"]  # Gap for finding the optimal configuration
@@ -354,6 +353,7 @@ class TestLineSwitchingDCOPF(unittest.TestCase):
             n_max_line_status_changed=n_max_line_status_changed,
             base_unit_p=case.base_unit_p,
             base_unit_v=case.base_unit_v,
+            tol=1e-9,
         )
 
         self.runner_opf_line_switching(
@@ -375,6 +375,7 @@ class TestLineSwitchingDCOPF(unittest.TestCase):
             n_max_line_status_changed=n_max_line_status_changed,
             base_unit_p=case.base_unit_p,
             base_unit_v=case.base_unit_v,
+            tol=1e-9,
         )
 
         self.runner_opf_line_switching(
@@ -382,7 +383,7 @@ class TestLineSwitchingDCOPF(unittest.TestCase):
         )
 
     def test_case6_line_switching(self):
-        n_max_line_status_changed = 2
+        n_max_line_status_changed = 1
 
         case = load_case("case6")
         grid = GridDCOPF(
@@ -396,6 +397,7 @@ class TestLineSwitchingDCOPF(unittest.TestCase):
             n_max_line_status_changed=n_max_line_status_changed,
             base_unit_p=case.base_unit_p,
             base_unit_v=case.base_unit_v,
+            tol=1e-9,
         )
 
         self.runner_opf_line_switching(
@@ -417,6 +419,7 @@ class TestLineSwitchingDCOPF(unittest.TestCase):
             n_max_line_status_changed=n_max_line_status_changed,
             base_unit_p=case.base_unit_p,
             base_unit_v=case.base_unit_v,
+            tol=1e-9,
         )
         self.runner_opf_line_switching(
             model, grid, n_max_line_status_changed, verbose=False,
@@ -437,6 +440,7 @@ class TestLineSwitchingDCOPF(unittest.TestCase):
             n_max_line_status_changed=n_max_line_status_changed,
             base_unit_p=case.base_unit_p,
             base_unit_v=case.base_unit_v,
+            tol=1e-9,
         )
 
         self.runner_opf_line_switching(
@@ -463,6 +467,7 @@ class TestLineSwitchingDCOPF(unittest.TestCase):
             n_max_line_status_changed=n_max_line_status_changed,
             base_unit_p=case.base_unit_p,
             base_unit_v=case.base_unit_v,
+            tol=1e-9,
         )
 
         self.runner_opf_line_switching(
