@@ -2,6 +2,7 @@ import numpy as np
 import pyomo.environ as pyo
 
 from .standard import StandardDCOPF
+from ..parameters import SinglestepTopologyParameters
 
 
 class TopologyOptimizationDCOPF(StandardDCOPF):
@@ -10,61 +11,21 @@ class TopologyOptimizationDCOPF(StandardDCOPF):
         name,
         grid,
         grid_backend=None,
-        solver_name="gurobi",
-        tol=0.01,
-        warm_start=False,
-        delta_max=0.5,
-        n_max_line_status_changed=1,
-        n_max_sub_changed=1,
-        allow_onesided_disconnection=True,
-        allow_implicit_diconnection=False,
-        allow_onesided_reconnection=False,
-        symmetry=True,
-        gen_load_bus_balance=True,
-        switching_limits=True,
-        cooldown=True,
-        unitary_action=True,
-        gen_cost=False,
-        lin_line_margins=True,
-        quad_line_margins=False,
-        lambda_gen=10.0,
-        lin_gen_penalty=True,
-        quad_gen_penalty=False,
-        lambda_action=0.0,
+        forecasts=None,
+        params=SinglestepTopologyParameters(),
         verbose=False,
         **kwargs,
     ):
         super().__init__(
-            name,
-            grid,
-            grid_backend,
-            solver_name,
-            tol,
-            warm_start,
-            delta_max,
-            verbose,
+            name=name,
+            grid=grid,
+            grid_backend=grid_backend,
+            params=params,
+            verbose=verbose,
             **kwargs,
         )
 
-        # Model parameters
-        self.n_max_line_status_changed = n_max_line_status_changed
-        self.n_max_sub_changed = n_max_sub_changed
-
-        self.allow_onesided_disconnection = allow_onesided_disconnection
-        self.allow_implicit_diconnection = allow_implicit_diconnection
-        self.allow_onesided_reconnection = allow_onesided_reconnection
-        self.symmetry = symmetry
-        self.gen_load_bus_balance = gen_load_bus_balance
-        self.switching_limits = switching_limits
-        self.cooldown = cooldown
-        self.unitary_action = unitary_action
-        self.gen_cost = gen_cost
-        self.lin_line_margins = lin_line_margins
-        self.quad_line_margins = quad_line_margins
-        self.lambda_gen = lambda_gen
-        self.lin_gen_penalty = lin_gen_penalty
-        self.quad_gen_penalty = quad_gen_penalty
-        self.lambda_action = lambda_action
+        self.forecasts = forecasts
 
         # Optimal switching status
         self.x_gen = None
@@ -78,81 +39,15 @@ class TopologyOptimizationDCOPF(StandardDCOPF):
         self.x_line_status_switch = None
         self.x_substation_topology_switch = None
 
-    def build_model(self):
-        """
-        Arguments for activation of constraints.
-            allow_onesided_disconnection:
-                If False, then we allow only for line disconnection on both ends, i.e.
-                x_or_1 + x_or_2 == x_ex_1 + x_ex_2.
-                Redundant if switching_limits = True.
+    """
+        INDEXED SETS
+    """
 
-            allow_implicit_diconnection:
-                If False, then we enforce that each element is connected to a bus with at least 2 elements.
+    def _build_indexed_sets(self):
+        self._build_indexed_sets_standard()
+        self._build_indexed_sets_substation()
 
-            allow_onesided_reconnection:
-                If False, then substation topology with one disconnected line cannot be modified.
-
-            symmetry:
-                If True, then the first element at a substation is fixed on bus 1.
-
-            switching_limits:
-                If True, then constraints on the number of line status and substation topology changes are activated.
-
-            cooldown:
-                If True, then constraints on power line cooldown are activated.
-
-            unitary_action:
-                If True, then only one type of actions is allowed either line status switching or substation topology
-                reconfiguration.
-
-            gen_load_bus_balance:
-                If True, then if there is at least one generator or load connected to a bus, then there must be at
-                least one power line connected to that bus.
-
-        Arguments for objective function formulation.
-            gen_cost:
-                If True, then cost of generator power productions are included in the objective function. Only used
-                for testing.
-
-            quad_line_margins:
-                If True, then the objective function includes the quadratic cost on line margins, i.e.
-                sum_l (F_l / F_l^max)^2.
-
-            lin_line_margins:
-                If True, then the objective function includes a term corresponding to the maximum absolute value
-                of power line relative flows, i.e. abs(F_l / F_l^max) <= mu.
-
-            bound_max_flow:
-                If True, then the constraint abs(F_l) <= F_l^max is activated. True if and only if lin_line_margins is
-                False.
-
-            lambda_gen:
-                Regulatization parameter for generator power production error.
-
-            lin_gen_penalty:
-                If True, then the maximum absolute value of the generator power production error is included in
-                the objective function, i.e. (P_g - P_g_ref) / P_g^max <= mu_gen, with lambd * mu_gen as the term
-                in the objective function.
-
-            quad_gen_penalty:
-                If True, then a quadratic penalty is added to the objective function for generator power production
-                error, i.e. lambd * ((P_g - P_g_ref) / P_g^max)^2.
-
-            lambda_action:
-                Regulatization parameter for penalizing switching.
-        """
-        if self.lin_line_margins:
-            bound_max_flow = False
-        else:
-            bound_max_flow = True
-
-        # Model
-        self.model = pyo.ConcreteModel(f"{self.name}")
-
-        # Indexed sets
-        self._build_indexed_sets()  # Indexing over buses, lines, generators, and loads
-
-        # Substation set
+    def _build_indexed_sets_substation(self):
         self.model.sub_set = pyo.Set(
             initialize=self.sub.index, within=pyo.NonNegativeIntegers,
         )
@@ -160,62 +55,29 @@ class TopologyOptimizationDCOPF(StandardDCOPF):
             initialize=[1, 2], within=pyo.NonNegativeIntegers,
         )
 
-        # Parameters
-        self._build_parameters(
-            gen_penalty=self.lin_gen_penalty or self.quad_gen_penalty
-        )
-
-        # Variables
-        self._build_variables(
-            allow_implicit_diconnection=self.allow_implicit_diconnection,
-            gen_load_bus_balance=self.gen_load_bus_balance,
-            lin_line_margins=self.lin_line_margins,
-            bound_max_flow=bound_max_flow,
-            lin_gen_penalty=self.lin_gen_penalty,
-        )
-
-        # Constraints
-        self._build_constraints(
-            allow_onesided_disconnection=self.allow_onesided_disconnection,
-            allow_implicit_diconnection=self.allow_implicit_diconnection,
-            allow_onesided_reconnection=self.allow_onesided_reconnection,
-            symmmetry=self.symmetry,
-            gen_load_bus_balance=self.gen_load_bus_balance,
-            switching_limits=self.switching_limits,
-            cooldown=self.cooldown,
-            unitary_action=self.unitary_action,
-            lin_line_margins=self.lin_line_margins,
-            lin_gen_penalty=self.lin_gen_penalty,
-        )
-
-        # Objective
-        self._build_objective(
-            gen_cost=self.gen_cost,
-            lin_line_margins=self.lin_line_margins,
-            quad_line_margins=self.quad_line_margins,
-            lin_gen_penalty=self.lin_gen_penalty,
-            quad_gen_penalty=self.quad_gen_penalty,
-            lambda_gen=self.lambda_gen,
-            lambda_action=self.lambda_action,
-        )
-
     """
         PARAMETERS.
     """
 
-    def _build_parameters(self, gen_penalty=False):
-        self._build_parameters_delta()  # Bus voltage angle bounds and reference node
-        self._build_parameters_generators(
-            gen_penalty=gen_penalty
-        )  # Bounds on generator production
-        self._build_parameters_lines()  # Power line thermal limit and susceptance
-        self._build_parameters_objective()  # Objective parameters
+    def _build_parameters_injections(self):
+        init_value = (
+            self.forecasts.load_p.flatten() if self.forecasts else self.load.p_pu
+        )
+        self.model.load_p = pyo.Param(
+            self.model.load_set,
+            initialize=self._create_map_ids_to_values(self.load.index, init_value),
+            within=pyo.Reals,
+        )
 
-        if len(self.ext_grid.index):
-            self._build_parameters_ext_grids()  # External grid power limits
-
-        self._build_parameters_topology()  # Topology of generators and power lines
-        self._build_parameters_loads()  # Bus load injections
+        if self.params.lin_gen_penalty or self.params.quad_gen_penalty:
+            init_value = (
+                self.forecasts.prod_p.flatten() if self.forecasts else self.gen.p_pu
+            )
+            self.model.gen_p_ref = pyo.Param(
+                self.model.gen_set,
+                initialize=self._create_map_ids_to_values(self.gen.index, init_value),
+                within=pyo.Reals,
+            )
 
     def _build_parameters_topology(self):
         self.model.sub_ids_to_bus_ids = pyo.Param(
@@ -235,6 +97,15 @@ class TopologyOptimizationDCOPF(StandardDCOPF):
             within=self.model.sub_set,
         )
 
+        if len(self.ext_grid.index):
+            self.model.bus_ids_to_ext_grid_ids = pyo.Param(
+                self.model.bus_set,
+                initialize=self._create_map_ids_to_values(
+                    self.bus.index, self.bus.ext_grid
+                ),
+                within=pyo.Any,
+            )
+
         self.model.line_ids_to_sub_ids = pyo.Param(
             self.model.line_set,
             initialize=self._create_map_ids_to_values(
@@ -242,6 +113,15 @@ class TopologyOptimizationDCOPF(StandardDCOPF):
                 self._dataframe_to_list_of_tuples(self.line[["sub_or", "sub_ex"]]),
             ),
             within=self.model.sub_set * self.model.sub_set,
+        )
+
+        # Line statuses
+        self.model.line_status = pyo.Param(
+            self.model.line_set,
+            initialize=self._create_map_ids_to_values(
+                self.line.index, self.line.status
+            ),
+            within=pyo.Boolean,
         )
 
         # Substation grid elements
@@ -302,13 +182,6 @@ class TopologyOptimizationDCOPF(StandardDCOPF):
         )
 
         if len(self.ext_grid.index):
-            self.model.bus_ids_to_ext_grid_ids = pyo.Param(
-                self.model.bus_set,
-                initialize=self._create_map_ids_to_values(
-                    self.bus.index, self.bus.ext_grid
-                ),
-                within=pyo.Any,
-            )
             self.model.ext_grid_ids_to_sub_bus_ids = pyo.Param(
                 self.model.ext_grid_set,
                 initialize=self._create_map_ids_to_values(
@@ -317,38 +190,47 @@ class TopologyOptimizationDCOPF(StandardDCOPF):
                 within=self.model.sub_bus_set,
             )
 
-    def _build_parameters_loads(self):
-        self.model.load_p = pyo.Param(
-            self.model.load_set,
-            initialize=self._create_map_ids_to_values(self.load.index, self.load.p_pu),
-            within=pyo.Reals,
-        )
-
     """
         VARIABLES.
     """
 
-    def _build_variables(
-        self,
-        allow_implicit_diconnection=False,
-        gen_load_bus_balance=True,
-        lin_line_margins=True,
-        bound_max_flow=True,
-        lin_gen_penalty=True,
-    ):
-        self._build_variables_standard_generators()  # Generator productions and bounds
-        self._build_variables_standard_delta()  # Bus voltage angles and bounds
-
-        self._build_variables_line(bound_max_flow=bound_max_flow)  # Power line flows
-
+    def _build_variables(self):
+        self._build_variables_standard_deltas()  # Bus voltage angles with bounds
+        self._build_variables_standard_generators()  # Generator productions with bounds
         if len(self.ext_grid.index):
-            self._build_variables_standard_ext_grids()
+            self._build_variables_standard_ext_grids()  # External grid productions with bounds
 
-        if lin_line_margins:
-            self._build_variable_mu(bound_max_flow=bound_max_flow)
+        self._build_variables_lines()  # Power line flows without bounds
 
-        if lin_gen_penalty:
+        # Topology optimization variables
+        self._build_variables_bus_configuration()
+
+        # Auxiliary
+        self._build_variables_changes()
+        self._build_variables_bus_requirements()
+
+        if self.params.lin_line_margins:
+            self._build_variable_mu()
+
+        if self.params.lin_gen_penalty:
             self._build_variable_mu_gen()
+
+    def _build_variables_lines(self):
+        def _bounds_flow_max(model, line_id):
+            if model.line_status[line_id]:
+                return -model.line_flow_max[line_id], model.line_flow_max[line_id]
+            else:
+                return 0.0, 0.0
+
+        self.model.line_flow = pyo.Var(
+            self.model.line_set,
+            domain=pyo.Reals,
+            bounds=_bounds_flow_max if not self.params.lin_line_margins else None,
+            initialize=self._create_map_ids_to_values(self.line.index, self.line.p_pu),
+        )
+
+    def _build_variables_bus_configuration(self):
+        # Indicator variables for bus configuration of power lines, generators, and loads
 
         # Power line OR bus switching
         self.model.x_line_or_1 = pyo.Var(
@@ -414,6 +296,7 @@ class TopologyOptimizationDCOPF(StandardDCOPF):
             ),
         )
 
+    def _build_variables_changes(self):
         # Auxiliary variables for counting the number of line status changes and substation topology reconfigurations
         self.model.x_line_status_switch = pyo.Var(
             self.model.line_set,
@@ -431,8 +314,9 @@ class TopologyOptimizationDCOPF(StandardDCOPF):
             ),
         )
 
-        if not allow_implicit_diconnection:
-            self.model.y_bus_activation = pyo.Var(
+    def _build_variables_bus_requirements(self):
+        if self.params.requirement_at_least_two:
+            self.model.w_bus_activation = pyo.Var(
                 self.model.bus_set,
                 domain=pyo.Binary,
                 initialize=self._create_map_ids_to_values(
@@ -440,8 +324,8 @@ class TopologyOptimizationDCOPF(StandardDCOPF):
                 ),
             )
 
-        if gen_load_bus_balance:
-            self.model.y_gen_load_bus_balance = pyo.Var(
+        if self.params.requirement_balance:
+            self.model.w_bus_balance = pyo.Var(
                 self.model.bus_set,
                 domain=pyo.Binary,
                 initialize=self._create_map_ids_to_values(
@@ -455,10 +339,10 @@ class TopologyOptimizationDCOPF(StandardDCOPF):
                 ),
             )
 
-    def _build_variable_mu(self, bound_max_flow=True):
+    def _build_variable_mu(self):
         self.model.mu = pyo.Var(
             domain=pyo.NonNegativeReals,
-            bounds=(0.0, 1.0) if bound_max_flow else None,
+            bounds=(0.0, 1.0) if not self.params.lin_line_margins else None,
             initialize=np.max(np.abs(self.line.p_pu) / self.line.max_p_pu),
         )
         self.model.mu.setlb(0)
@@ -468,73 +352,47 @@ class TopologyOptimizationDCOPF(StandardDCOPF):
             domain=pyo.NonNegativeReals, bounds=(0.0, 1.0), initialize=1.0
         )
 
-    def _build_variables_line(self, bound_max_flow=True):
-        if bound_max_flow:
-            self._build_variables_standard_line()
-        else:
-            self.model.line_flow = pyo.Var(
-                self.model.line_set,
-                domain=pyo.Reals,
-                initialize=self._create_map_ids_to_values(
-                    self.line.index, self.line.p_pu
-                ),
-            )
-
     """
         CONSTRAINTS.
     """
 
-    def _build_constraints(
-        self,
-        allow_onesided_disconnection=True,
-        allow_implicit_diconnection=False,
-        allow_onesided_reconnection=False,
-        symmmetry=True,
-        gen_load_bus_balance=True,
-        switching_limits=True,
-        cooldown=True,
-        unitary_action=True,
-        lin_line_margins=True,
-        lin_gen_penalty=True,
-    ):
+    def _build_constraints(self):
         self._build_constraint_line_flows()  # Power flow definition
         self._build_constraint_bus_balance()  # Bus power balance
         self._build_constraint_line_or()
         self._build_constraint_line_ex()
 
-        if not allow_onesided_disconnection:
+        if not self.params.allow_onesided_disconnection:
             self._build_constraint_onesided_line_disconnection()
 
-        if not allow_implicit_diconnection:
-            self._build_constraint_implicit_line_disconnection()
-
-        if not allow_onesided_reconnection:
+        if not self.params.allow_onesided_reconnection:
             self._build_constraint_onesided_line_reconnection()
 
-        # Constraints to eliminate symmetric topologies
-        if symmmetry:
+        if self.params.symmetry:
             self._build_constraint_symmetry()
 
-        if gen_load_bus_balance:
-            self._build_constraint_gen_load_bus_balance()
+        if self.params.requirement_at_least_two:
+            self._build_constraint_requirement_at_least_two()
 
-        if switching_limits:
+        if self.params.requirement_balance:
+            self._build_constraint_requirement_balance()
+
+        if self.params.switching_limits:
             self._build_constraint_line_status_switch()
             self._build_constraint_substation_topology_switch()
 
-        if cooldown:
+        if self.params.cooldown:
             self._build_constraint_cooldown()
 
-        if unitary_action:
+        if self.params.unitary_action:
             self._build_constraint_unitary_action()
 
-        if lin_line_margins:
+        if self.params.lin_line_margins:
             self._build_constraint_lin_line_margins()
 
-        if lin_gen_penalty:
+        if self.params.lin_gen_penalty:
             self._build_constraint_lin_gen_penalty()
 
-    # OK
     def _build_constraint_line_flows(self):
         # Power flow equation with topology switching
         def _constraint_line_flow(model, line_id):
@@ -557,7 +415,6 @@ class TopologyOptimizationDCOPF(StandardDCOPF):
             self.model.line_set, rule=_constraint_line_flow
         )
 
-    # OK
     def _build_constraint_bus_balance(self):
         # Bus power balance constraints
         def _constraint_bus_balance(model, bus_id):
@@ -622,7 +479,6 @@ class TopologyOptimizationDCOPF(StandardDCOPF):
             self.model.bus_set, rule=_constraint_bus_balance
         )
 
-    # OK
     def _build_constraint_line_or(self):
         def _constraint_line_or(model, line_id):
             return model.x_line_or_1[line_id] + model.x_line_or_2[line_id] <= 1
@@ -631,7 +487,6 @@ class TopologyOptimizationDCOPF(StandardDCOPF):
             self.model.line_set, rule=_constraint_line_or
         )
 
-    # OK
     def _build_constraint_line_ex(self):
         def _constraint_line_ex(model, line_id):
             return model.x_line_ex_1[line_id] + model.x_line_ex_2[line_id] <= 1
@@ -640,7 +495,6 @@ class TopologyOptimizationDCOPF(StandardDCOPF):
             self.model.line_set, rule=_constraint_line_ex
         )
 
-    # OK - REDUNDANT
     def _build_constraint_onesided_line_disconnection(self):
         def _constraint_onesided_line_disconnection(model, line_id):
             return (
@@ -652,8 +506,41 @@ class TopologyOptimizationDCOPF(StandardDCOPF):
             self.model.line_set, rule=_constraint_onesided_line_disconnection
         )
 
-    # OK
-    def _build_constraint_implicit_line_disconnection(self):
+    def _build_constraint_onesided_line_reconnection(self):
+        for sub_id in self.model.sub_set:
+            lines_or = self.model.sub_ids_to_line_or_ids[sub_id]
+            lines_ex = self.model.sub_ids_to_line_ex_ids[sub_id]
+
+            lines_or_disconnected = [
+                not self.model.line_status[line_id] for line_id in lines_or
+            ]
+            lines_ex_disconnected = [
+                not self.model.line_status[line_id] for line_id in lines_ex
+            ]
+
+            if any(lines_or_disconnected) or any(lines_ex_disconnected):
+                self.model.x_substation_topology_switch[sub_id].fix(0)
+                self.model.x_substation_topology_switch[sub_id].setlb(0)
+                self.model.x_substation_topology_switch[sub_id].setub(0)
+
+    def _build_constraint_symmetry(self):
+        for sub_id in self.grid.fixed_elements.index:
+            line_or = self.grid.fixed_elements.line_or[sub_id]
+            line_ex = self.grid.fixed_elements.line_ex[sub_id]
+
+            if len(line_or):
+                line_id = line_or[0]
+                self.model.x_line_or_2[line_id].fix(0)
+                self.model.x_line_or_2[line_id].setlb(0)
+                self.model.x_line_or_2[line_id].setub(0)
+
+            if len(line_ex):
+                line_id = line_ex[0]
+                self.model.x_line_ex_2[line_id].fix(0)
+                self.model.x_line_ex_2[line_id].setlb(0)
+                self.model.x_line_ex_2[line_id].setub(0)
+
+    def _build_constraint_requirement_at_least_two(self):
         def _get_bus_elements(model, bus_id):
             sub_id = model.bus_ids_to_sub_ids[bus_id]
             sub_bus = model.bus_ids_to_sub_bus_ids[bus_id]
@@ -686,7 +573,7 @@ class TopologyOptimizationDCOPF(StandardDCOPF):
                 model, bus_id
             )
 
-            return 2 * model.y_bus_activation[bus_id] <= sum(gens) + sum(loads) + sum(
+            return 2 * model.w_bus_activation[bus_id] <= sum(gens) + sum(loads) + sum(
                 lines_or
             ) + sum(lines_ex)
 
@@ -698,7 +585,7 @@ class TopologyOptimizationDCOPF(StandardDCOPF):
 
             return (
                 sum(gens) + sum(loads) + sum(lines_or) + sum(lines_ex)
-                <= n_elements * model.y_bus_activation[bus_id]
+                <= n_elements * model.w_bus_activation[bus_id]
             )
 
         self.model.constraint_implicit_line_disconnection_lower = pyo.Constraint(
@@ -709,44 +596,7 @@ class TopologyOptimizationDCOPF(StandardDCOPF):
             self.model.bus_set, rule=_constraint_implicit_line_disconnection_upper
         )
 
-    # OK
-    def _build_constraint_onesided_line_reconnection(self):
-        for sub_id in self.model.sub_set:
-            lines_or = self.model.sub_ids_to_line_or_ids[sub_id]
-            lines_ex = self.model.sub_ids_to_line_ex_ids[sub_id]
-
-            lines_or_disconnected = [
-                not self.model.line_status[line_id] for line_id in lines_or
-            ]
-            lines_ex_disconnected = [
-                not self.model.line_status[line_id] for line_id in lines_ex
-            ]
-
-            if any(lines_or_disconnected) or any(lines_ex_disconnected):
-                self.model.x_substation_topology_switch[sub_id].fix(0)
-                self.model.x_substation_topology_switch[sub_id].setlb(0)
-                self.model.x_substation_topology_switch[sub_id].setub(0)
-
-    # OK
-    def _build_constraint_symmetry(self):
-        for sub_id in self.grid.fixed_elements.index:
-            line_or = self.grid.fixed_elements.line_or[sub_id]
-            line_ex = self.grid.fixed_elements.line_ex[sub_id]
-
-            if len(line_or):
-                line_id = line_or[0]
-                self.model.x_line_or_2[line_id].fix(0)
-                self.model.x_line_or_2[line_id].setlb(0)
-                self.model.x_line_or_2[line_id].setub(0)
-
-            if len(line_ex):
-                line_id = line_ex[0]
-                self.model.x_line_ex_2[line_id].fix(0)
-                self.model.x_line_ex_2[line_id].setlb(0)
-                self.model.x_line_ex_2[line_id].setub(0)
-
-    # OK
-    def _build_constraint_gen_load_bus_balance(self):
+    def _build_constraint_requirement_balance(self):
         def _get_bus_elements(model, bus_id):
             sub_id = model.bus_ids_to_sub_ids[bus_id]
             sub_bus = model.bus_ids_to_sub_bus_ids[bus_id]
@@ -777,7 +627,7 @@ class TopologyOptimizationDCOPF(StandardDCOPF):
         def _constraint_gen_load_bus_lower(model, bus_id):
             _, _, gens, loads, _, _ = _get_bus_elements(model, bus_id)
             if len(gens) or len(loads):
-                return model.y_gen_load_bus_balance[bus_id] <= sum(gens) + sum(loads)
+                return model.w_bus_balance[bus_id] <= sum(gens) + sum(loads)
             else:
                 return pyo.Constraint.Skip
 
@@ -786,14 +636,14 @@ class TopologyOptimizationDCOPF(StandardDCOPF):
             if len(gens) or len(loads):
                 return (
                     sum(gens) + sum(loads)
-                    <= (len(gens) + len(loads)) * model.y_gen_load_bus_balance[bus_id]
+                    <= (len(gens) + len(loads)) * model.w_bus_balance[bus_id]
                 )
             else:
                 return pyo.Constraint.Skip
 
         def _constraint_at_least_one_line(model, bus_id):
             _, _, _, _, lines_or, lines_ex = _get_bus_elements(model, bus_id)
-            return model.y_gen_load_bus_balance[bus_id] <= sum(lines_or) + sum(lines_ex)
+            return model.w_bus_balance[bus_id] <= sum(lines_or) + sum(lines_ex)
 
         self.model.constraint_at_least_one_line = pyo.Constraint(
             self.model.bus_set, rule=_constraint_at_least_one_line
@@ -807,21 +657,19 @@ class TopologyOptimizationDCOPF(StandardDCOPF):
             self.model.bus_set, rule=_constraint_gen_load_bus_upper
         )
 
-    # OK
     def _build_constraint_cooldown(self):
         for line_id in self.line.index:
-            if self.line.cooldown[line_id]:
+            if self.line.cooldown[line_id] > 0:
                 self.model.x_line_status_switch[line_id].fix(0)
                 self.model.x_line_status_switch[line_id].setlb(0)
                 self.model.x_line_status_switch[line_id].setub(0)
 
         for sub_id in self.sub.index:
-            if self.sub.cooldown[sub_id]:
+            if self.sub.cooldown[sub_id] > 0:
                 self.model.x_substation_topology_switch[sub_id].fix(0)
                 self.model.x_substation_topology_switch[sub_id].setlb(0)
                 self.model.x_substation_topology_switch[sub_id].setub(0)
 
-    # OK
     def _build_constraint_unitary_action(self):
         def _constraint_unitary_action(model):
             x_line = sum(
@@ -836,7 +684,6 @@ class TopologyOptimizationDCOPF(StandardDCOPF):
             rule=_constraint_unitary_action
         )
 
-    # OK
     def _build_constraint_line_status_switch(self):
         def _constraint_line_status_switch(model, line_id):
             if model.line_status[line_id]:
@@ -855,7 +702,7 @@ class TopologyOptimizationDCOPF(StandardDCOPF):
         def _constraint_max_line_status_switch(model):
             return (
                 sum([model.x_line_status_switch[line_id] for line_id in model.line_set])
-                <= self.n_max_line_status_changed
+                <= self.params.n_max_line_status_changed
             )
 
         # Auxiliary constraint for checking line status switch
@@ -868,7 +715,6 @@ class TopologyOptimizationDCOPF(StandardDCOPF):
             rule=_constraint_max_line_status_switch
         )
 
-    # OK
     def _build_constraint_substation_topology_switch(self):
         def _get_substation_switch_terms(model, sub_id):
             sub_gen_ids = model.sub_ids_to_gen_ids[sub_id]
@@ -961,7 +807,7 @@ class TopologyOptimizationDCOPF(StandardDCOPF):
                         for sub_id in model.sub_set
                     ]
                 )
-                <= self.n_max_sub_changed
+                <= self.params.n_max_sub_changed
             )
 
         # Auxiliary constraint for checking substation topology reconfigurations
@@ -1017,29 +863,20 @@ class TopologyOptimizationDCOPF(StandardDCOPF):
         OBJECTIVE.
     """
 
-    def _build_objective(
-        self,
-        gen_cost=False,
-        lin_line_margins=True,
-        quad_line_margins=False,
-        lambda_gen=10.0,
-        lin_gen_penalty=True,
-        quad_gen_penalty=True,
-        lambda_action=0.0,
-    ):
+    def _build_objective(self):
         assert (
-            gen_cost
-            or lin_line_margins
-            or quad_line_margins
-            or lin_gen_penalty
-            or quad_gen_penalty
+            self.params.gen_cost
+            or self.params.lin_line_margins
+            or self.params.quad_line_margins
+            or self.params.lin_gen_penalty
+            or self.params.quad_gen_penalty
         )
 
         assert not (
-            lin_line_margins and quad_line_margins
+            self.params.lin_line_margins and self.params.quad_line_margins
         )  # Only one penalty on margins
         assert not (
-            lin_gen_penalty and quad_gen_penalty
+            self.params.lin_gen_penalty and self.params.quad_gen_penalty
         )  # Only one penalty on generators
 
         """
@@ -1049,7 +886,7 @@ class TopologyOptimizationDCOPF(StandardDCOPF):
         def _objective_gen_p(model):
             return sum(
                 [
-                    model.gen_p[gen_id] * model.gen_costs[gen_id]
+                    model.gen_p[gen_id] * self.gen.cost_pu[gen_id]
                     for gen_id in model.gen_set
                 ]
             )
@@ -1077,7 +914,7 @@ class TopologyOptimizationDCOPF(StandardDCOPF):
 
         # Linear penalty on generator power productions
         def _objective_lin_gen_penalty(model):
-            return lambda_gen * model.mu_gen
+            return self.params.lambda_gen * model.mu_gen
 
         # Quadratic penalty on generator power productions
         def _objective_quad_gen_penalty(model):
@@ -1092,7 +929,7 @@ class TopologyOptimizationDCOPF(StandardDCOPF):
                 ]
             )
 
-            return lambda_gen / len(model.gen_set) * penalty
+            return self.params.lambda_gen / len(model.gen_set) * penalty
 
         """
             Penalize actions. Prefer do-nothing actions.
@@ -1112,24 +949,24 @@ class TopologyOptimizationDCOPF(StandardDCOPF):
                     ]
                 )
 
-            return lambda_action * penalty
+            return self.params.lambda_action * penalty
 
         def _objective(model):
             obj = 0
-            if gen_cost:
+            if self.params.gen_cost:
                 obj = obj + _objective_gen_p(model)
 
-            if lin_line_margins:
+            if self.params.lin_line_margins:
                 obj = obj + _objective_lin_line_margins(model)
-            elif quad_line_margins:
+            elif self.params.quad_line_margins:
                 obj = obj + _objective_quad_line_margins(model)
 
-            if lin_gen_penalty:
+            if self.params.lin_gen_penalty:
                 obj = obj + _objective_lin_gen_penalty(model)
-            elif quad_gen_penalty:
+            elif self.params.quad_gen_penalty:
                 obj = obj + _objective_quad_gen_penalty(model)
 
-            if lambda_action > 0.0:
+            if self.params.lambda_action > 0.0:
                 obj = obj + _objective_action_penalty(model)
 
             return obj
@@ -1143,8 +980,8 @@ class TopologyOptimizationDCOPF(StandardDCOPF):
     def solve(self, verbose=False, time_limit=10):
         self._solve(
             verbose=verbose,
-            tol=self.tol,
-            warm_start=self.warm_start,
+            tol=self.params.tol,
+            warm_start=self.params.warm_start,
             time_limit=time_limit,
         )
 
@@ -1225,31 +1062,3 @@ class TopologyOptimizationDCOPF(StandardDCOPF):
         }
 
         return result
-
-    def get_model_parameters(self):
-        params = dict()
-        params["solver_name"] = self.solver_name
-        params["tol"] = self.tol
-        params["warm_start"] = self.warm_start
-        params["delta_max"] = self.delta_max
-
-        params["n_max_line_status_changed"] = self.n_max_line_status_changed
-        params["n_max_sub_changed"] = self.n_max_sub_changed
-
-        params["allow_onesided_disconnection"] = self.allow_onesided_disconnection
-        params["allow_implicit_diconnection"] = self.allow_implicit_diconnection
-        params["allow_onesided_reconnection"] = self.allow_onesided_reconnection
-        params["symmetry"] = self.symmetry
-        params["gen_load_bus_balance"] = self.gen_load_bus_balance
-        params["switching_limits"] = self.switching_limits
-        params["cooldown"] = self.cooldown
-        params["unitary_action"] = self.unitary_action
-        params["gen_cost"] = self.gen_cost
-        params["lin_line_margins"] = self.lin_line_margins
-        params["quad_line_margins"] = self.quad_line_margins
-        params["lambda_gen"] = self.lambda_gen
-        params["lin_gen_penalty"] = self.lin_gen_penalty
-        params["quad_gen_penalty"] = self.quad_gen_penalty
-        params["lambda_action"] = self.lambda_action
-
-        return params

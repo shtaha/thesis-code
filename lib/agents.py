@@ -6,6 +6,8 @@ import pandas as pd
 from lib.dc_opf import (
     GridDCOPF,
     TopologyOptimizationDCOPF,
+    SinglestepTopologyParameters,
+    Forecasts,
 )
 from lib.rewards import RewardL2RPN2019
 from lib.visualizer import pprint
@@ -13,29 +15,12 @@ from lib.visualizer import pprint
 
 def make_agent(agent_name, case, action_set, delta_max_p_pu=0.10, **kwargs):
     if agent_name == "mip_agent":
-        agent = AgentMIPTest(
-            case=case,
-            action_set=action_set,
-            n_max_line_status_changed=case.env.parameters.MAX_LINE_STATUS_CHANGED,
-            n_max_sub_changed=case.env.parameters.MAX_SUB_CHANGED,
-            **kwargs,
-        )
+        agent = AgentMIPTest(case=case, action_set=action_set, **kwargs)
     elif agent_name == "mixed_agent":
-        agent = AgentMixedTest(
-            case=case,
-            action_set=action_set,
-            n_max_line_status_changed=case.env.parameters.MAX_LINE_STATUS_CHANGED,
-            n_max_sub_changed=case.env.parameters.MAX_SUB_CHANGED,
-            **kwargs,
-        )
+        agent = AgentMixedTest(case=case, action_set=action_set, **kwargs)
     elif agent_name == "augmented_agent":
         agent = AgentMIPAugmentedTest(
-            case=case,
-            action_set=action_set,
-            n_max_line_status_changed=case.env.parameters.MAX_LINE_STATUS_CHANGED,
-            n_max_sub_changed=case.env.parameters.MAX_SUB_CHANGED,
-            delta_max_p_pu=delta_max_p_pu,
-            **kwargs,
+            case=case, action_set=action_set, delta_max_p_pu=delta_max_p_pu, **kwargs,
         )
     elif agent_name == "greedy_agent":
         agent = AgentGreedy(case=case, action_set=action_set)
@@ -59,6 +44,9 @@ class BaseAgentTest:
         )
 
     def act(self, observation, reward, done=False):
+        pass
+
+    def reset(self, obs):
         pass
 
     def set_kwargs(self, **kwargs):
@@ -130,10 +118,14 @@ class AgentMIPTest(BaseAgentTest):
     ):
         BaseAgentTest.__init__(self, name="Agent MIP", case=case)
 
-        self.model = None
         self.default_kwargs = kwargs
         self.model_kwargs = self.default_kwargs
+        self.params = SinglestepTopologyParameters(self.model_kwargs)
 
+        self.forecasts = None
+        self.reset(obs=None)
+
+        self.model = None
         self.result = None
 
         self.reward_function = reward_class()
@@ -141,15 +133,17 @@ class AgentMIPTest(BaseAgentTest):
 
     def set_kwargs(self, **kwargs):
         self.model_kwargs = {**self.default_kwargs, **kwargs}
+        self.params = SinglestepTopologyParameters(self.model_kwargs)
 
     def act(self, observation, reward, done=False):
         self._update(observation, reset=done)
         self.model = TopologyOptimizationDCOPF(
-            f"{self.case.env.name} DC OPF Topology Optimization",
+            self.case.env.name,
             grid=self.grid,
+            forecasts=self.forecasts,
             base_unit_p=self.grid.base_unit_p,
             base_unit_v=self.grid.base_unit_v,
-            **self.model_kwargs,
+            params=self.params,
         )
 
         self.model.build_model()
@@ -169,7 +163,7 @@ class AgentMIPTest(BaseAgentTest):
             grid=self.grid,
             base_unit_p=self.grid.base_unit_p,
             base_unit_v=self.grid.base_unit_v,
-            **self.model_kwargs,
+            params=self.params,
         )
         self.model.build_model()
         timing["build"] = timer() - start_build
@@ -182,7 +176,17 @@ class AgentMIPTest(BaseAgentTest):
 
         return action, timing
 
+    def reset(self, obs):
+        if self.params.forecasts:
+            self.forecasts = Forecasts(
+                env=self.env,
+                t=self.env.chronics_handler.real_data.data.current_index,
+                horizon=1,
+            )
+
     def _update(self, obs, reset=False, verbose=False):
+        if self.params.forecasts:
+            self.forecasts.t = self.forecasts.t + 1
         self.grid.update(obs, reset=reset, verbose=verbose)
 
     def get_reward(self):
@@ -226,18 +230,17 @@ class AgentMIPTest(BaseAgentTest):
 
         res_line["max_p_pu_ac"] = np.sqrt(
             np.square(res_line["max_p_pu"])
-            - np.square(self.grid.convert_mw_to_per_unit(obs.q_or))
+            # - np.square(self.grid.convert_mw_to_per_unit(obs.q_or))
         )
 
         if verbose:
-            # print("GEN\n" + res_gen.to_string())
+            print("GEN\n" + res_gen.to_string())
             print("LINE\n" + res_line.to_string())
 
         return res_line, res_gen
 
     def print_agent(self, default=False):
-        model = TopologyOptimizationDCOPF(name="Default", grid=self.grid)
-        default_kwargs = model.get_model_parameters()
+        default_kwargs = SinglestepTopologyParameters().to_dict()
 
         pprint("\nAgent:", self.name, shift=36)
         if default:

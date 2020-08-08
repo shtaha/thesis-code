@@ -14,6 +14,9 @@ from lib.dc_opf import (
     TopologyOptimizationDCOPF,
     GridDCOPF,
     load_case,
+    StandardParameters,
+    LineSwitchingParameters,
+    SinglestepTopologyParameters,
 )
 
 
@@ -73,12 +76,14 @@ class TestStandardDCOPF(unittest.TestCase):
             case, base_unit_v=case.base_unit_v, base_unit_p=case.base_unit_p
         )
 
+        params = StandardParameters(tol=1e-9)
         model = StandardDCOPF(
             f"{case.name} Standard DC OPF",
             grid=grid,
             grid_backend=case.grid_backend,
             base_unit_p=case.base_unit_p,
             base_unit_v=case.base_unit_v,
+            params=params,
         )
 
         self.runner_opf(model, verbose=False)
@@ -89,12 +94,14 @@ class TestStandardDCOPF(unittest.TestCase):
             case, base_unit_v=case.base_unit_v, base_unit_p=case.base_unit_p
         )
 
+        params = StandardParameters(tol=1e-9)
         model = StandardDCOPF(
             f"{case.name} Standard DC OPF",
             grid=grid,
             grid_backend=case.grid_backend,
             base_unit_p=case.base_unit_p,
             base_unit_v=case.base_unit_v,
+            params=params,
         )
 
         self.runner_opf(model, verbose=False)
@@ -105,12 +112,14 @@ class TestStandardDCOPF(unittest.TestCase):
             case, base_unit_v=case.base_unit_v, base_unit_p=case.base_unit_p
         )
 
+        params = StandardParameters(tol=1e-9)
         model = StandardDCOPF(
             f"{case.name} Standard DC OPF",
             grid=grid,
             grid_backend=case.grid_backend,
             base_unit_p=case.base_unit_p,
             base_unit_v=case.base_unit_v,
+            params=params,
         )
 
         self.runner_opf(model, verbose=False)
@@ -124,13 +133,14 @@ class TestStandardDCOPF(unittest.TestCase):
             case, base_unit_v=case.base_unit_v, base_unit_p=case.base_unit_p
         )
 
+        params = StandardParameters(tol=1e-9)
         model = StandardDCOPF(
             f"{case.name} Standard DC OPF",
             grid=grid,
             grid_backend=case.grid_backend,
             base_unit_p=case.base_unit_p,
             base_unit_v=case.base_unit_v,
-            tol=1e-9,
+            params=params,
         )
 
         model.build_model()
@@ -152,12 +162,14 @@ class TestStandardDCOPF(unittest.TestCase):
             case, base_unit_v=case.base_unit_v, base_unit_p=case.base_unit_p
         )
 
+        params = StandardParameters(tol=1e-9)
         model = StandardDCOPF(
             f"{case.name} Standard DC OPF",
             grid=grid,
             grid_backend=case.grid_backend,
             base_unit_p=case.base_unit_p,
             base_unit_v=case.base_unit_v,
+            params=params,
         )
 
         self.runner_opf(model, verbose=False)
@@ -168,12 +180,14 @@ class TestStandardDCOPF(unittest.TestCase):
             case, base_unit_v=case.base_unit_v, base_unit_p=case.base_unit_p
         )
 
+        params = StandardParameters(tol=1e-9)
         model = StandardDCOPF(
             f"{case.name} Standard DC OPF",
             grid=grid,
             grid_backend=case.grid_backend,
             base_unit_p=case.base_unit_p,
             base_unit_v=case.base_unit_v,
+            params=params,
         )
 
         self.runner_opf(model, verbose=False)
@@ -189,12 +203,14 @@ class TestStandardDCOPF(unittest.TestCase):
             case, base_unit_v=case.base_unit_v, base_unit_p=case.base_unit_p
         )
 
+        params = StandardParameters(tol=1e-9)
         model = StandardDCOPF(
             f"{case.name} Standard DC OPF",
             grid=grid,
             grid_backend=case.grid_backend,
             base_unit_p=case.base_unit_p,
             base_unit_v=case.base_unit_v,
+            params=params,
         )
 
         self.runner_opf(model, eps=1e-3, verbose=False)
@@ -210,18 +226,11 @@ class TestLineSwitchingDCOPF(unittest.TestCase):
         print("\nDC-OPF with line switching tests.\n")
 
     def runner_opf_line_switching(
-        self,
-        model,
-        grid,
-        n_max_line_status_changed,
-        big_m=True,
-        gen_cost=True,
-        line_margin=True,
-        verbose=False,
+        self, model, grid, verbose=False,
     ):
         np.random.seed(0)
         model.gen["cost_pu"] = np.random.uniform(1.0, 5.0, (model.grid.gen.shape[0],))
-        model.build_model(big_m=big_m, gen_cost=gen_cost, line_margin=line_margin)
+        model.build_model()
 
         if verbose:
             model.print_model()
@@ -233,7 +242,7 @@ class TestLineSwitchingDCOPF(unittest.TestCase):
         # Construct all possible configurations
         line_statuses = list()
         for i in range(
-            n_max_line_status_changed + 1
+            model.params.n_max_line_status_changed + 1
         ):  # Number of line disconnection 0, 1, ..., n
             line_statuses.extend(
                 [
@@ -253,14 +262,18 @@ class TestLineSwitchingDCOPF(unittest.TestCase):
             model.grid_backend.trafo["in_service"] = status[grid.line.trafo]
             result_backend = model.solve_backend()
 
-            if gen_cost and line_margin and model.solver_name != "glpk":
+            if (
+                model.params.gen_cost
+                and model.params.line_margin
+                and model.params.solver_name != "glpk"
+            ):
                 objective = (
                     result_backend["res_cost"]
                     + np.square(
                         result_backend["res_line"]["p_pu"] / model.line["max_p_pu"]
                     ).sum()
                 )
-            elif line_margin and model.solver_name != "glpk":
+            elif model.params.line_margin and model.params.solver_name != "glpk":
                 objective = np.square(
                     result_backend["res_line"]["p_pu"] / model.line["max_p_pu"]
                 ).sum()
@@ -339,113 +352,94 @@ class TestLineSwitchingDCOPF(unittest.TestCase):
         self.assertTrue(bool(match_idx))
 
     def test_case3_line_switching(self):
-        n_max_line_status_changed = 2
-
         case = load_case("case3")
         grid = GridDCOPF(
             case, base_unit_v=case.base_unit_v, base_unit_p=case.base_unit_p
         )
 
+        params = LineSwitchingParameters(n_max_line_status_changed=2, tol=1e-9)
         model = LineSwitchingDCOPF(
             f"{case.name} DC OPF Line Switching",
             grid=grid,
             grid_backend=case.grid_backend,
-            n_max_line_status_changed=n_max_line_status_changed,
             base_unit_p=case.base_unit_p,
             base_unit_v=case.base_unit_v,
-            tol=1e-9,
+            params=params,
         )
 
-        self.runner_opf_line_switching(
-            model, grid, n_max_line_status_changed, verbose=False
-        )
+        self.runner_opf_line_switching(model, grid, verbose=False)
 
     def test_case4_line_switching(self):
-        n_max_line_status_changed = 2
-
         case = load_case("case4")
         grid = GridDCOPF(
             case, base_unit_v=case.base_unit_v, base_unit_p=case.base_unit_p
         )
 
+        params = LineSwitchingParameters(n_max_line_status_changed=2, tol=1e-9)
         model = LineSwitchingDCOPF(
             f"{case.name} DC OPF Line Switching",
             grid=grid,
             grid_backend=case.grid_backend,
-            n_max_line_status_changed=n_max_line_status_changed,
             base_unit_p=case.base_unit_p,
             base_unit_v=case.base_unit_v,
-            tol=1e-9,
+            params=params,
         )
 
-        self.runner_opf_line_switching(
-            model, grid, n_max_line_status_changed, verbose=False
-        )
+        self.runner_opf_line_switching(model, grid, verbose=False)
 
     def test_case6_line_switching(self):
-        n_max_line_status_changed = 1
-
         case = load_case("case6")
         grid = GridDCOPF(
             case, base_unit_v=case.base_unit_v, base_unit_p=case.base_unit_p
         )
 
+        params = LineSwitchingParameters(n_max_line_status_changed=1, tol=1e-9)
         model = LineSwitchingDCOPF(
             f"{case.name} DC OPF Line Switching",
             grid=grid,
             grid_backend=case.grid_backend,
-            n_max_line_status_changed=n_max_line_status_changed,
             base_unit_p=case.base_unit_p,
             base_unit_v=case.base_unit_v,
-            tol=1e-9,
+            params=params,
         )
 
-        self.runner_opf_line_switching(
-            model, grid, n_max_line_status_changed, verbose=False
-        )
+        self.runner_opf_line_switching(model, grid, verbose=False)
 
     def test_rte_case5_line_switching(self):
-        n_max_line_status_changed = 3
-
         case = load_case("rte_case5")
         grid = GridDCOPF(
             case, base_unit_v=case.base_unit_v, base_unit_p=case.base_unit_p
         )
 
+        params = LineSwitchingParameters(n_max_line_status_changed=3, tol=1e-9)
         model = LineSwitchingDCOPF(
             f"{case.name} DC OPF Line Switching",
             grid=grid,
             grid_backend=case.grid_backend,
-            n_max_line_status_changed=n_max_line_status_changed,
             base_unit_p=case.base_unit_p,
             base_unit_v=case.base_unit_v,
-            tol=1e-9,
+            params=params,
         )
-        self.runner_opf_line_switching(
-            model, grid, n_max_line_status_changed, verbose=False,
-        )
+
+        self.runner_opf_line_switching(model, grid, verbose=False)
 
     def test_l2rpn2019_line_switching(self):
-        n_max_line_status_changed = 2
-
         case = load_case("l2rpn2019")
         grid = GridDCOPF(
             case, base_unit_v=case.base_unit_v, base_unit_p=case.base_unit_p
         )
 
+        params = LineSwitchingParameters(n_max_line_status_changed=2, tol=1e-9)
         model = LineSwitchingDCOPF(
             f"{case.name} DC OPF Line Switching",
             grid=grid,
             grid_backend=case.grid_backend,
-            n_max_line_status_changed=n_max_line_status_changed,
             base_unit_p=case.base_unit_p,
             base_unit_v=case.base_unit_v,
-            tol=1e-9,
+            params=params,
         )
 
-        self.runner_opf_line_switching(
-            model, grid, n_max_line_status_changed, verbose=False
-        )
+        self.runner_opf_line_switching(model, grid, verbose=False)
 
     def test_l2rpn2020_line_switching(self):
         if sys.platform != "win32":
@@ -453,26 +447,22 @@ class TestLineSwitchingDCOPF(unittest.TestCase):
             self.assertTrue(True)
             return
 
-        n_max_line_status_changed = 1
-
         case = load_case("l2rpn2020")
         grid = GridDCOPF(
             case, base_unit_v=case.base_unit_v, base_unit_p=case.base_unit_p
         )
 
+        params = LineSwitchingParameters(n_max_line_status_changed=1, tol=1e-9)
         model = LineSwitchingDCOPF(
             f"{case.name} DC OPF Line Switching",
             grid=grid,
             grid_backend=case.grid_backend,
-            n_max_line_status_changed=n_max_line_status_changed,
             base_unit_p=case.base_unit_p,
             base_unit_v=case.base_unit_v,
-            tol=1e-9,
+            params=params,
         )
 
-        self.runner_opf_line_switching(
-            model, grid, n_max_line_status_changed, verbose=False
-        )
+        self.runner_opf_line_switching(model, grid, verbose=False)
 
 
 class TestTopologyOptimizationDCOPF(unittest.TestCase):
@@ -527,7 +517,7 @@ class TestTopologyOptimizationDCOPF(unittest.TestCase):
         if verbose:
             model.print_model()
 
-        if model.solver_name == "glpk":
+        if model.params.solver_name == "glpk":
             print("Solver does not support bilinear or quadratic terms.")
             self.assertTrue(True)
             return
@@ -652,9 +642,9 @@ class TestTopologyOptimizationDCOPF(unittest.TestCase):
                 valid = valid and np.abs(gen_p - load_p) < 1e-6
 
                 if (
-                    model.gen_cost
-                    and model.quad_line_margins
-                    and model.solver_name != "glpk"
+                    model.params.gen_cost
+                    and model.params.quad_line_margins
+                    and model.params.solver_name != "glpk"
                 ):
                     objective = (
                         grid_tmp.res_cost
@@ -663,7 +653,10 @@ class TestTopologyOptimizationDCOPF(unittest.TestCase):
                             / model.grid.line["max_p_pu"]
                         ).sum()
                     )
-                elif model.quad_line_margins and model.solver_name != "glpk":
+                elif (
+                    model.params.quad_line_margins
+                    and model.params.solver_name != "glpk"
+                ):
                     objective = +np.square(
                         model.convert_mw_to_per_unit(grid_tmp.res_line["p_from_mw"])
                         / model.grid.line["max_p_pu"]
@@ -743,24 +736,20 @@ class TestTopologyOptimizationDCOPF(unittest.TestCase):
             case, base_unit_v=case.base_unit_v, base_unit_p=case.base_unit_p
         )
 
+        params = SinglestepTopologyParameters(
+            gen_cost=True,
+            lin_line_margins=False,
+            quad_line_margins=True,
+            lin_gen_penalty=False,
+            quad_gen_penalty=False,
+        )
         model = TopologyOptimizationDCOPF(
             f"{case.name} DC OPF Topology Optimization",
             grid=grid,
             grid_backend=case.grid_backend,
             base_unit_p=case.base_unit_p,
             base_unit_v=case.base_unit_v,
-            solver_name="gurobi",
-            tol=1e-2,
-            allow_onesided_disconnection=False,
-            allow_implicit_diconnection=False,
-            symmetry=True,
-            switching_limits=True,
-            cooldown=True,
-            gen_cost=True,
-            lin_line_margins=False,
-            quad_line_margins=True,
-            lin_gen_penalty=False,
-            quad_gen_penalty=False,
+            params=params,
         )
 
         self.runner_opf_topology_optimization(model, verbose=False)

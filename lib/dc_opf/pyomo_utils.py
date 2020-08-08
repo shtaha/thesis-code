@@ -22,5 +22,26 @@ class PyomoMixin:
         return {idx: value for idx, value in zip(ids, values)}
 
     @staticmethod
+    def _create_map_dual_ids_to_values(ids_first, ids_second, values):
+        """
+        Returns a dictionary, a mapping, from two sets of indices to values.
+
+        Inputs:
+            ids_first: m
+            ids_second: n
+            values: m x n
+
+        Outputs:
+            map[ids_first[i], ids_second[j]] = values[i, j]
+        """
+
+        mapping = dict()
+        for j, idx_second in enumerate(ids_second):
+            for i, idx_first in enumerate(ids_first):
+                value = values[i, j]
+                mapping[(idx_first, idx_second)] = value
+        return mapping
+
+    @staticmethod
     def _access_pyomo_variable(var):
         return np.array([pyo.value(var[idx]) for idx in var])

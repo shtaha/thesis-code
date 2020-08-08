@@ -22,15 +22,16 @@ do_experiment_timing = False
 do_experiment_control = True
 verbose = False
 
-kwargs = {}
+kwargs = dict(forecasts=False)
 
-for case_name in ["rte_case5_example", "l2rpn_2019", "l2rpn_wcci_2020"]:
+# for case_name in ["rte_case5_example", "l2rpn_2019", "l2rpn_wcci_2020"]:
+for case_name in ["l2rpn_2019"]:
     if case_name == "l2rpn_wcci_2020":
         n_timings = 50
         n_steps = 1000
     else:
         n_timings = 100
-        n_steps = 2000
+        n_steps = 1000
 
     for env_dc in [True, False]:
         if not env_dc:
@@ -41,13 +42,15 @@ for case_name in ["rte_case5_example", "l2rpn_2019", "l2rpn_wcci_2020"]:
 
         for agent_name in [
             "mip_agent",
+            "do_nothing_agent",
             "mixed_agent",
             "augmented_agent",
             "greedy_agent",
-            "do_nothing_agent",
         ]:
             if agent_name == "greedy_agent" and case_name != "rte_case5_example":
                 continue
+            if agent_name != "mip_agent":
+                break
 
             """
                 Initialize environment parameters.    
@@ -78,7 +81,14 @@ for case_name in ["rte_case5_example", "l2rpn_2019", "l2rpn_wcci_2020"]:
             """
                 Initialize agent.
             """
-            agent = make_agent(agent_name, case, action_set, **kwargs)
+            agent = make_agent(
+                agent_name,
+                case,
+                action_set,
+                n_max_line_status_changed=case.env.parameters.MAX_LINE_STATUS_CHANGED,
+                n_max_sub_changed=case.env.parameters.MAX_SUB_CHANGED,
+                **kwargs,
+            )
 
             """
                 Experiments.
@@ -117,7 +127,7 @@ for case_name in ["rte_case5_example", "l2rpn_2019", "l2rpn_wcci_2020"]:
                     case=case,
                     agent=agent,
                     save_dir=case_save_dir,
-                    switch_limits=[(1, 0), (0, 1), (1, 1), (2, 1), (3, 1),],
+                    switch_limits=[(1, 0), (0, 1), (1, 1), (2, 1), (3, 1)],
                     n_timings=n_timings,
                     verbose=verbose,
                 )
@@ -220,3 +230,4 @@ for case_name in ["rte_case5_example", "l2rpn_2019", "l2rpn_wcci_2020"]:
                     n_steps=n_steps,
                     verbose=verbose,
                 )
+    break

@@ -1,3 +1,6 @@
+import sys
+from abc import ABC
+
 from grid2op.Parameters import Parameters
 
 
@@ -63,3 +66,102 @@ class CaseParameters(Parameters):
             raise ValueError(f"Invalid case name. Case {case_name} does not exist.")
 
         return param_dict
+
+
+class AbstractParameters(ABC):
+    def to_dict(self):
+        return self.__dict__
+
+
+class SolverParameters(AbstractParameters):
+    def __init__(
+        self, solver_name="gurobi", tol=0.01, warm_start=False,
+    ):
+        if sys.platform != "win32":
+            solver_name = "glpk"
+
+        self.solver_name = solver_name
+        self.tol = tol
+        self.warm_start = warm_start
+
+
+class StandardParameters(SolverParameters):
+    def __init__(self, delta_max=0.5, **kwargs):
+        SolverParameters.__init__(self, **kwargs)
+        self.delta_max = delta_max
+
+
+class LineSwitchingParameters(StandardParameters):
+    def __init__(
+        self,
+        n_max_line_status_changed=1,
+        big_m=True,
+        gen_cost=True,
+        line_margin=True,
+        **kwargs,
+    ):
+        StandardParameters.__init__(self, **kwargs)
+
+        self.n_max_line_status_changed = n_max_line_status_changed
+
+        self.big_m = big_m
+
+        self.gen_cost = gen_cost
+        self.line_margin = line_margin
+
+
+class SinglestepTopologyParameters(StandardParameters):
+    def __init__(
+        self,
+        forecasts=True,
+        n_max_line_status_changed=1,
+        n_max_sub_changed=1,
+        allow_onesided_disconnection=True,
+        allow_onesided_reconnection=False,
+        symmetry=True,
+        requirement_at_least_two=True,
+        requirement_balance=True,
+        switching_limits=True,
+        cooldown=True,
+        unitary_action=True,
+        gen_cost=False,
+        lin_line_margins=True,
+        quad_line_margins=False,
+        lambda_gen=10.0,
+        lin_gen_penalty=True,
+        quad_gen_penalty=False,
+        lambda_action=0.0,
+        **kwargs,
+    ):
+        StandardParameters.__init__(self, **kwargs)
+
+        self.forecasts = forecasts
+
+        self.n_max_line_status_changed = n_max_line_status_changed
+        self.n_max_sub_changed = n_max_sub_changed
+
+        self.allow_onesided_disconnection = allow_onesided_disconnection
+        self.allow_onesided_reconnection = allow_onesided_reconnection
+        self.symmetry = symmetry
+        self.requirement_at_least_two = requirement_at_least_two
+        self.requirement_balance = requirement_balance
+
+        self.switching_limits = switching_limits
+        self.cooldown = cooldown
+        self.unitary_action = unitary_action
+
+        self.gen_cost = gen_cost
+        self.lin_line_margins = lin_line_margins
+        self.quad_line_margins = quad_line_margins
+        self.lambda_gen = lambda_gen
+        self.lin_gen_penalty = lin_gen_penalty
+        self.quad_gen_penalty = quad_gen_penalty
+        self.lambda_action = lambda_action
+
+
+class MultistepTopologyParameters(SinglestepTopologyParameters):
+    def __init__(
+        self, horizon=2, **kwargs,
+    ):
+        SinglestepTopologyParameters.__init__(self, **kwargs)
+        self.horizon = horizon

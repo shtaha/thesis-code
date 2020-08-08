@@ -1,7 +1,10 @@
+import bz2
 import datetime
 import os
+from io import StringIO
 
 import numpy as np
+import pandas as pd
 
 
 def make_dir(directory):
@@ -43,10 +46,6 @@ def hot_to_indices(bool_array: np.ndarray) -> np.ndarray:
     return index_array
 
 
-def parse_gurobi_log(log):
-    gap = 0.0
-    for line in log.split("\n")[-5:]:
-        if "Best objective" in line:
-            gap = float(line.strip().split()[-1].replace("%", ""))
-
-    return {"gap": gap}
+def read_bz2_to_dataframe(file_path, sep=";"):
+    data_csv = bz2.BZ2File(file_path).read().decode()
+    return pd.read_csv(StringIO(data_csv), sep=sep)

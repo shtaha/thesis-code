@@ -167,7 +167,6 @@ class GridDCOPF(UnitConverter, TopologyConverter):
         )
         self.line["b_pu"] = 1 / x_pu
 
-        # TODO: Manually set.
         if self.case.name == "Case L2RPN 2020 WCCI":
             self.line["b_pu"][[45, 46, 47]] = [5000.0, 1014.19878296, 3311.25827815]
 
@@ -359,8 +358,8 @@ class GridDCOPF(UnitConverter, TopologyConverter):
         ]
 
         # Cooldown
-        self.sub["cooldown"] = False
-        self.line["cooldown"] = False
+        self.sub["cooldown"] = 0
+        self.line["cooldown"] = 0
 
         # Fill with 0 if no value
         self.line["p_pu"] = self.line["p_pu"].fillna(0)
@@ -596,10 +595,9 @@ class GridDCOPF(UnitConverter, TopologyConverter):
         self.trafo["sub_bus_ex"] = self.line["sub_bus_ex"].values[self.line["trafo"]]
 
         # Cooldown
-        # True if time > 0
-        # False if time = 0, then action is legal
-        self.sub["cooldown"] = np.greater(obs_new.time_before_cooldown_sub, 0)
-        self.line["cooldown"] = np.greater(obs_new.time_before_cooldown_line, 0)
+        # if time = 0, then action is legal
+        self.sub["cooldown"] = obs_new.time_before_cooldown_sub
+        self.line["cooldown"] = obs_new.time_before_cooldown_line
 
         if not reset:
             assert np.equal(

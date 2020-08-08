@@ -68,6 +68,7 @@ class ExperimentMIPControl(ExperimentBase):
         e = 0  # Episode counter
         done = False
         obs = env.reset()
+        agent.reset(obs=obs)
         for t in range(n_steps):
             action = agent.act(obs, done)
             obs_next, reward, done, info = env.step(action)
@@ -133,6 +134,7 @@ class ExperimentMIPControl(ExperimentBase):
             if done:
                 print("DONE\n")
                 obs = env.reset()
+                agent.reset(obs=obs)
                 e = e + 1
 
         measurements = pd.DataFrame(measurements)

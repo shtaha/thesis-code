@@ -1,11 +1,10 @@
-import sys
-
 import numpy as np
 import pandapower as pp
 import pandas as pd
 import pyomo.environ as pyo
 import pyomo.opt as pyo_opt
 
+from ..parameters import StandardParameters
 from ..pyomo_utils import PyomoMixin
 from ..unit_converter import UnitConverter
 
@@ -16,10 +15,7 @@ class StandardDCOPF(UnitConverter, PyomoMixin):
         name,
         grid,
         grid_backend=None,
-        solver_name="mosek",
-        tol=1e-9,
-        warm_start=False,
-        delta_max=0.6,
+        params=StandardParameters(),
         verbose=False,
         **kwargs,
     ):
@@ -41,17 +37,14 @@ class StandardDCOPF(UnitConverter, PyomoMixin):
 
         self.model = None
 
-        if sys.platform != "win32":
-            solver_name = "glpk"
-
-        self.solver_name = solver_name
-        self.tol = tol
-        self.warm_start = warm_start
-        self.delta_max = delta_max
-        self.solver = pyo_opt.SolverFactory(solver_name)
+        self.params = params
+        self.solver = pyo_opt.SolverFactory(self.params.solver_name)
         self.solver_status = None
 
         # Results
+        self._initialize_results()
+
+    def _initialize_results(self):
         self.res_cost = 0.0
         self.res_bus = pd.DataFrame(
             columns=["v_pu", "delta_pu", "delta_deg"], index=self.bus.index
@@ -79,10 +72,9 @@ class StandardDCOPF(UnitConverter, PyomoMixin):
 
     def build_model(self):
         # Model
-        self.model = pyo.ConcreteModel(f"{self.name}")
+        self.model = pyo.ConcreteModel(self.name)
 
         # Indexed sets
-        # Indexing over buses, lines, generators, loads, external grids, and transformers
         self._build_indexed_sets()
 
         # Parameters
@@ -95,13 +87,20 @@ class StandardDCOPF(UnitConverter, PyomoMixin):
         self._build_constraints()
 
         # Objective
-        self._build_objective_standard()  # Objective to be optimized.
+        self._build_objective()
 
     """
         INDEXED SETS.
     """
 
     def _build_indexed_sets(self):
+        self._build_indexed_sets_standard()
+
+    def _build_indexed_sets_standard(self):
+        """
+        Indexing over buses, lines, generators, and loads.
+        """
+
         self.model.bus_set = pyo.Set(
             initialize=self.bus.index, within=pyo.NonNegativeIntegers
         )
@@ -126,22 +125,20 @@ class StandardDCOPF(UnitConverter, PyomoMixin):
 
     def _build_parameters(self):
         # Fixed
-        self._build_parameters_delta()  # Bus voltage angle bounds and reference node
+        self._build_parameters_deltas()  # Bus voltage angle bounds and reference node
         self._build_parameters_generators()  # Bounds on generator production
-        self._build_parameters_lines()  # Power line thermal limit and susceptance
-        self._build_parameters_objective()  # Objective parameters
-
         if len(self.ext_grid.index):
             self._build_parameters_ext_grids()  # External grid power limits
+        self._build_parameters_lines()  # Power line thermal limit and susceptance
 
-        # # Variable
+        # Variable
         self._build_parameters_topology()  # Topology of generators and power lines
-        self._build_parameters_loads()  # Bus load injections
+        self._build_parameters_injections()  # Bus load injections
 
-    def _build_parameters_delta(self):
+    def _build_parameters_deltas(self):
         # Bus voltage angles
         self.model.delta_max = pyo.Param(
-            initialize=self.delta_max, within=pyo.NonNegativeReals
+            initialize=self.params.delta_max, within=pyo.NonNegativeReals
         )
 
         # Slack bus index
@@ -149,7 +146,7 @@ class StandardDCOPF(UnitConverter, PyomoMixin):
             initialize=self.grid.slack_bus, within=self.model.bus_set,
         )
 
-    def _build_parameters_generators(self, gen_penalty=False):
+    def _build_parameters_generators(self):
         """
         Initialize generator parameters: lower and upper limits on generator power production.
         """
@@ -169,15 +166,6 @@ class StandardDCOPF(UnitConverter, PyomoMixin):
             within=pyo.NonNegativeReals,
         )
 
-        if gen_penalty:
-            self.model.gen_p_ref = pyo.Param(
-                self.model.gen_set,
-                initialize=self._create_map_ids_to_values(
-                    self.gen.index, self.gen.p_pu
-                ),
-                within=pyo.Reals,
-            )
-
     def _build_parameters_lines(self):
         """
         Initialize power line parameters: power line flow thermal limits, susceptances, and line statuses.
@@ -192,24 +180,6 @@ class StandardDCOPF(UnitConverter, PyomoMixin):
         self.model.line_b = pyo.Param(
             self.model.line_set,
             initialize=self._create_map_ids_to_values(self.line.index, self.line.b_pu),
-            within=pyo.NonNegativeReals,
-        )
-
-        self.model.line_status = pyo.Param(
-            self.model.line_set,
-            initialize=self._create_map_ids_to_values(
-                self.line.index, self.line.status
-            ),
-            within=pyo.Boolean,
-        )
-
-    def _build_parameters_objective(self):
-        """
-        Initialize objective parameters: generator costs.
-        """
-        self.model.gen_costs = pyo.Param(
-            self.model.gen_set,
-            initialize=self._create_map_ids_to_values(self.gen.index, self.gen.cost_pu),
             within=pyo.NonNegativeReals,
         )
 
@@ -229,7 +199,7 @@ class StandardDCOPF(UnitConverter, PyomoMixin):
             within=pyo.Reals,
         )
 
-    def _build_parameters_loads(self):
+    def _build_parameters_injections(self):
         # Load bus injections
         self.model.bus_load_p = pyo.Param(
             self.model.bus_set,
@@ -264,19 +234,26 @@ class StandardDCOPF(UnitConverter, PyomoMixin):
                 within=pyo.Any,
             )
 
+        self.model.line_status = pyo.Param(
+            self.model.line_set,
+            initialize=self._create_map_ids_to_values(
+                self.line.index, self.line.status
+            ),
+            within=pyo.Boolean,
+        )
+
     """
         VARIABLES.
     """
 
     def _build_variables(self):
-        self._build_variables_standard_delta()  # Bus voltage angles and bounds
-        self._build_variables_standard_line()  # Power line flows and bounds
-        self._build_variables_standard_generators()  # Generator productions and bounds
-
+        self._build_variables_standard_deltas()  # Bus voltage angles with bounds
+        self._build_variables_standard_lines()  # Power line flows without bounds
+        self._build_variables_standard_generators()  # Generator productions with bounds
         if len(self.ext_grid.index):
-            self._build_variables_standard_ext_grids()
+            self._build_variables_standard_ext_grids()  # External grid productions with bounds
 
-    def _build_variables_standard_delta(self):
+    def _build_variables_standard_deltas(self):
         # Bus voltage angle
         def _bounds_delta(model, bus_id):
             if bus_id == pyo.value(model.slack_bus_id):
@@ -293,7 +270,7 @@ class StandardDCOPF(UnitConverter, PyomoMixin):
             ),
         )
 
-    def _build_variables_standard_line(self):
+    def _build_variables_standard_lines(self):
         # Line power flows
         def _bounds_flow_max(model, line_id):
             if model.line_status[line_id]:
@@ -325,15 +302,14 @@ class StandardDCOPF(UnitConverter, PyomoMixin):
         def _bounds_ext_grid_p(model, ext_grid_id):
             return model.ext_grid_p_min[ext_grid_id], model.ext_grid_p_max[ext_grid_id]
 
-        if len(self.ext_grid.index):
-            self.model.ext_grid_p = pyo.Var(
-                self.model.ext_grid_set,
-                domain=pyo.Reals,
-                bounds=_bounds_ext_grid_p,
-                initialize=self._create_map_ids_to_values(
-                    self.ext_grid.index, self.ext_grid.p_pu
-                ),
-            )
+        self.model.ext_grid_p = pyo.Var(
+            self.model.ext_grid_set,
+            domain=pyo.Reals,
+            bounds=_bounds_ext_grid_p,
+            initialize=self._create_map_ids_to_values(
+                self.ext_grid.index, self.ext_grid.p_pu
+            ),
+        )
 
     """
         CONSTRAINTS.
@@ -402,12 +378,15 @@ class StandardDCOPF(UnitConverter, PyomoMixin):
         OBJECTIVE.
     """
 
+    def _build_objective(self):
+        self._build_objective_standard()
+
     def _build_objective_standard(self):
         # Minimize generator costs
         def _objective(model):
             return sum(
                 [
-                    model.gen_p[gen_id] * model.gen_costs[gen_id]
+                    model.gen_p[gen_id] * self.gen.cost_pu[gen_id]
                     for gen_id in model.gen_set
                 ]
             )
@@ -521,7 +500,7 @@ class StandardDCOPF(UnitConverter, PyomoMixin):
 
         Gurobi parameters: https://www.gurobi.com/documentation/9.0/refman/parameters.html
         """
-        if self.solver_name == "gurobi":
+        if self.params.solver_name == "gurobi":
             options = {
                 "OptimalityTol": tol,
                 "MIPGap": tol,
@@ -530,7 +509,7 @@ class StandardDCOPF(UnitConverter, PyomoMixin):
         else:
             options = {}
 
-        if self.solver_name != "glpk":
+        if self.params.solver_name != "glpk":
             self.solver_status = self.solver.solve(
                 self.model, tee=verbose, options=options, warmstart=warm_start
             )
@@ -542,8 +521,8 @@ class StandardDCOPF(UnitConverter, PyomoMixin):
     def solve(self, verbose=False, time_limit=7):
         self._solve(
             verbose=verbose,
-            tol=self.tol,
-            warm_start=self.warm_start,
+            tol=self.params.tol,
+            warm_start=self.params.warm_start,
             time_limit=time_limit,
         )
 
@@ -578,7 +557,7 @@ class StandardDCOPF(UnitConverter, PyomoMixin):
                 self.grid_backend,
                 verbose=verbose,
                 suppress_warnings=True,
-                delta=self.tol,
+                delta=self.params.tol,
             )
             valid = True
         except pp.optimal_powerflow.OPFNotConverged as e:

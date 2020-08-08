@@ -24,7 +24,7 @@ for chronic in os.listdir(dataset_path):
     chronic_dir = os.path.join(dataset_path, chronic)
 
     for file in os.listdir(chronic_dir):
-        if ("prod_p" in file or "prods_p" in file) and not "planned" in file:
+        if ("prod_p" in file or "prods_p" in file) and "planned" not in file:
             file_path = os.path.join(chronic_dir, file)
             data_chronic = read_bz2_to_dataframe(file_path, sep=";")
             data = data.append(data_chronic)
