@@ -45,3 +45,15 @@ class PyomoMixin:
     @staticmethod
     def _access_pyomo_variable(var):
         return np.array([pyo.value(var[idx]) for idx in var])
+
+    @staticmethod
+    def _access_pyomo_dual_variable(var):
+        ids_first = np.unique([idx[0] for idx in var])
+        ids_second = np.unique([idx[1] for idx in var])
+
+        values = np.empty((len(ids_first), len(ids_second)))
+        for idx in var:
+            value = pyo.value(var[idx])
+            values[idx[0], idx[1]] = value
+
+        return values

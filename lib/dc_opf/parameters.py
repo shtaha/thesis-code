@@ -161,7 +161,9 @@ class SinglestepTopologyParameters(StandardParameters):
 
 class MultistepTopologyParameters(SinglestepTopologyParameters):
     def __init__(
-        self, horizon=2, **kwargs,
+        self, horizon=2, allow_onesided_disconnection=False, **kwargs,
     ):
-        SinglestepTopologyParameters.__init__(self, **kwargs)
+        SinglestepTopologyParameters.__init__(
+            self, allow_onesided_disconnection=allow_onesided_disconnection, **kwargs
+        )
         self.horizon = horizon

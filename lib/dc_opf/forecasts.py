@@ -20,3 +20,15 @@ class Forecasts:
 
     def _get_chronic_data(self):
         return self.env.chronics_handler.real_data.data
+
+
+class ForecastsPlain:
+    def __init__(self, env, t=0, horizon=2):
+        self.t = t
+        self.horizon = horizon
+        self.time_steps = np.arange(self.horizon)
+
+        self.env = env
+
+    def __bool__(self):
+        return False

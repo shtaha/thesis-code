@@ -207,7 +207,6 @@ class TopologyOptimizationDCOPF(StandardDCOPF):
 
         # Auxiliary
         self._build_variables_changes()
-        self._build_variables_bus_requirements()
 
         if self.params.lin_line_margins:
             self._build_variable_mu()
@@ -217,10 +216,7 @@ class TopologyOptimizationDCOPF(StandardDCOPF):
 
     def _build_variables_lines(self):
         def _bounds_flow_max(model, line_id):
-            if model.line_status[line_id]:
-                return -model.line_flow_max[line_id], model.line_flow_max[line_id]
-            else:
-                return 0.0, 0.0
+            return -model.line_flow_max[line_id], model.line_flow_max[line_id]
 
         self.model.line_flow = pyo.Var(
             self.model.line_set,
@@ -313,31 +309,6 @@ class TopologyOptimizationDCOPF(StandardDCOPF):
                 self.sub.index, np.zeros_like(self.sub.index),
             ),
         )
-
-    def _build_variables_bus_requirements(self):
-        if self.params.requirement_at_least_two:
-            self.model.w_bus_activation = pyo.Var(
-                self.model.bus_set,
-                domain=pyo.Binary,
-                initialize=self._create_map_ids_to_values(
-                    self.bus.index, np.greater(self.bus.n_elements, 1.0).astype(int)
-                ),
-            )
-
-        if self.params.requirement_balance:
-            self.model.w_bus_balance = pyo.Var(
-                self.model.bus_set,
-                domain=pyo.Binary,
-                initialize=self._create_map_ids_to_values(
-                    self.bus.index,
-                    [
-                        np.greater(
-                            len(self.bus.gen[bus_id]) + len(self.bus.load[bus_id]), 0
-                        ).astype(int)
-                        for bus_id in self.bus.index
-                    ],
-                ),
-            )
 
     def _build_variable_mu(self):
         self.model.mu = pyo.Var(
@@ -541,6 +512,14 @@ class TopologyOptimizationDCOPF(StandardDCOPF):
                 self.model.x_line_ex_2[line_id].setub(0)
 
     def _build_constraint_requirement_at_least_two(self):
+        self.model.w_bus_activation = pyo.Var(
+            self.model.bus_set,
+            domain=pyo.Binary,
+            initialize=self._create_map_ids_to_values(
+                self.bus.index, np.greater(self.bus.n_elements, 1.0).astype(int)
+            ),
+        )
+
         def _get_bus_elements(model, bus_id):
             sub_id = model.bus_ids_to_sub_ids[bus_id]
             sub_bus = model.bus_ids_to_sub_bus_ids[bus_id]
@@ -597,6 +576,20 @@ class TopologyOptimizationDCOPF(StandardDCOPF):
         )
 
     def _build_constraint_requirement_balance(self):
+        self.model.w_bus_balance = pyo.Var(
+            self.model.bus_set,
+            domain=pyo.Binary,
+            initialize=self._create_map_ids_to_values(
+                self.bus.index,
+                [
+                    np.greater(
+                        len(self.bus.gen[bus_id]) + len(self.bus.load[bus_id]), 0
+                    ).astype(int)
+                    for bus_id in self.bus.index
+                ],
+            ),
+        )
+
         def _get_bus_elements(model, bus_id):
             sub_id = model.bus_ids_to_sub_ids[bus_id]
             sub_bus = model.bus_ids_to_sub_bus_ids[bus_id]

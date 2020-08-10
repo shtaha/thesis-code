@@ -12,7 +12,6 @@ from lib.dc_opf import (
     MultistepTopologyDCOPF,
     Forecasts,
     MultistepTopologyParameters,
-    SolverParameters,
 )
 from lib.dc_opf import load_case, CaseParameters
 from lib.run_utils import Logger
@@ -86,3 +85,5 @@ for env_dc in [True, False]:
 
     model.build_model()
     model.print_model()
+
+    model.solve(verbose=False)

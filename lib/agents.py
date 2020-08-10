@@ -229,8 +229,10 @@ class AgentMIPTest(BaseAgentTest):
         )
 
         res_line["max_p_pu_ac"] = np.sqrt(
-            np.square(res_line["max_p_pu"])
-            # - np.square(self.grid.convert_mw_to_per_unit(obs.q_or))
+            np.abs(
+                np.square(res_line["max_p_pu"])
+                - np.square(self.grid.convert_mw_to_per_unit(obs.q_or))
+            )
         )
 
         if verbose:

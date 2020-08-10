@@ -22,7 +22,7 @@ do_experiment_timing = False
 do_experiment_control = True
 verbose = False
 
-kwargs = dict(forecasts=False)
+kwargs = dict(forecasts=True)
 
 # for case_name in ["rte_case5_example", "l2rpn_2019", "l2rpn_wcci_2020"]:
 for case_name in ["l2rpn_2019"]:
@@ -31,7 +31,7 @@ for case_name in ["l2rpn_2019"]:
         n_steps = 1000
     else:
         n_timings = 100
-        n_steps = 1000
+        n_steps = 100
 
     for env_dc in [True, False]:
         if not env_dc:

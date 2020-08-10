@@ -12,11 +12,14 @@ from lib.dc_opf import (
     StandardDCOPF,
     LineSwitchingDCOPF,
     TopologyOptimizationDCOPF,
+    MultistepTopologyDCOPF,
     GridDCOPF,
     load_case,
     StandardParameters,
     LineSwitchingParameters,
     SinglestepTopologyParameters,
+    MultistepTopologyParameters,
+    ForecastsPlain,
 )
 
 
@@ -746,6 +749,33 @@ class TestTopologyOptimizationDCOPF(unittest.TestCase):
         model = TopologyOptimizationDCOPF(
             f"{case.name} DC OPF Topology Optimization",
             grid=grid,
+            grid_backend=case.grid_backend,
+            base_unit_p=case.base_unit_p,
+            base_unit_v=case.base_unit_v,
+            params=params,
+        )
+
+        self.runner_opf_topology_optimization(model, verbose=False)
+
+    def test_case3_topology_multistep(self):
+        case = load_case("case3")
+        grid = GridDCOPF(
+            case, base_unit_v=case.base_unit_v, base_unit_p=case.base_unit_p
+        )
+
+        params = MultistepTopologyParameters(
+            horizon=1,
+            gen_cost=True,
+            lin_line_margins=False,
+            quad_line_margins=True,
+            lin_gen_penalty=False,
+            quad_gen_penalty=False,
+        )
+        forecasts = ForecastsPlain(env=case.env, horizon=params.horizon)
+        model = MultistepTopologyDCOPF(
+            f"{case.name} DC OPF Topology Optimization",
+            grid=grid,
+            forecasts=forecasts,
             grid_backend=case.grid_backend,
             base_unit_p=case.base_unit_p,
             base_unit_v=case.base_unit_v,
