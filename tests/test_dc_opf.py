@@ -645,8 +645,8 @@ class TestTopologyOptimizationDCOPF(unittest.TestCase):
                 valid = valid and np.abs(gen_p - load_p) < 1e-6
 
                 if (
-                    model.params.gen_cost
-                    and model.params.quad_line_margins
+                    model.params.obj_gen_cost
+                    and model.params.obj_quad_line_margins
                     and model.params.solver_name != "glpk"
                 ):
                     objective = (
@@ -657,7 +657,7 @@ class TestTopologyOptimizationDCOPF(unittest.TestCase):
                         ).sum()
                     )
                 elif (
-                    model.params.quad_line_margins
+                    model.params.obj_quad_line_margins
                     and model.params.solver_name != "glpk"
                 ):
                     objective = +np.square(
@@ -740,11 +740,11 @@ class TestTopologyOptimizationDCOPF(unittest.TestCase):
         )
 
         params = SinglestepTopologyParameters(
-            gen_cost=True,
-            lin_line_margins=False,
-            quad_line_margins=True,
-            lin_gen_penalty=False,
-            quad_gen_penalty=False,
+            obj_gen_cost=True,
+            obj_lin_line_margins=False,
+            obj_quad_line_margins=True,
+            obj_lin_gen_penalty=False,
+            obj_quad_gen_penalty=False,
         )
         model = TopologyOptimizationDCOPF(
             f"{case.name} DC OPF Topology Optimization",
@@ -765,11 +765,11 @@ class TestTopologyOptimizationDCOPF(unittest.TestCase):
 
         params = MultistepTopologyParameters(
             horizon=1,
-            gen_cost=True,
-            lin_line_margins=False,
-            quad_line_margins=True,
-            lin_gen_penalty=False,
-            quad_gen_penalty=False,
+            obj_gen_cost=True,
+            obj_lin_line_margins=False,
+            obj_quad_line_margins=True,
+            obj_lin_gen_penalty=False,
+            obj_quad_gen_penalty=False,
         )
         forecasts = ForecastsPlain(env=case.env, horizon=params.horizon)
         model = MultistepTopologyDCOPF(

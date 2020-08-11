@@ -75,7 +75,7 @@ class AbstractParameters(ABC):
 
 class SolverParameters(AbstractParameters):
     def __init__(
-        self, solver_name="gurobi", tol=0.01, warm_start=False,
+        self, solver_name="gurobi", tol=0.01, warm_start=False, time_limit=5,
     ):
         if sys.platform != "win32":
             solver_name = "glpk"
@@ -83,6 +83,7 @@ class SolverParameters(AbstractParameters):
         self.solver_name = solver_name
         self.tol = tol
         self.warm_start = warm_start
+        self.time_limit = time_limit
 
 
 class StandardParameters(SolverParameters):
@@ -98,9 +99,10 @@ class LineSwitchingParameters(StandardParameters):
         big_m=True,
         gen_cost=True,
         line_margin=True,
+        time_limit=7,
         **kwargs,
     ):
-        StandardParameters.__init__(self, **kwargs)
+        StandardParameters.__init__(self, time_limit=time_limit, **kwargs)
 
         self.n_max_line_status_changed = n_max_line_status_changed
 
@@ -116,54 +118,62 @@ class SinglestepTopologyParameters(StandardParameters):
         forecasts=True,
         n_max_line_status_changed=1,
         n_max_sub_changed=1,
-        allow_onesided_disconnection=True,
-        allow_onesided_reconnection=False,
-        symmetry=True,
-        requirement_at_least_two=True,
-        requirement_balance=True,
-        switching_limits=True,
-        cooldown=True,
-        unitary_action=True,
-        gen_cost=False,
-        lin_line_margins=True,
-        quad_line_margins=False,
-        lambda_gen=10.0,
-        lin_gen_penalty=True,
-        quad_gen_penalty=False,
-        lambda_action=0.0,
+        con_allow_onesided_disconnection=True,
+        con_allow_onesided_reconnection=False,
+        con_symmetry=True,
+        con_requirement_at_least_two=True,
+        con_requirement_balance=True,
+        con_switching_limits=True,
+        con_cooldown=True,
+        con_unitary_action=True,
+        obj_gen_cost=False,
+        obj_lin_line_margins=True,
+        obj_quad_line_margins=False,
+        obj_lambda_gen=20.0,
+        obj_lin_gen_penalty=True,
+        obj_quad_gen_penalty=False,
+        obj_lambda_action=0.0,
+        time_limit=7,
         **kwargs,
     ):
-        StandardParameters.__init__(self, **kwargs)
+        StandardParameters.__init__(self, time_limit=time_limit, **kwargs)
 
         self.forecasts = forecasts
 
         self.n_max_line_status_changed = n_max_line_status_changed
         self.n_max_sub_changed = n_max_sub_changed
 
-        self.allow_onesided_disconnection = allow_onesided_disconnection
-        self.allow_onesided_reconnection = allow_onesided_reconnection
-        self.symmetry = symmetry
-        self.requirement_at_least_two = requirement_at_least_two
-        self.requirement_balance = requirement_balance
+        self.con_allow_onesided_disconnection = con_allow_onesided_disconnection
+        self.con_allow_onesided_reconnection = con_allow_onesided_reconnection
+        self.con_symmetry = con_symmetry
+        self.con_requirement_at_least_two = con_requirement_at_least_two
+        self.con_requirement_balance = con_requirement_balance
 
-        self.switching_limits = switching_limits
-        self.cooldown = cooldown
-        self.unitary_action = unitary_action
+        self.con_switching_limits = con_switching_limits
+        self.con_cooldown = con_cooldown
+        self.con_unitary_action = con_unitary_action
 
-        self.gen_cost = gen_cost
-        self.lin_line_margins = lin_line_margins
-        self.quad_line_margins = quad_line_margins
-        self.lambda_gen = lambda_gen
-        self.lin_gen_penalty = lin_gen_penalty
-        self.quad_gen_penalty = quad_gen_penalty
-        self.lambda_action = lambda_action
+        self.obj_gen_cost = obj_gen_cost
+        self.obj_lin_line_margins = obj_lin_line_margins
+        self.obj_quad_line_margins = obj_quad_line_margins
+        self.obj_lambda_gen = obj_lambda_gen
+        self.obj_lin_gen_penalty = obj_lin_gen_penalty
+        self.obj_quad_gen_penalty = obj_quad_gen_penalty
+        self.obj_lambda_action = obj_lambda_action
 
 
 class MultistepTopologyParameters(SinglestepTopologyParameters):
     def __init__(
-        self, horizon=2, allow_onesided_disconnection=False, **kwargs,
+        self,
+        horizon=2,
+        con_allow_onesided_disconnection=False,
+        time_limit=20,
+        **kwargs,
     ):
         SinglestepTopologyParameters.__init__(
-            self, allow_onesided_disconnection=allow_onesided_disconnection, **kwargs
+            self,
+            con_allow_onesided_disconnection=con_allow_onesided_disconnection,
+            time_limit=time_limit,
+            **kwargs,
         )
         self.horizon = horizon

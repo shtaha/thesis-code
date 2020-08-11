@@ -1,5 +1,9 @@
-import sys
 import os
+import sys
+
+
+def create_logger(save_dir):
+    sys.stdout = Logger(save_dir=save_dir)
 
 
 class Logger(object):

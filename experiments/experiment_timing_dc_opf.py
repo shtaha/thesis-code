@@ -1,5 +1,4 @@
 import os
-from timeit import default_timer as timer
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -21,8 +20,8 @@ class ExperimentDCOPFTiming(ExperimentBase):
         self.print_experiment("Timing - Solver and Parts")
 
         data_dict = dict()
-        for idx, solver_name in enumerate(solver_names):
-            data_dict[f"{solver_name}-{idx}"] = self._runner_timing(
+        for solver_name in solver_names:
+            data_dict[solver_name] = self._runner_timing(
                 env=case.env, agent=agent, solver_name=solver_name, **kwargs,
             )
 
@@ -30,12 +29,12 @@ class ExperimentDCOPFTiming(ExperimentBase):
             times=[data_dict[param]["solve"] for param in data_dict],
             labels=[param.capitalize() for param in data_dict],
             n_bins=n_bins,
-            title=f"{case.name} - MIP solver comparison",
+            title=f"{case_name} - MIP solver comparison",
             legend_title="Solver",
             save_path=os.path.join(save_dir, file_name),
         )
 
-        data_parts = data_dict[f"{solver_names[0]}-0"]
+        data_parts = data_dict[solver_names[0]]
         self._plot_and_save(
             times=[data_parts[part] for part in data_parts.columns],
             labels=[part.capitalize() for part in data_parts.columns],
@@ -91,7 +90,7 @@ class ExperimentDCOPFTiming(ExperimentBase):
             labels=[param for param in data_dict],
             n_bins=n_bins,
             title=f"{case_name} - Bounds on bus voltage angles",
-            legend_title="Max delta",
+            legend_title=r"$\delta^{\text{max}}$",
             save_path=os.path.join(save_dir, file_name),
         )
 
@@ -125,7 +124,7 @@ class ExperimentDCOPFTiming(ExperimentBase):
             labels=[param for param in data_dict],
             n_bins=n_bins,
             title=f"{case_name} - Maximum switching limit comparison",
-            legend_title="Line-Substation",
+            legend_title=r"$\alpha > \beta$" r"$n_\mathcal{P}$-$n_\mathcal{P}$",
             save_path=os.path.join(save_dir, file_name),
         )
 
@@ -142,31 +141,9 @@ class ExperimentDCOPFTiming(ExperimentBase):
         self.print_experiment("Timing - Constraint Activations")
 
         data_dict = dict()
-        for activations in constraint_activations:
-            (
-                allow_onesided_disconnection,
-                allow_implicit_diconnection,
-                allow_onesided_reconnection,
-                symmmetry,
-                gen_load_bus_balance,
-                switching_limits,
-                cooldown,
-                unitary_action,
-            ) = activations
-            activations_str = "-".join(["T" if a else "F" for a in activations])
-
-            data_dict[activations_str] = self._runner_timing(
-                env=case.env,
-                agent=agent,
-                allow_onesided_disconnection=allow_onesided_disconnection,
-                allow_implicit_diconnection=allow_implicit_diconnection,
-                allow_onesided_reconnection=allow_onesided_reconnection,
-                symmetry=symmmetry,
-                gen_load_bus_balance=gen_load_bus_balance,
-                switching_limits=switching_limits,
-                cooldown=cooldown,
-                unitary_action=unitary_action,
-                **kwargs,
+        for act_dict, act_str in constraint_activations:
+            data_dict[act_str] = self._runner_timing(
+                env=case.env, agent=agent, **act_dict, **kwargs,
             )
 
         self._plot_and_save(
@@ -174,7 +151,7 @@ class ExperimentDCOPFTiming(ExperimentBase):
             labels=[param for param in data_dict],
             n_bins=n_bins,
             title=f"{case_name} - Constraint activations comparison",
-            legend_title="Onesided-Implicit-Reconnection-Symmetry-Balance-Switching-Cooldown-Unitary",
+            legend_title="Constraint deactivation",
             save_path=os.path.join(save_dir, file_name),
         )
 
@@ -191,25 +168,9 @@ class ExperimentDCOPFTiming(ExperimentBase):
         self.print_experiment("Timing - Objective")
 
         data_dict = dict()
-        for objective in objectives:
-            (
-                gen_cost,
-                lin_line_margins,
-                quad_line_margins,
-                lin_gen_penalty,
-                quad_gen_penalty,
-            ) = objective
-            objective_str = "-".join(["T" if obj else "F" for obj in objective])
-
-            data_dict[objective_str] = self._runner_timing(
-                env=case.env,
-                agent=agent,
-                gen_cost=gen_cost,
-                lin_line_margins=lin_line_margins,
-                quad_line_margins=quad_line_margins,
-                lin_gen_penalty=lin_gen_penalty,
-                quad_gen_penalty=quad_gen_penalty,
-                **kwargs,
+        for obj_dict, obj_str in objectives:
+            data_dict[obj_str] = self._runner_timing(
+                env=case.env, agent=agent, **obj_dict, **kwargs,
             )
 
         self._plot_and_save(
@@ -217,7 +178,7 @@ class ExperimentDCOPFTiming(ExperimentBase):
             labels=[param for param in data_dict],
             n_bins=n_bins,
             title=f"{case_name} - Objective function comparison",
-            legend_title="GenCost-LinMar-QuadMar-LinGen-QuadGen",
+            legend_title="Objective modification",
             save_path=os.path.join(save_dir, file_name),
         )
 
@@ -292,12 +253,9 @@ class ExperimentDCOPFTiming(ExperimentBase):
         done = False
         obs = env.reset()
         for t in range(n_timings):
-            start_total = timer()
             action, timing = agent.act_with_timing(obs, done)
 
-            start_step = timer()
             obs_next, reward, done, info = env.step(action)
-            timing["step"] = timer() - start_step
 
             pprint("Step:", t)
             if verbose:
@@ -309,7 +267,6 @@ class ExperimentDCOPFTiming(ExperimentBase):
                 print("DONE\n")
                 obs = env.reset()
 
-            timing["total"] = timer() - start_total
             timings.append(timing)
 
         return pd.DataFrame(timings)

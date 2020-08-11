@@ -69,7 +69,7 @@ class TopologyOptimizationDCOPF(StandardDCOPF):
             within=pyo.Reals,
         )
 
-        if self.params.lin_gen_penalty or self.params.quad_gen_penalty:
+        if self.params.obj_lin_gen_penalty or self.params.obj_quad_gen_penalty:
             init_value = (
                 self.forecasts.prod_p.flatten() if self.forecasts else self.gen.p_pu
             )
@@ -196,7 +196,8 @@ class TopologyOptimizationDCOPF(StandardDCOPF):
 
     def _build_variables(self):
         self._build_variables_standard_deltas()  # Bus voltage angles with bounds
-        self._build_variables_standard_generators()  # Generator productions with bounds
+
+        self._build_variables_generators()  # Generator productions with bounds
         if len(self.ext_grid.index):
             self._build_variables_standard_ext_grids()  # External grid productions with bounds
 
@@ -208,21 +209,37 @@ class TopologyOptimizationDCOPF(StandardDCOPF):
         # Auxiliary
         self._build_variables_changes()
 
-        if self.params.lin_line_margins:
+        if self.params.obj_lin_line_margins:
             self._build_variable_mu()
 
-        if self.params.lin_gen_penalty:
+        if self.params.obj_lin_gen_penalty:
             self._build_variable_mu_gen()
 
-    def _build_variables_lines(self):
-        def _bounds_flow_max(model, line_id):
-            return -model.line_flow_max[line_id], model.line_flow_max[line_id]
+    def _build_variables_generators(self):
+        self.model.gen_p = pyo.Var(
+            self.model.gen_set,
+            domain=pyo.NonNegativeReals,
+            initialize=self._create_map_ids_to_values(
+                self.gen.index, np.maximum(self.gen.p_pu, 0.0)
+            ),
+        )
 
+        self.model.gen_sub_bus_p = pyo.Var(
+            self.model.gen_set, self.model.sub_bus_set, domain=pyo.NonNegativeReals,
+        )
+
+    def _build_variables_lines(self):
         self.model.line_flow = pyo.Var(
             self.model.line_set,
             domain=pyo.Reals,
-            bounds=_bounds_flow_max if not self.params.lin_line_margins else None,
             initialize=self._create_map_ids_to_values(self.line.index, self.line.p_pu),
+        )
+
+        self.model.line_sub_bus_flow = pyo.Var(
+            self.model.line_set,
+            self.model.sub_bus_set,
+            self.model.sub_bus_set,
+            domain=pyo.Reals,
         )
 
     def _build_variables_bus_configuration(self):
@@ -313,7 +330,7 @@ class TopologyOptimizationDCOPF(StandardDCOPF):
     def _build_variable_mu(self):
         self.model.mu = pyo.Var(
             domain=pyo.NonNegativeReals,
-            bounds=(0.0, 1.0) if not self.params.lin_line_margins else None,
+            bounds=(0.0, 1.0) if not self.params.obj_lin_line_margins else None,
             initialize=np.max(np.abs(self.line.p_pu) / self.line.max_p_pu),
         )
         self.model.mu.setlb(0)
@@ -328,77 +345,256 @@ class TopologyOptimizationDCOPF(StandardDCOPF):
     """
 
     def _build_constraints(self):
-        self._build_constraint_line_flows()  # Power flow definition
+        self._build_constraint_generators()  # Generator production with bounds
+
+        self._build_constraint_line_flows()  # Power flow definition with bounds
+
         self._build_constraint_bus_balance()  # Bus power balance
         self._build_constraint_line_or()
         self._build_constraint_line_ex()
 
-        if not self.params.allow_onesided_disconnection:
+        if not self.params.con_allow_onesided_disconnection:
             self._build_constraint_onesided_line_disconnection()
 
-        if not self.params.allow_onesided_reconnection:
+        if not self.params.con_allow_onesided_reconnection:
             self._build_constraint_onesided_line_reconnection()
 
-        if self.params.symmetry:
+        if self.params.con_symmetry:
             self._build_constraint_symmetry()
 
-        if self.params.requirement_at_least_two:
+        if self.params.con_requirement_at_least_two:
             self._build_constraint_requirement_at_least_two()
 
-        if self.params.requirement_balance:
+        if self.params.con_requirement_balance:
             self._build_constraint_requirement_balance()
 
-        if self.params.switching_limits:
+        if self.params.con_switching_limits:
             self._build_constraint_line_status_switch()
             self._build_constraint_substation_topology_switch()
 
-        if self.params.cooldown:
+        if self.params.con_cooldown:
             self._build_constraint_cooldown()
 
-        if self.params.unitary_action:
+        if self.params.con_unitary_action:
             self._build_constraint_unitary_action()
 
-        if self.params.lin_line_margins:
+        if self.params.obj_lin_line_margins:
             self._build_constraint_lin_line_margins()
 
-        if self.params.lin_gen_penalty:
+        if self.params.obj_lin_gen_penalty:
             self._build_constraint_lin_gen_penalty()
 
-    def _build_constraint_line_flows(self):
-        # Power flow equation with topology switching
-        def _constraint_line_flow(model, line_id):
-            sub_or, sub_ex = model.line_ids_to_sub_ids[line_id]
-            bus_or_1, bus_or_2 = model.sub_ids_to_bus_ids[sub_or]
-            bus_ex_1, bus_ex_2 = model.sub_ids_to_bus_ids[sub_ex]
+    def _build_constraint_generators(self):
+        self.__build_constraint_generators_sum()
+        self.__build_constraint_generators_bounds()
 
-            return model.line_flow[line_id] == model.line_b[line_id] * (
-                (
-                    model.delta[bus_or_1] * model.x_line_or_1[line_id]
-                    + model.delta[bus_or_2] * model.x_line_or_2[line_id]
-                )
-                - (
-                    model.delta[bus_ex_1] * model.x_line_ex_1[line_id]
-                    + model.delta[bus_ex_2] * model.x_line_ex_2[line_id]
-                )
+    def __build_constraint_generators_sum(self):
+        def _constraint_genenerators_p_sum(model, gen_id):
+            total_prod = 0
+            for sub_bus in model.sub_bus_set:
+                prod = model.gen_sub_bus_p[gen_id, sub_bus]
+                total_prod = total_prod + prod
+
+            return model.gen_p[gen_id] == total_prod
+
+        self.model.constraint_genenerators_p_sum = pyo.Constraint(
+            self.model.gen_set, rule=_constraint_genenerators_p_sum
+        )
+
+    def __build_constraint_generators_bounds(self):
+        def _constraint_genenerators_p_bounds_lower(model, gen_id, sub_bus):
+            if sub_bus == 1:
+                x = 1 - model.x_gen[gen_id]
+            else:
+                x = model.x_gen[gen_id]
+
+            return model.gen_p_min[gen_id] * x <= model.gen_sub_bus_p[gen_id, sub_bus]
+
+        def _constraint_genenerators_p_bounds_upper(model, gen_id, sub_bus):
+            if sub_bus == 1:
+                x = 1 - model.x_gen[gen_id]
+            else:
+                x = model.x_gen[gen_id]
+
+            return model.gen_sub_bus_p[gen_id, sub_bus] <= model.gen_p_max[gen_id] * x
+
+        self.model.constraint_genenerators_p_bounds_lower = pyo.Constraint(
+            self.model.gen_set,
+            self.model.sub_bus_set,
+            rule=_constraint_genenerators_p_bounds_lower,
+        )
+
+        self.model.constraint_genenerators_p_bounds_upper = pyo.Constraint(
+            self.model.gen_set,
+            self.model.sub_bus_set,
+            rule=_constraint_genenerators_p_bounds_upper,
+        )
+
+    def _build_constraint_line_flows(self):
+        self.__build_constraint_line_flows_sum()  # Actual power flow in a line
+        self.__build_constraint_line_sub_bus_flows()  # Power flow definition
+        self.__build_constraint_line_bounds()  # Power flow thermal limits
+
+    def __build_constraint_line_flows_sum(self):
+        # Power flow equation with topology switching
+        def _constraint_line_flow_sum(model, line_id):
+            total_flow = 0
+            for sub_bus_or in model.sub_bus_set:
+                for sub_bus_ex in model.sub_bus_set:
+                    flow = model.line_sub_bus_flow[line_id, sub_bus_or, sub_bus_ex]
+                    total_flow = total_flow + flow
+            return model.line_flow[line_id] == total_flow
+
+        self.model.constraint_line_flow_sum = pyo.Constraint(
+            self.model.line_set, rule=_constraint_line_flow_sum
+        )
+
+    def __build_constraint_line_sub_bus_flows(self):
+        # Power flow equation with topology switching
+        def _constraint_line_flow_lower(model, line_id, sub_bus_or, sub_bus_ex):
+            sub_or, sub_ex = model.line_ids_to_sub_ids[line_id]
+            bus_or = model.sub_ids_to_bus_ids[sub_or][sub_bus_or - 1]
+            bus_ex = model.sub_ids_to_bus_ids[sub_ex][sub_bus_ex - 1]
+
+            if sub_bus_or == 1:
+                x_or = model.x_line_or_1[line_id]
+            else:
+                x_or = model.x_line_or_2[line_id]
+
+            if sub_bus_ex == 1:
+                x_ex = model.x_line_ex_1[line_id]
+            else:
+                x_ex = model.x_line_ex_2[line_id]
+
+            big_m = model.line_b[line_id] * 2 * self.params.delta_max
+            return model.line_sub_bus_flow[line_id, sub_bus_or, sub_bus_ex] - (
+                model.line_b[line_id] * (model.delta[bus_or] - model.delta[bus_ex])
+            ) <= big_m * (2 - x_or - x_ex)
+
+        def _constraint_line_flow_upper(model, line_id, sub_bus_or, sub_bus_ex):
+            sub_or, sub_ex = model.line_ids_to_sub_ids[line_id]
+            bus_or = model.sub_ids_to_bus_ids[sub_or][sub_bus_or - 1]
+            bus_ex = model.sub_ids_to_bus_ids[sub_ex][sub_bus_ex - 1]
+
+            if sub_bus_or == 1:
+                x_or = model.x_line_or_1[line_id]
+            else:
+                x_or = model.x_line_or_2[line_id]
+
+            if sub_bus_ex == 1:
+                x_ex = model.x_line_ex_1[line_id]
+            else:
+                x_ex = model.x_line_ex_2[line_id]
+
+            big_m = model.line_b[line_id] * 2 * self.params.delta_max
+            return -big_m * (2 - x_or - x_ex) <= model.line_sub_bus_flow[
+                line_id, sub_bus_or, sub_bus_ex
+            ] - (model.line_b[line_id] * (model.delta[bus_or] - model.delta[bus_ex]))
+
+        self.model.constraint_line_flow_lower = pyo.Constraint(
+            self.model.line_set,
+            self.model.sub_bus_set,
+            self.model.sub_bus_set,
+            rule=_constraint_line_flow_lower,
+        )
+
+        self.model.constraint_line_flow_upper = pyo.Constraint(
+            self.model.line_set,
+            self.model.sub_bus_set,
+            self.model.sub_bus_set,
+            rule=_constraint_line_flow_upper,
+        )
+
+    def __build_constraint_line_bounds(self):
+        def _constraint_line_flow_bounds_or_lower(
+            model, line_id, sub_bus_or, sub_bus_ex
+        ):
+            if sub_bus_or == 1:
+                x_or = model.x_line_or_1[line_id]
+            else:
+                x_or = model.x_line_or_2[line_id]
+
+            return (
+                -model.line_flow_max[line_id] * x_or
+                <= model.line_sub_bus_flow[line_id, sub_bus_or, sub_bus_ex]
             )
 
-        self.model.constraint_line_flow = pyo.Constraint(
-            self.model.line_set, rule=_constraint_line_flow
+        def _constraint_line_flow_bounds_or_upper(
+            model, line_id, sub_bus_or, sub_bus_ex
+        ):
+            if sub_bus_or == 1:
+                x_or = model.x_line_or_1[line_id]
+            else:
+                x_or = model.x_line_or_2[line_id]
+
+            return (
+                model.line_sub_bus_flow[line_id, sub_bus_or, sub_bus_ex]
+                <= model.line_flow_max[line_id] * x_or
+            )
+
+        def _constraint_line_flow_bounds_ex_lower(
+            model, line_id, sub_bus_or, sub_bus_ex
+        ):
+            if sub_bus_ex == 1:
+                x_ex = model.x_line_ex_1[line_id]
+            else:
+                x_ex = model.x_line_ex_2[line_id]
+
+            return (
+                -model.line_flow_max[line_id] * x_ex
+                <= model.line_sub_bus_flow[line_id, sub_bus_or, sub_bus_ex]
+            )
+
+        def _constraint_line_flow_bounds_ex_upper(
+            model, line_id, sub_bus_or, sub_bus_ex
+        ):
+            if sub_bus_ex == 1:
+                x_ex = model.x_line_ex_1[line_id]
+            else:
+                x_ex = model.x_line_ex_2[line_id]
+
+            return (
+                model.line_sub_bus_flow[line_id, sub_bus_or, sub_bus_ex]
+                <= model.line_flow_max[line_id] * x_ex
+            )
+
+        self.model.constraint_line_flow_bounds_or_lower = pyo.Constraint(
+            self.model.line_set,
+            self.model.sub_bus_set,
+            self.model.sub_bus_set,
+            rule=_constraint_line_flow_bounds_or_lower,
+        )
+        self.model.constraint_line_flow_bounds_or_upper = pyo.Constraint(
+            self.model.line_set,
+            self.model.sub_bus_set,
+            self.model.sub_bus_set,
+            rule=_constraint_line_flow_bounds_or_upper,
+        )
+
+        self.model.constraint_line_flow_bounds_ex_lower = pyo.Constraint(
+            self.model.line_set,
+            self.model.sub_bus_set,
+            self.model.sub_bus_set,
+            rule=_constraint_line_flow_bounds_ex_lower,
+        )
+        self.model.constraint_line_flow_bounds_ex_upper = pyo.Constraint(
+            self.model.line_set,
+            self.model.sub_bus_set,
+            self.model.sub_bus_set,
+            rule=_constraint_line_flow_bounds_ex_upper,
         )
 
     def _build_constraint_bus_balance(self):
         # Bus power balance constraints
         def _constraint_bus_balance(model, bus_id):
             sub_id = model.bus_ids_to_sub_ids[bus_id]
+            sub_bus = model.bus_ids_to_sub_bus_ids[bus_id]
 
             # Generator bus injections
             bus_gen_ids = model.sub_ids_to_gen_ids[sub_id]
             if len(bus_gen_ids):
                 bus_gen_p = [
-                    model.gen_p[gen_id] * (1 - model.x_gen[gen_id])
-                    if model.bus_ids_to_sub_bus_ids[bus_id] == 1
-                    else model.gen_p[gen_id] * model.x_gen[gen_id]
-                    for gen_id in bus_gen_ids
+                    model.gen_sub_bus_p[gen_id, sub_bus] for gen_id in bus_gen_ids
                 ]
                 sum_gen_p = sum(bus_gen_p)
             else:
@@ -416,7 +612,7 @@ class TopologyOptimizationDCOPF(StandardDCOPF):
             if len(bus_load_ids):
                 bus_load_p = [
                     model.load_p[load_id] * (1 - model.x_load[load_id])
-                    if model.bus_ids_to_sub_bus_ids[bus_id] == 1
+                    if sub_bus == 1
                     else model.load_p[load_id] * model.x_load[load_id]
                     for load_id in bus_load_ids
                 ]
@@ -426,17 +622,23 @@ class TopologyOptimizationDCOPF(StandardDCOPF):
 
             # Power line flows
             flows_out = [
-                model.line_flow[line_id] * model.x_line_or_1[line_id]
-                if model.bus_ids_to_sub_bus_ids[bus_id] == 1
-                else model.line_flow[line_id] * model.x_line_or_2[line_id]
+                sum(
+                    [
+                        model.line_sub_bus_flow[line_id, sub_bus, sub_bus_ex]
+                        for sub_bus_ex in model.sub_bus_set
+                    ]
+                )
                 for line_id in model.line_set
                 if sub_id == model.line_ids_to_sub_ids[line_id][0]
             ]
 
             flows_in = [
-                model.line_flow[line_id] * model.x_line_ex_1[line_id]
-                if model.bus_ids_to_sub_bus_ids[bus_id] == 1
-                else model.line_flow[line_id] * model.x_line_ex_2[line_id]
+                sum(
+                    [
+                        model.line_sub_bus_flow[line_id, sub_bus_or, sub_bus]
+                        for sub_bus_or in model.sub_bus_set
+                    ]
+                )
                 for line_id in model.line_set
                 if sub_id == model.line_ids_to_sub_ids[line_id][1]
             ]
@@ -858,18 +1060,18 @@ class TopologyOptimizationDCOPF(StandardDCOPF):
 
     def _build_objective(self):
         assert (
-            self.params.gen_cost
-            or self.params.lin_line_margins
-            or self.params.quad_line_margins
-            or self.params.lin_gen_penalty
-            or self.params.quad_gen_penalty
+            self.params.obj_gen_cost
+            or self.params.obj_lin_line_margins
+            or self.params.obj_quad_line_margins
+            or self.params.obj_lin_gen_penalty
+            or self.params.obj_quad_gen_penalty
         )
 
         assert not (
-            self.params.lin_line_margins and self.params.quad_line_margins
+            self.params.obj_lin_line_margins and self.params.obj_quad_line_margins
         )  # Only one penalty on margins
         assert not (
-            self.params.lin_gen_penalty and self.params.quad_gen_penalty
+            self.params.obj_lin_gen_penalty and self.params.obj_quad_gen_penalty
         )  # Only one penalty on generators
 
         """
@@ -907,7 +1109,7 @@ class TopologyOptimizationDCOPF(StandardDCOPF):
 
         # Linear penalty on generator power productions
         def _objective_lin_gen_penalty(model):
-            return self.params.lambda_gen * model.mu_gen
+            return self.params.obj_lambda_gen * model.mu_gen
 
         # Quadratic penalty on generator power productions
         def _objective_quad_gen_penalty(model):
@@ -922,7 +1124,7 @@ class TopologyOptimizationDCOPF(StandardDCOPF):
                 ]
             )
 
-            return self.params.lambda_gen / len(model.gen_set) * penalty
+            return self.params.obj_lambda_gen / len(model.gen_set) * penalty
 
         """
             Penalize actions. Prefer do-nothing actions.
@@ -942,24 +1144,24 @@ class TopologyOptimizationDCOPF(StandardDCOPF):
                     ]
                 )
 
-            return self.params.lambda_action * penalty
+            return self.params.obj_lambda_action * penalty
 
         def _objective(model):
             obj = 0
-            if self.params.gen_cost:
+            if self.params.obj_gen_cost:
                 obj = obj + _objective_gen_p(model)
 
-            if self.params.lin_line_margins:
+            if self.params.obj_lin_line_margins:
                 obj = obj + _objective_lin_line_margins(model)
-            elif self.params.quad_line_margins:
+            elif self.params.obj_quad_line_margins:
                 obj = obj + _objective_quad_line_margins(model)
 
-            if self.params.lin_gen_penalty:
+            if self.params.obj_lin_gen_penalty:
                 obj = obj + _objective_lin_gen_penalty(model)
-            elif self.params.quad_gen_penalty:
+            elif self.params.obj_quad_gen_penalty:
                 obj = obj + _objective_quad_gen_penalty(model)
 
-            if self.params.lambda_action > 0.0:
+            if self.params.obj_lambda_action > 0.0:
                 obj = obj + _objective_action_penalty(model)
 
             return obj
@@ -970,12 +1172,12 @@ class TopologyOptimizationDCOPF(StandardDCOPF):
         SOLVE FUNCTIONS.
     """
 
-    def solve(self, verbose=False, time_limit=10):
+    def solve(self, verbose=False):
         self._solve(
             verbose=verbose,
             tol=self.params.tol,
             warm_start=self.params.warm_start,
-            time_limit=time_limit,
+            time_limit=self.params.time_limit,
         )
 
         # Solution status

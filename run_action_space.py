@@ -14,10 +14,6 @@ def parse_arguments():
     parser.add_argument(
         "--env_name", default=Const.ENV_NAME, type=str, help="Environment name."
     )
-    # parser.add_argument(
-    #     "--env_name", default="l2rpn_2019", type=str, help="Environment name."
-    # )
-    # parser.add_argument("--env_name", default="l2rpn_2019", type=str, help="Environment name.")
     parser.add_argument(
         "--action_cls", default="topology_dispatch", type=str, help="Action class used."
     )

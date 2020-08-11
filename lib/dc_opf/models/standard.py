@@ -506,8 +506,14 @@ class StandardDCOPF(UnitConverter, PyomoMixin):
                 "MIPGap": tol,
                 "TimeLimit": time_limit,
             }
+        elif self.params.solver_name == "mosek":
+            options = {
+                "dparam.basis_rel_tol_s": tol,
+                "dparam.mio_rel_gap_const": tol,
+                "dparam.optimizer_max_time": time_limit,
+            }
         else:
-            options = {}
+            options = dict()
 
         if self.params.solver_name != "glpk":
             self.solver_status = self.solver.solve(
@@ -518,12 +524,12 @@ class StandardDCOPF(UnitConverter, PyomoMixin):
                 self.model, tee=verbose, options=options
             )
 
-    def solve(self, verbose=False, time_limit=7):
+    def solve(self, verbose=False):
         self._solve(
             verbose=verbose,
             tol=self.params.tol,
             warm_start=self.params.warm_start,
-            time_limit=time_limit,
+            time_limit=self.params.time_limit,
         )
 
         # Save standard DC-OPF variable results

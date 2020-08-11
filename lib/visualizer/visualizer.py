@@ -1,7 +1,7 @@
 import json
 
-import numpy as np
 import matplotlib as mpl
+import numpy as np
 from matplotlib import style
 
 from ..constants import Constants as Const
@@ -76,7 +76,7 @@ def print_dict(dictionary):
     print(json.dumps(dictionary, indent=1, cls=NumpyEncoder))
 
 
-def pprint(*args, shift=35):
+def pprint(*args, shift=40):
     if len(args) < 2:
         raise ValueError("At least two arguments for printing.")
 

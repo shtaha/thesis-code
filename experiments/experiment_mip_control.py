@@ -60,8 +60,8 @@ class ExperimentMIPControl(ExperimentBase):
 
     @staticmethod
     def _runner_mip_control(env, agent, n_steps=100, verbose=False):
-        np.random.seed(0)
-        env.seed(0)
+        np.random.seed(1)
+        env.seed(1)
 
         measurements = []
 
@@ -375,3 +375,36 @@ class ExperimentMIPControl(ExperimentBase):
             file_name = prefix + "-" + file_name
 
         data.to_csv(os.path.join(save_dir, file_name + ".csv"))
+
+    @staticmethod
+    def compare_agents(save_dir):
+        measurements = dict()
+
+        for file in os.listdir(save_dir):
+            if "measurements.csv" in file:
+                agent_name = file[: -len("-measurements.csv")]
+                measurements[agent_name] = pd.read_csv(os.path.join(save_dir, file))
+
+        fig_env, ax_env = plt.subplots(figsize=Const.FIG_SIZE)
+        fig_est, ax_est = plt.subplots(figsize=Const.FIG_SIZE)
+        for agent_name in measurements:
+            name = agent_name.replace("-", " ").capitalize()
+            t = measurements[agent_name]["t"]
+            ax_env.plot(t, measurements[agent_name]["reward"], label=name)
+            ax_est.plot(t, measurements[agent_name]["reward-est"], label=name)
+
+        ax_env.set_xlabel("Time step t")
+        ax_env.set_ylabel("Reward")
+        ax_est.set_xlabel("Time step t")
+        ax_est.set_ylabel("Reward")
+        ax_env.legend()
+        ax_est.legend()
+        fig_env.suptitle("Agent Comparison - Reward ENV")
+        fig_est.suptitle("Agent Comparison - Reward EST")
+
+        fig_env.show()
+        fig_est.show()
+        if save_dir:
+            file_name = "agents-rewards"
+            fig_env.savefig(os.path.join(save_dir, file_name + "-env"))
+            fig_est.savefig(os.path.join(save_dir, file_name + "-est"))
