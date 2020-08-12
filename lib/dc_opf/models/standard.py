@@ -512,6 +512,11 @@ class StandardDCOPF(UnitConverter, PyomoMixin):
                 "dparam.mio_rel_gap_const": tol,
                 "dparam.optimizer_max_time": time_limit,
             }
+        elif self.params.solver_name == "glpk":
+            options = {
+                "tmlim": time_limit,
+                "mipgap": tol,
+            }
         else:
             options = dict()
 

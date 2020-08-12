@@ -4,6 +4,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import seaborn as sns
+from PyPDF2 import PdfFileMerger
 
 from lib.constants import Constants as Const
 from lib.visualizer import print_action, pprint
@@ -20,7 +21,7 @@ class ExperimentMIPControl(ExperimentBase):
         self.print_experiment("Control Performance")
 
         agent.set_kwargs()
-        agent.print_agent(default=True)
+        agent.print_agent(default=verbose)
 
         measurements = self._runner_mip_control(
             env, agent, n_steps=n_steps, verbose=verbose
@@ -59,23 +60,102 @@ class ExperimentMIPControl(ExperimentBase):
         )
 
     @staticmethod
+    def aggregate_by_agent(agent, save_dir, delete_file=True):
+        merger = PdfFileMerger()
+        agent_name = agent.name.replace(" ", "-").lower()
+        agent_files = []
+        for timing in [
+            "rewards",
+            "distance",
+            "rho",
+            "generators_p",
+            "generators_q",
+            "generators_q-p",
+            "power-flows",
+            "production-demand",
+            "action-ids",
+        ]:
+            file = agent_name + "-" + timing + ".pdf"
+            if file in os.listdir(save_dir):
+                f = open(os.path.join(save_dir, file), "rb")
+                agent_files.append((file, f))
+                merger.append(f)
+
+        with open(
+            os.path.join(save_dir, "_" + agent_name + "-performance.pdf"), "wb"
+        ) as f:
+            merger.write(f)
+
+        for file, f in agent_files:
+            f.close()
+            try:
+                if delete_file:
+                    os.remove(os.path.join(save_dir, file))
+            except PermissionError as e:
+                print(e)
+
+    @staticmethod
+    def compare_agents(save_dir):
+        measurements = dict()
+
+        for file in os.listdir(save_dir):
+            if "measurements.csv" in file:
+                agent_name = file[: -len("-measurements.csv")]
+                measurements[agent_name] = pd.read_csv(os.path.join(save_dir, file))
+
+        fig_env, ax_env = plt.subplots(figsize=Const.FIG_SIZE)
+        fig_est, ax_est = plt.subplots(figsize=Const.FIG_SIZE)
+        fig_dist, ax_dist = plt.subplots(figsize=Const.FIG_SIZE)
+        for agent_name in measurements:
+            name = agent_name.replace("-", " ").capitalize()
+            t = measurements[agent_name]["t"]
+            ax_env.plot(t, measurements[agent_name]["reward"], label=name)
+            ax_est.plot(t, measurements[agent_name]["reward-est"], label=name)
+            ax_dist.plot(t, measurements[agent_name]["dist"], label=name)
+
+        ax_env.set_xlabel("Time step t")
+        ax_env.set_ylabel("Reward")
+        ax_est.set_xlabel("Time step t")
+        ax_est.set_ylabel("Reward")
+        ax_dist.set_xlabel("Time step t")
+        ax_dist.set_ylabel("Unitary action distance to reference topology")
+        ax_env.legend()
+        ax_est.legend()
+        ax_dist.legend()
+        fig_env.suptitle("Agent Comparison - Reward ENV")
+        fig_est.suptitle("Agent Comparison - Reward EST")
+        fig_dist.suptitle("Agent Comparison - Distance to reference topology")
+
+        fig_env.show()
+        fig_est.show()
+        fig_dist.show()
+        if save_dir:
+            file_name = "agents-"
+            fig_env.savefig(os.path.join(save_dir, file_name + "rewards-env"))
+            fig_est.savefig(os.path.join(save_dir, file_name + "rewards-est"))
+            fig_dist.savefig(os.path.join(save_dir, file_name + "distances"))
+
+    @staticmethod
     def _runner_mip_control(env, agent, n_steps=100, verbose=False):
-        np.random.seed(1)
-        env.seed(1)
+        np.random.seed(0)
+        env.seed(0)
+        env.chronics_handler.tell_id(-1)
 
         measurements = []
 
         e = 0  # Episode counter
         done = False
         obs = env.reset()
+        pprint("    - Chronic:", env.chronics_handler.get_id())
         agent.reset(obs=obs)
         for t in range(n_steps):
             action = agent.act(obs, done)
             obs_next, reward, done, info = env.step(action)
 
-            pprint("Step:", t)
-            if verbose:
-                print_action(action)
+            if t % 100 == 0 or verbose:
+                pprint("Step:", t)
+                if verbose:
+                    print_action(action)
 
             reward_est = agent.get_reward()
             res_line, res_gen = agent.compare_with_observation(
@@ -132,8 +212,8 @@ class ExperimentMIPControl(ExperimentBase):
 
             obs = obs_next
             if done:
-                print("DONE\n")
                 obs = env.reset()
+                pprint("    - Done! Next chronic:", env.chronics_handler.get_id())
                 agent.reset(obs=obs)
                 e = e + 1
 
@@ -181,8 +261,8 @@ class ExperimentMIPControl(ExperimentBase):
             fig.savefig(os.path.join(save_dir, file_name))
 
         fig, ax = plt.subplots(figsize=Const.FIG_SIZE)
-        ax.plot(t, measurements["rho"], label="Rho - EST")
         ax.plot(t, measurements["env-rho"], label="Rho - ENV")
+        ax.plot(t, measurements["rho"], label="Rho - EST")
         ax.plot(
             t, np.ones_like(t), c="tab:red", linestyle="-", linewidth=2,
         )
@@ -375,36 +455,3 @@ class ExperimentMIPControl(ExperimentBase):
             file_name = prefix + "-" + file_name
 
         data.to_csv(os.path.join(save_dir, file_name + ".csv"))
-
-    @staticmethod
-    def compare_agents(save_dir):
-        measurements = dict()
-
-        for file in os.listdir(save_dir):
-            if "measurements.csv" in file:
-                agent_name = file[: -len("-measurements.csv")]
-                measurements[agent_name] = pd.read_csv(os.path.join(save_dir, file))
-
-        fig_env, ax_env = plt.subplots(figsize=Const.FIG_SIZE)
-        fig_est, ax_est = plt.subplots(figsize=Const.FIG_SIZE)
-        for agent_name in measurements:
-            name = agent_name.replace("-", " ").capitalize()
-            t = measurements[agent_name]["t"]
-            ax_env.plot(t, measurements[agent_name]["reward"], label=name)
-            ax_est.plot(t, measurements[agent_name]["reward-est"], label=name)
-
-        ax_env.set_xlabel("Time step t")
-        ax_env.set_ylabel("Reward")
-        ax_est.set_xlabel("Time step t")
-        ax_est.set_ylabel("Reward")
-        ax_env.legend()
-        ax_est.legend()
-        fig_env.suptitle("Agent Comparison - Reward ENV")
-        fig_est.suptitle("Agent Comparison - Reward EST")
-
-        fig_env.show()
-        fig_est.show()
-        if save_dir:
-            file_name = "agents-rewards"
-            fig_env.savefig(os.path.join(save_dir, file_name + "-env"))
-            fig_est.savefig(os.path.join(save_dir, file_name + "-est"))

@@ -4,9 +4,10 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import seaborn as sns
+from PyPDF2 import PdfFileMerger
 
 from lib.constants import Constants as Const
-from lib.visualizer import print_info, print_action, pprint
+from lib.visualizer import pprint
 from .experiment_base import ExperimentBase
 
 
@@ -14,7 +15,7 @@ class ExperimentDCOPFTiming(ExperimentBase):
     def compare_by_solver_and_parts(
         self, case, agent, save_dir, solver_names, n_bins=25, **kwargs,
     ):
-        file_name = "solvers"
+        file_name = agent.name.replace(" ", "-").lower() + "-solvers"
         case_name = self._get_case_name(case)
 
         self.print_experiment("Timing - Solver and Parts")
@@ -29,7 +30,7 @@ class ExperimentDCOPFTiming(ExperimentBase):
             times=[data_dict[param]["solve"] for param in data_dict],
             labels=[param.capitalize() for param in data_dict],
             n_bins=n_bins,
-            title=f"{case_name} - MIP solver comparison",
+            title=f"{case_name}, {agent.name} - MIP solver comparison",
             legend_title="Solver",
             save_path=os.path.join(save_dir, file_name),
         )
@@ -39,9 +40,11 @@ class ExperimentDCOPFTiming(ExperimentBase):
             times=[data_parts[part] for part in data_parts.columns],
             labels=[part.capitalize() for part in data_parts.columns],
             n_bins=n_bins,
-            title=f"{case_name} - Step parts comparison",
+            title=f"{case_name}, {agent.name} - Step parts comparison",
             legend_title="Part",
-            save_path=os.path.join(save_dir, "parts"),
+            save_path=os.path.join(
+                save_dir, agent.name.replace(" ", "-").lower() + "-parts"
+            ),
         )
 
         self._save_csv(
@@ -49,7 +52,7 @@ class ExperimentDCOPFTiming(ExperimentBase):
         )
 
     def compare_by_tolerance(self, case, agent, save_dir, tols, n_bins=25, **kwargs):
-        file_name = "tolerances"
+        file_name = agent.name.replace(" ", "-").lower() + "-tolerances"
         case_name = self._get_case_name(case)
 
         self.print_experiment("Timing - Tolerances")
@@ -64,7 +67,7 @@ class ExperimentDCOPFTiming(ExperimentBase):
             times=[data_dict[param]["solve"] for param in data_dict],
             labels=[param for param in data_dict],
             n_bins=n_bins,
-            title=f"{case_name} - Duality gap tolerance comparison",
+            title=f"{case_name}, {agent.name} - Duality gap tolerance comparison",
             legend_title="Tolerance",
             save_path=os.path.join(save_dir, file_name),
         )
@@ -74,7 +77,7 @@ class ExperimentDCOPFTiming(ExperimentBase):
         )
 
     def compare_by_delta_max(self, case, agent, save_dir, deltas, n_bins=25, **kwargs):
-        file_name = "deltas"
+        file_name = agent.name.replace(" ", "-").lower() + "-deltas"
         case_name = self._get_case_name(case)
 
         self.print_experiment("Timing - Bounds on bus voltage angles")
@@ -89,8 +92,8 @@ class ExperimentDCOPFTiming(ExperimentBase):
             times=[data_dict[param]["solve"] for param in data_dict],
             labels=[param for param in data_dict],
             n_bins=n_bins,
-            title=f"{case_name} - Bounds on bus voltage angles",
-            legend_title=r"$\delta^{\text{max}}$",
+            title=f"{case_name}, {agent.name} - Bounds on bus voltage angles",
+            legend_title=r"$\delta^{\mathrm{max}}$",
             save_path=os.path.join(save_dir, file_name),
         )
 
@@ -101,7 +104,7 @@ class ExperimentDCOPFTiming(ExperimentBase):
     def compare_by_switching_limits(
         self, case, agent, save_dir, switch_limits, n_bins=25, **kwargs,
     ):
-        file_name = "limits"
+        file_name = agent.name.replace(" ", "-").lower() + "-limits"
         case_name = self._get_case_name(case)
 
         self.print_experiment("Timing - Maximum switching limit")
@@ -123,7 +126,7 @@ class ExperimentDCOPFTiming(ExperimentBase):
             times=[data_dict[param]["solve"] for param in data_dict],
             labels=[param for param in data_dict],
             n_bins=n_bins,
-            title=f"{case_name} - Maximum switching limit comparison",
+            title=f"{case_name}, {agent.name} - Maximum switching limit comparison",
             legend_title=r"$\alpha > \beta$" r"$n_\mathcal{P}$-$n_\mathcal{P}$",
             save_path=os.path.join(save_dir, file_name),
         )
@@ -135,7 +138,7 @@ class ExperimentDCOPFTiming(ExperimentBase):
     def compare_by_constraint_activations(
         self, case, agent, save_dir, constraint_activations, n_bins=25, **kwargs,
     ):
-        file_name = "activations"
+        file_name = agent.name.replace(" ", "-").lower() + "-activations"
         case_name = self._get_case_name(case)
 
         self.print_experiment("Timing - Constraint Activations")
@@ -150,7 +153,7 @@ class ExperimentDCOPFTiming(ExperimentBase):
             times=[data_dict[param]["solve"] for param in data_dict],
             labels=[param for param in data_dict],
             n_bins=n_bins,
-            title=f"{case_name} - Constraint activations comparison",
+            title=f"{case_name}, {agent.name} - Constraint activations comparison",
             legend_title="Constraint deactivation",
             save_path=os.path.join(save_dir, file_name),
         )
@@ -162,7 +165,7 @@ class ExperimentDCOPFTiming(ExperimentBase):
     def compare_by_objective(
         self, case, agent, save_dir, objectives, n_bins=25, **kwargs,
     ):
-        file_name = "objectives"
+        file_name = agent.name.replace(" ", "-").lower() + "-objectives"
         case_name = self._get_case_name(case)
 
         self.print_experiment("Timing - Objective")
@@ -177,7 +180,7 @@ class ExperimentDCOPFTiming(ExperimentBase):
             times=[data_dict[param]["solve"] for param in data_dict],
             labels=[param for param in data_dict],
             n_bins=n_bins,
-            title=f"{case_name} - Objective function comparison",
+            title=f"{case_name}, {agent.name} - Objective function comparison",
             legend_title="Objective modification",
             save_path=os.path.join(save_dir, file_name),
         )
@@ -189,7 +192,7 @@ class ExperimentDCOPFTiming(ExperimentBase):
     def compare_by_warmstart(
         self, case, agent, save_dir, n_bins=25, **kwargs,
     ):
-        file_name = "warmstart"
+        file_name = agent.name.replace(" ", "-").lower() + "-warmstart"
         case_name = self._get_case_name(case)
 
         self.print_experiment("Timing - Warm Start")
@@ -204,7 +207,7 @@ class ExperimentDCOPFTiming(ExperimentBase):
             times=[data_dict[param]["solve"] for param in data_dict],
             labels=[param for param in data_dict],
             n_bins=n_bins,
-            title=f"{case_name} - Solver warm start comparison",
+            title=f"{case_name}, {agent.name} - Solver warm start comparison",
             legend_title="Warm start",
             save_path=os.path.join(save_dir, file_name),
         )
@@ -214,7 +217,7 @@ class ExperimentDCOPFTiming(ExperimentBase):
         )
 
     def compare_by_lambda(self, case, agent, save_dir, lambdas, n_bins=25, **kwargs):
-        file_name = "lambdas"
+        file_name = agent.name.replace(" ", "-").lower() + "-lambdas"
         case_name = self._get_case_name(case)
 
         self.print_experiment("Timing - Penalty scaling")
@@ -222,14 +225,14 @@ class ExperimentDCOPFTiming(ExperimentBase):
         data_dict = dict()
         for lambd in lambdas:
             data_dict[str(lambd)] = self._runner_timing(
-                env=case.env, agent=agent, lambd=lambd, **kwargs,
+                env=case.env, agent=agent, obj_lambda_gen=lambd, **kwargs,
             )
 
         self._plot_and_save(
             times=[data_dict[param]["solve"] for param in data_dict],
             labels=[param for param in data_dict],
             n_bins=n_bins,
-            title=f"{case_name} - Penalty scaling comparison",
+            title=f"{case_name}, {agent.name} - Penalty scaling comparison",
             legend_title="Regularization parameter",
             save_path=os.path.join(save_dir, file_name),
         )
@@ -244,28 +247,24 @@ class ExperimentDCOPFTiming(ExperimentBase):
     ):
         np.random.seed(0)
         env.seed(0)
+        env.chronics_handler.tell_id(-1)
 
         agent.set_kwargs(**kwargs)
-        agent.print_agent(default=True)
+        agent.print_agent(default=verbose)
 
         timings = []
 
         done = False
         obs = env.reset()
+        pprint("    - Chronic:", env.chronics_handler.get_id())
         for t in range(n_timings):
             action, timing = agent.act_with_timing(obs, done)
 
             obs_next, reward, done, info = env.step(action)
-
-            pprint("Step:", t)
-            if verbose:
-                print_action(action)
-                print_info(info, done, reward)
-
             obs = obs_next
             if done:
-                print("DONE\n")
                 obs = env.reset()
+                pprint("    - Done! Next chronic:", env.chronics_handler.get_id())
 
             timings.append(timing)
 
@@ -314,3 +313,38 @@ class ExperimentDCOPFTiming(ExperimentBase):
                 save_path = save_path + ".csv"
 
             data.to_csv(save_path)
+
+    @staticmethod
+    def aggregate_by_agent(agent, save_dir, delete_file=True):
+        merger = PdfFileMerger()
+
+        agent_name = agent.name.replace(" ", "-").lower()
+        agent_files = []
+
+        for timing in [
+            "solvers",
+            "parts",
+            "tolerances",
+            "deltas",
+            "limits",
+            "activations",
+            "objectives",
+            "warmstart",
+            "lambdas",
+        ]:
+            file = agent_name + "-" + timing + ".pdf"
+            if file in os.listdir(save_dir):
+                f = open(os.path.join(save_dir, file), "rb")
+                agent_files.append((file, f))
+                merger.append(f)
+
+        with open(os.path.join(save_dir, "_" + agent_name + "-timing.pdf"), "wb") as f:
+            merger.write(f)
+
+        for file, f in agent_files:
+            f.close()
+            try:
+                if delete_file:
+                    os.remove(os.path.join(save_dir, file))
+            except PermissionError as e:
+                print(e)

@@ -15,9 +15,11 @@ from lib.rewards import RewardL2RPN2019
 from lib.visualizer import pprint
 
 
-def make_agent(agent_name, case, action_set, delta_max_p_pu=0.10, **kwargs):
+def make_agent(agent_name, case, action_set, delta_max_p_pu=0.10, horizon=2, **kwargs):
     if agent_name == "multi_mip_agent":
-        agent = AgentMultistepMIPTest(case=case, action_set=action_set, **kwargs)
+        agent = AgentMultistepMIPTest(
+            case=case, action_set=action_set, horizon=horizon, **kwargs
+        )
     elif agent_name == "mixed_multi_agent":
         agent = AgentMixedMultistepTest(case=case, action_set=action_set, **kwargs)
     elif agent_name == "mip_agent":
@@ -126,7 +128,7 @@ class AgentMIPTest(BaseAgentTest):
 
         self.default_kwargs = kwargs
         self.model_kwargs = self.default_kwargs
-        self.params = SinglestepTopologyParameters(self.model_kwargs)
+        self.params = SinglestepTopologyParameters(**self.model_kwargs)
 
         self.forecasts = None
         self.reset(obs=None)
@@ -139,7 +141,7 @@ class AgentMIPTest(BaseAgentTest):
 
     def set_kwargs(self, **kwargs):
         self.model_kwargs = {**self.default_kwargs, **kwargs}
-        self.params = SinglestepTopologyParameters(self.model_kwargs)
+        self.params = SinglestepTopologyParameters(**self.model_kwargs)
 
     def act(self, observation, reward, done=False):
         self._update(observation, reset=done)
@@ -258,11 +260,12 @@ class AgentMIPTest(BaseAgentTest):
                 )
         else:
             for arg in self.model_kwargs:
-                pprint(
-                    f"  - {arg}:",
-                    "{:<10}".format(str(self.model_kwargs[arg])),
-                    default_kwargs[arg],
-                )
+                if arg in default_kwargs:
+                    pprint(
+                        f"  - {arg}:",
+                        "{:<10}".format(str(self.model_kwargs[arg])),
+                        default_kwargs[arg],
+                    )
         print("-" * 80)
 
 

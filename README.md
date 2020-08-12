@@ -4,11 +4,11 @@
 
 ## Install
     
-    pip install numpy numba matplotlib pandas seaborn  # Basics     
+    pip install numpy numba matplotlib pandas seaborn PyPDF2 # Basics     
     pip install grid2op
 
     pip install pyomo
-    pip install glpk mosek  # Solvers
+    pip install glpk mosek gurobi # Solvers
     
     pip tensorflow jupyter pygame
     

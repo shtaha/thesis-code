@@ -28,13 +28,16 @@ kwargs = dict(horizon=2)
 
 for case_name in ["rte_case5_example", "l2rpn_2019", "l2rpn_wcci_2020"]:
     for env_dc in [False, True]:
+        if not env_dc:
+            continue
+
         env_pf = "dc" if env_dc else "ac"
         case_save_dir = make_dir(os.path.join(save_dir, f"{case_name}-{env_pf}"))
 
         for agent_name in [
-            "multi_mip_agent",
             "mip_agent",
             "do_nothing_agent",
+            "multi_mip_agent",
             # "mixed_agent",
             # "augmented_agent",
             # "greedy_agent",
@@ -44,11 +47,11 @@ for case_name in ["rte_case5_example", "l2rpn_2019", "l2rpn_wcci_2020"]:
             """
 
             if case_name == "l2rpn_wcci_2020":
-                n_timings = 5
-                n_steps = 5
+                n_timings = 50
+                n_steps = 2000
             else:
-                n_timings = 5
-                n_steps = 5
+                n_timings = 100
+                n_steps = 5000
 
             if agent_name == "greedy_agent" and case_name != "rte_case5_example":
                 continue
@@ -74,7 +77,7 @@ for case_name in ["rte_case5_example", "l2rpn_2019", "l2rpn_wcci_2020"]:
                 reward_class=grid2op.Reward.L2RPNReward,
                 param=parameters,
             )
-            case = load_case(case_name, env=env, verbose=True)
+            case = load_case(case_name, env=env, verbose=False)
 
             """
                 Initialize action set.
@@ -97,12 +100,12 @@ for case_name in ["rte_case5_example", "l2rpn_2019", "l2rpn_wcci_2020"]:
             """
                 Experiments.
             """
-            if do_experiment_timing and agent_name != "do_nothing_agent" and not env_dc:
+            if do_experiment_timing and agent_name != "do_nothing_agent" and env_dc:
                 experiment_timing.compare_by_solver_and_parts(
                     case=case,
                     agent=agent,
                     save_dir=case_save_dir,
-                    solver_names=("gurobi", "mosek"),
+                    solver_names=("glpk", "gurobi", "mosek"),
                     n_timings=n_timings,
                     verbose=verbose,
                 )
@@ -209,6 +212,7 @@ for case_name in ["rte_case5_example", "l2rpn_2019", "l2rpn_wcci_2020"]:
                     verbose=verbose,
                 )
 
+                experiment_timing.aggregate_by_agent(agent, save_dir=case_save_dir)
             if do_experiment_control:
                 experiment_control.evaluate_performance(
                     case=case,
@@ -216,6 +220,9 @@ for case_name in ["rte_case5_example", "l2rpn_2019", "l2rpn_wcci_2020"]:
                     save_dir=case_save_dir,
                     n_steps=n_steps,
                     verbose=verbose,
+                )
+                experiment_control.aggregate_by_agent(
+                    agent=agent, save_dir=case_save_dir
                 )
 
         if do_experiment_control:

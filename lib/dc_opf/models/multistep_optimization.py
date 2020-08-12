@@ -74,11 +74,16 @@ class MultistepTopologyDCOPF(StandardDCOPF):
     """
 
     def _build_parameters_injections(self):
-        init_value = (
+        init_value = np.atleast_2d(
             self.forecasts.load_p
             if self.forecasts
             else np.tile(self.load.p_pu, (self.params.horizon, 1))
         )
+        if init_value.shape[0] != self.params.horizon or init_value.shape[1] != len(
+            self.load.index
+        ):
+            init_value = np.tile(self.load.p_pu, (self.params.horizon, 1))
+
         self.model.load_p = pyo.Param(
             self.model.time_set,
             self.model.load_set,
