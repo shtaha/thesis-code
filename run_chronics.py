@@ -9,11 +9,12 @@ from lib.constants import Constants as Const
 from lib.data_utils import read_bz2_to_dataframe
 from lib.dc_opf import CaseParameters
 from lib.visualizer import Visualizer
+from lib.dc_opf import Forecasts
 
 visualizer = Visualizer()
 
-case_name = "rte_case5_example"
-# case_name = "l2rpn_2019"
+# case_name = "rte_case5_example"
+case_name = "l2rpn_2019"
 # case_name = "l2rpn_wcci_2020"
 
 parameters = CaseParameters(case_name=case_name, env_dc=False)
@@ -26,18 +27,21 @@ env: Environment = grid2op.make_from_dataset_path(
     reward_class=grid2op.Reward.L2RPNReward,
 )
 
-for key in dir(env.chronics_handler):
-    if not key.startswith("__"):
-        print(key)
-
 print(env.chronics_handler.path)
 print(env.chronics_handler.get_id())
 print(env.chronics_handler.time_interval)
 
 colors = Const.COLORS
-for e in range(5):
+for e in range(20):
     env.reset()
-    print("\ne", e)
+    print("\ne", e, env.chronics_handler.get_name())
+
+    if env.chronics_handler.get_name() != "0018":
+        continue
+
+    forecasts = Forecasts(
+        env=env, t=env.chronics_handler.real_data.data.current_index, horizon=1,
+    )
 
     load_p_chronics = env.chronics_handler.real_data.data.load_p
     prod_p_chronics = env.chronics_handler.real_data.data.prod_p
@@ -107,8 +111,10 @@ for e in range(5):
         load_p_step[t, :] = obs.load_p
         prod_p_step[t, :] = obs.prod_p
 
-        if t > 500:
-            break
+        forecasts.t = forecasts.t + 1
+
+        # if t > 500:
+        #     break
 
     load_p_step = load_p_step[:t, :]
     prod_p_step = prod_p_step[:t, :]
@@ -130,7 +136,8 @@ for e in range(5):
         )
         ax.plot(
             t_chronics,
-            load_p_chronics[:, load_id],
+            forecasts.data.load_p[:, load_id],
+            # load_p_chronics[:, load_id],
             label=f"Load-{load_id} C",
             c=color,
             linestyle="-.",
@@ -160,7 +167,8 @@ for e in range(5):
         )
         ax.plot(
             t_chronics,
-            prod_p_chronics[:, gen_id],
+            forecasts.data.prod_p[:, gen_id],
+            # prod_p_chronics[:, gen_id],
             label=f"Gen-{gen_id} C",
             c=color,
             linestyle="-.",

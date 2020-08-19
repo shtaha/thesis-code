@@ -63,6 +63,9 @@ class TopologyOptimizationDCOPF(StandardDCOPF):
         init_value = (
             self.forecasts.load_p.flatten() if self.forecasts else self.load.p_pu
         )
+        if init_value.shape[0] != len(self.load.index):
+            init_value = self.load.p_pu
+
         self.model.load_p = pyo.Param(
             self.model.load_set,
             initialize=self._create_map_ids_to_values(self.load.index, init_value),
@@ -73,6 +76,9 @@ class TopologyOptimizationDCOPF(StandardDCOPF):
             init_value = (
                 self.forecasts.prod_p.flatten() if self.forecasts else self.gen.p_pu
             )
+            if init_value.shape[0] != len(self.gen.index):
+                init_value = self.gen.p_pu
+
             self.model.gen_p_ref = pyo.Param(
                 self.model.gen_set,
                 initialize=self._create_map_ids_to_values(self.gen.index, init_value),

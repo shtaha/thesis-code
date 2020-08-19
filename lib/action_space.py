@@ -1,8 +1,11 @@
 import collections
 import itertools
+import os
 from typing import List, Tuple, Dict
 
+import grid2op
 import numpy as np
+import pandas as pd
 from grid2op.Action import (
     TopologyAction,
     TopologyAndDispatchAction,
@@ -255,6 +258,7 @@ class ActionSpaceGenerator(object):
                 "line_id": line_id,
                 "action_type": "line_status_set",
                 "line_set": "disconnect",
+                "configuration": "(-1, -1)",
             }
 
             actions.append(action)
@@ -270,6 +274,7 @@ class ActionSpaceGenerator(object):
                         "line_id": line_id,
                         "action_type": "line_status_set",
                         "line_set": "reconnect",
+                        "configuration": f"({bus_or}, {bus_ex})",
                     }
 
                     actions.append(action)
@@ -318,47 +323,6 @@ class ActionSpaceGenerator(object):
 
         assert len(actions) == len(actions_info)
         return actions, actions_info
-
-    """
-    Redispatching actions.
-    """
-
-    def get_all_unitary_redispatch(self, n_redispatch, verbose=False):
-        """
-
-        """
-        actions = list()
-        n_gen = len(self.action_space.gen_redispatchable)
-
-        for gen_id in range(n_gen):
-            # Skip non-dispatchable generators
-            if self.action_space.gen_redispatchable[gen_id]:
-                # Create evenly spaced positive interval
-                ramps_up = np.linspace(
-                    0.0, self.action_space.gen_max_ramp_up[gen_id], num=5
-                )
-                # print("ramps up", ramps_up)
-                ramps_up = ramps_up[1:]  # Exclude redispatch of 0MW
-
-                # Create evenly spaced negative interval
-                ramps_down = np.linspace(
-                    -self.action_space.gen_max_ramp_down[gen_id], 0.0, num=5
-                )
-                ramps_down = ramps_down[:-1]  # Exclude redispatch of 0MW
-                # print("ramps down", ramps_down)
-
-                # Merge intervals
-                ramps = np.append(ramps_up, ramps_down)
-                # print("ramps", ramps)
-                # Create ramp up actions
-                for ramp in ramps:
-                    action = self.action_space({"redispatch": [(gen_id, ramp)]})
-                    # print(action)
-                    actions.append(action)
-            else:
-                print(f"Generator id {gen_id} is non-dispatchable.")
-
-        return actions, []
 
     """
     Filtering functions.
@@ -511,7 +475,7 @@ class ActionSpaceGenerator(object):
         check = np.equal(counts_per_bus, 1).any()
         return check
 
-    def get_topology_action_set(self, verbose=False):
+    def get_topology_action_set(self, save_dir=None, verbose=False):
         (
             actions_line_set,
             actions_line_set_info,
@@ -533,5 +497,36 @@ class ActionSpaceGenerator(object):
 
         if verbose:
             pprint("Action set:", len(actions), "\n")
+
+        if save_dir:
+            actions_descriptions = []
+            for action_id, info in enumerate(actions_info):
+                line_id = np.nan
+                sub_id = np.nan
+                conf = ""
+                if info:
+                    if info["action_type"] == "line_status_set":
+                        line_id = int(info["line_id"])
+                        conf = info["configuration"]
+                    elif info["action_type"] == "topology_set":
+                        sub_id = int(info["sub_id"])
+                        conf = "-".join([str(b) for b in info["topology"]])
+                else:
+                    conf = "Do-nothing"
+
+                actions_descriptions.append(
+                    {
+                        "action_id": action_id,
+                        "line_id": line_id,
+                        "sub_id": sub_id,
+                        "conf": conf,
+                    }
+                )
+
+            actions_descriptions = pd.DataFrame(actions_descriptions)
+            with open(
+                os.path.join(save_dir, f"{self.env.name}-action_space.csv"), "w"
+            ) as f:
+                f.write(actions_descriptions.to_string())
 
         return actions, actions_info

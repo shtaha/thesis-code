@@ -20,7 +20,6 @@ class ExperimentMIPControl(ExperimentBase):
 
         self.print_experiment("Control Performance")
 
-        agent.set_kwargs()
         agent.print_agent(default=verbose)
 
         measurements = self._runner_mip_control(
@@ -153,14 +152,13 @@ class ExperimentMIPControl(ExperimentBase):
             obs_next, reward, done, info = env.step(action)
 
             if t % 100 == 0 or verbose:
-                pprint("Step:", t)
-                if verbose:
-                    print_action(action)
+                pprint("Step:", env.chronics_handler.real_data.data.current_index)
 
             reward_est = agent.get_reward()
             res_line, res_gen = agent.compare_with_observation(
                 obs_next, verbose=verbose
             )
+
             dist, dist_status, dist_sub = agent.distance_to_ref_topology(
                 obs_next.topo_vect, obs_next.line_status
             )

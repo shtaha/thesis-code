@@ -5,6 +5,7 @@ import numpy as np
 import pandas as pd
 import seaborn as sns
 from PyPDF2 import PdfFileMerger
+from tqdm import tqdm
 
 from lib.constants import Constants as Const
 from lib.visualizer import pprint
@@ -35,7 +36,7 @@ class ExperimentDCOPFTiming(ExperimentBase):
             save_path=os.path.join(save_dir, file_name),
         )
 
-        data_parts = data_dict[solver_names[0]]
+        data_parts = data_dict[list(solver_names).index("gurobi")]
         self._plot_and_save(
             times=[data_parts[part] for part in data_parts.columns],
             labels=[part.capitalize() for part in data_parts.columns],
@@ -119,6 +120,7 @@ class ExperimentDCOPFTiming(ExperimentBase):
                 agent=agent,
                 n_max_line_status_changed=n_max_line_status_changed,
                 n_max_sub_changed=n_max_sub_changed,
+                unitary_action=False,  # Otherwise
                 **kwargs,
             )
 
@@ -127,7 +129,7 @@ class ExperimentDCOPFTiming(ExperimentBase):
             labels=[param for param in data_dict],
             n_bins=n_bins,
             title=f"{case_name}, {agent.name} - Maximum switching limit comparison",
-            legend_title=r"$\alpha > \beta$" r"$n_\mathcal{P}$-$n_\mathcal{P}$",
+            legend_title=r"$n_\mathcal{P}$-$n_\mathcal{S}$",
             save_path=os.path.join(save_dir, file_name),
         )
 
@@ -257,7 +259,7 @@ class ExperimentDCOPFTiming(ExperimentBase):
         done = False
         obs = env.reset()
         pprint("    - Chronic:", env.chronics_handler.get_id())
-        for t in range(n_timings):
+        for _ in tqdm(range(n_timings)):
             action, timing = agent.act_with_timing(obs, done)
 
             obs_next, reward, done, info = env.step(action)

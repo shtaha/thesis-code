@@ -7,26 +7,26 @@ from experiments import ExperimentDCOPFTiming, ExperimentMIPControl
 from lib.action_space import ActionSpaceGenerator
 from lib.agents import make_agent
 from lib.constants import Constants as Const
-from lib.data_utils import create_results_dir, make_dir
+from lib.data_utils import make_dir
 from lib.dc_opf import load_case, CaseParameters
 from lib.run_utils import create_logger
 from lib.visualizer import Visualizer
 
 visualizer = Visualizer()
 
-save_dir = create_results_dir(Const.RESULTS_DIR)
-create_logger(save_dir=save_dir)
+save_dir = make_dir(os.path.join(Const.RESULTS_DIR, "timing-performance"))
 
-do_experiment_timing = True
+do_experiment_timing = False
 do_experiment_control = True
 verbose = False
 
 experiment_timing = ExperimentDCOPFTiming()
 experiment_control = ExperimentMIPControl()
 
-kwargs = dict(horizon=2)
+kwargs = dict(horizon=2, obj_lambda_action=0.02)
 
-for case_name in ["rte_case5_example", "l2rpn_2019", "l2rpn_wcci_2020"]:
+# for case_name in ["rte_case5_example", "l2rpn_2019", "l2rpn_wcci_2020"]:
+for case_name in ["l2rpn_wcci_2020", "l2rpn_wcci_2020"]:
     for env_dc in [False, True]:
         if not env_dc:
             continue
@@ -34,10 +34,12 @@ for case_name in ["rte_case5_example", "l2rpn_2019", "l2rpn_wcci_2020"]:
         env_pf = "dc" if env_dc else "ac"
         case_save_dir = make_dir(os.path.join(save_dir, f"{case_name}-{env_pf}"))
 
+        create_logger(logger_name=f"{case_name}-{env_pf}", save_dir=save_dir)
+
         for agent_name in [
             "mip_agent",
             "do_nothing_agent",
-            "multi_mip_agent",
+            # "multi_mip_agent",
             # "mixed_agent",
             # "augmented_agent",
             # "greedy_agent",
@@ -48,10 +50,10 @@ for case_name in ["rte_case5_example", "l2rpn_2019", "l2rpn_wcci_2020"]:
 
             if case_name == "l2rpn_wcci_2020":
                 n_timings = 50
-                n_steps = 2000
+                n_steps = 50
             else:
-                n_timings = 100
-                n_steps = 5000
+                n_timings = 10
+                n_steps = 100
 
             if agent_name == "greedy_agent" and case_name != "rte_case5_example":
                 continue

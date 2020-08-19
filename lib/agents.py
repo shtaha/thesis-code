@@ -21,7 +21,9 @@ def make_agent(agent_name, case, action_set, delta_max_p_pu=0.10, horizon=2, **k
             case=case, action_set=action_set, horizon=horizon, **kwargs
         )
     elif agent_name == "mixed_multi_agent":
-        agent = AgentMixedMultistepTest(case=case, action_set=action_set, **kwargs)
+        agent = AgentMixedMultistepTest(
+            case=case, action_set=action_set, horizon=horizon, **kwargs
+        )
     elif agent_name == "mip_agent":
         agent = AgentMIPTest(case=case, action_set=action_set, **kwargs)
     elif agent_name == "mixed_agent":
@@ -50,6 +52,107 @@ class BaseAgentTest:
         self.grid = GridDCOPF(
             case, base_unit_v=case.base_unit_v, base_unit_p=case.base_unit_p
         )
+
+        # Grid precision
+        if case.name == "Case RTE 5":
+            self.grid.line["max_p_pu"] = [
+                106.00150299072265625,
+                38.867218017578125,
+                28.26706695556640625,
+                28.26706695556640625,
+                106.0015106201171875,
+                51.96152496337890625,
+                51.96152496337890625,
+                27.7128143310546875,
+            ]
+        elif case.name == "Case L2RPN 2019":
+            self.grid.line["max_p_pu"] = [
+                183.8731231689453125,
+                73.7669219970703125,
+                74.86887359619140625,
+                65.43161773681640625,
+                38.25582122802734375,
+                82.47359466552734375,
+                52.29061126708984375,
+                54.646198272705078125,
+                25.980762481689453125,
+                44.721553802490234375,
+                22.72505950927734375,
+                17.978687286376953125,
+                37.557476043701171875,
+                0,
+                61.26263427734375,
+                36.684833526611328125,
+                30.32820892333984375,
+                27.9899425506591796875,
+                17.3205089569091796875,
+                26.89875030517578125,
+            ]
+        elif case.name == "Case L2RPN 2020 WCCI":
+            self.grid.line["max_p_pu"] = [
+                10.34969615936279296875,
+                49.04752349853515625,
+                81.554656982421875,
+                52.223407745361328125,
+                153.9566802978515625,
+                82.9648895263671875,
+                76.391754150390625,
+                72.041534423828125,
+                84.55583953857421875,
+                70.16881561279296875,
+                73.47566986083984375,
+                41.18366241455078125,
+                90.69977569580078125,
+                30.571044921875,
+                41.805126190185546875,
+                39.06516265869140625,
+                20.9405651092529296875,
+                48.832401275634765625,
+                143.7423858642578125,
+                143.7423858642578125,
+                23.591571807861328125,
+                42.976337432861328125,
+                49.509838104248046875,
+                61.413707733154296875,
+                39.390995025634765625,
+                23.9979095458984375,
+                30.0451908111572265625,
+                71.21840667724609375,
+                70.1432037353515625,
+                23.014141082763671875,
+                90.1365814208984375,
+                40.21715545654296875,
+                31.84604644775390625,
+                36.95296478271484375,
+                22.0413532257080078125,
+                25.5037555694580078125,
+                38.01557159423828125,
+                33.177227020263671875,
+                34.84120941162109375,
+                22.015750885009765625,
+                80.17830657958984375,
+                50.815425872802734375,
+                153.36785888671875,
+                52.94020843505859375,
+                59.8265228271484375,
+                236.513275146484375,
+                308.75799560546875,
+                392.236785888671875,
+                149.2463226318359375,
+                149.2463226318359375,
+                67.35284423828125,
+                56.984966278076171875,
+                82.6358642578125,
+                81.41123199462890625,
+                78.13031768798828125,
+                215.18048095703125,
+                236.513275146484375,
+                163.85028076171875,
+                387.6204833984375,
+            ]
+            self.grid.trafo["max_p_pu"] = self.grid.line["max_p_pu"][
+                self.grid.line["trafo"].values
+            ]
 
     def act(self, observation, reward, done=False):
         pass
@@ -235,16 +338,14 @@ class AgentMIPTest(BaseAgentTest):
             np.divide(res_line["rho"] - res_line["env_rho"], res_line["env_rho"] + 1e-9)
         )
 
-        res_line["max_p_pu_ac"] = np.sqrt(
-            np.abs(
-                np.square(res_line["max_p_pu"])
-                - np.square(self.grid.convert_mw_to_per_unit(obs.q_or))
-            )
-        )
-
         if verbose:
             print("GEN\n" + res_gen.to_string())
             print("LINE\n" + res_line.to_string())
+
+            # Grid precision - Manual
+            # from decimal import Decimal
+            # max_p = list(res_line["env_max_p_pu"].values)
+            # print("[" + ", ".join([str(Decimal(float(d))) for d in max_p]) + "]")
 
         return res_line, res_gen
 
@@ -759,7 +860,7 @@ class AgentMixedMultistepTest(BaseAgentTest):
         cond = self.agent_dn.obs_next.rho.max() > 0.95
         if cond:
             self.agent = self.agent_mip
-            pprint("    - Agent:", self.agent.name)
+            # pprint("    - Agent:", self.agent.name)
             action = self.agent_mip.act(observation, reward, done)
 
         return action
