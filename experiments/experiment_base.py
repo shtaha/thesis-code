@@ -1,10 +1,10 @@
 import os
 
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
-from lib.chronics import get_sorted_chronics
-from lib.rl_utils import compute_returns
+from lib.constants import Constants as Const
 from lib.visualizer import pprint
 
 
@@ -33,143 +33,6 @@ class ExperimentBase:
             except PermissionError as e:
                 print(e)
 
-
-class ExperimentFailureSwitchingMixin:
-    @staticmethod
-    def _runner(case, env, agent, done_chronic_indices=()):
-        chronics_dir, chronics, chronics_sorted = get_sorted_chronics(
-            case=case, env=env
-        )
-        pprint("Chronics:", chronics_dir)
-
-        np.random.seed(0)
-        env.seed(0)
-
-        chronic_data = []
-        for chronic_idx, chronic in enumerate(chronics_sorted):
-            if chronic_idx in done_chronic_indices:
-                continue
-
-            chronic_org_idx = chronics.index(chronic)
-            env.chronics_handler.tell_id(chronic_org_idx - 1)  # Set chronic id
-
-            obs = env.reset()
-            chronic_len = env.chronics_handler.real_data.data.max_iter + 1
-
-            chronic_name = "/".join(
-                os.path.normpath(env.chronics_handler.get_id()).split(os.sep)[-3:]
-            )
-
-            pprint("    - Chronic:", chronic_name)
-
-            if case.name == "Case L2RPN 2020 WCCI":
-                chronic_name = env.chronics_handler.get_name()[
-                    -len("Scenario_") :
-                ].split("_")
-            else:
-                chronic_name = env.chronics_handler.get_name()
-
-            done = False
-            t = 0
-            actions = []
-            actions_info = []
-            rewards = []
-            rewards_sim = []
-            rewards_dn = []
-            observations = []
-            distances = []
-            distances_status = []
-            distances_sub = []
-            time_steps = []
-            while not done:
-                action = agent.act(obs, done)
-                obs_next, reward, done, info = env.step(action)
-
-                t = env.chronics_handler.real_data.data.current_index
-
-                if done:
-                    pprint("        - Length:", f"{t}/{chronic_len}")
-
-                action_id = [
-                    idx
-                    for idx, agent_action in enumerate(agent.actions)
-                    if action == agent_action
-                ]
-
-                if "unitary_action" in agent.model_kwargs:
-                    if not agent.model_kwargs["unitary_action"] and len(action_id) != 1:
-                        action_id = np.nan
-                    else:
-                        assert (
-                            len(action_id) == 1
-                        )  # Exactly one action should be equivalent
-                        action_id = int(action_id[0])
-                else:
-                    assert (
-                        len(action_id) == 1
-                    )  # Exactly one action should be equivalent
-                    action_id = int(action_id[0])
-
-                # Compare to DN action
-                if action != agent.actions[0]:
-                    # obs_sim, reward_sim, done_sim, info_sim = obs.simulate(action)
-                    reward_sim = reward
-                    obs_dn, reward_dn, done_dn, info_dn = obs.simulate(agent.actions[0])
-                else:
-                    reward_sim, reward_dn = 0.0, 0.0
-
-                dist, dist_status, dist_sub = agent.distance_to_ref_topology(
-                    obs_next.topo_vect, obs_next.line_status
-                )
-
-                obs = obs_next
-                actions.append(action_id)
-                actions_info.append(action.as_dict())
-                time_steps.append(t)
-
-                rewards.append(float(reward))
-                rewards_sim.append(float(reward_sim))
-                rewards_dn.append(float(reward_dn))
-
-                observations.append(obs)
-                distances.append(dist)
-                distances_status.append(dist_status)
-                distances_sub.append(dist_sub)
-
-            total_return = compute_returns(rewards)[0]
-            chronic_data.append(
-                {
-                    "chronic_idx": chronic_idx,
-                    "chronic_org_idx": chronic_org_idx,
-                    "chronic_name": chronic_name,
-                    "actions": actions,
-                    "actions_info": actions_info,
-                    "time_steps": time_steps,
-                    "rewards": rewards,
-                    "rewards_sim": rewards_sim,
-                    "rewards_dn": rewards_dn,
-                    "return": total_return,
-                    "chronic_length": chronic_len,
-                    "duration": t,
-                    "observations": observations,
-                    "distances": distances,
-                    "distances_status": distances_status,
-                    "distances_sub": distances_sub,
-                }
-            )
-
-            # TODO: Delete break
-            # if chronic_idx > 0:
-            #     break
-
-        if chronic_data:
-            chronic_data = pd.DataFrame(chronic_data)
-            chronic_data = chronic_data.set_index("chronic_idx")
-        else:
-            chronic_data = pd.DataFrame()
-
-        return chronic_data
-
     @staticmethod
     def _load_done_chronics(file_name, save_dir=None):
         if save_dir and file_name + ".pkl" in os.listdir(save_dir):
@@ -186,7 +49,87 @@ class ExperimentFailureSwitchingMixin:
         if save_dir:
             chronic_data.to_pickle(os.path.join(save_dir, file_name + ".pkl"))
 
-            if "observations" in chronic_data.columns:
-                chronic_data = chronic_data.drop("observations", axis=1)
 
-            chronic_data.to_csv(os.path.join(save_dir, file_name + ".csv"))
+class ExperimentMixin:
+    @staticmethod
+    def _plot_rewards(
+        chronic_data, case_name, chronic_idx, chronic_name, save_dir=None
+    ):
+        fig, ax = plt.subplots(figsize=Const.FIG_SIZE)
+        for agent_name in chronic_data:
+            if chronic_idx in chronic_data[agent_name].index:
+                t = chronic_data[agent_name].loc[chronic_idx]["time_steps"]
+                rewards = chronic_data[agent_name].loc[chronic_idx]["rewards"]
+
+                ax.plot(
+                    t, rewards, linewidth=1, label=agent_name,
+                )
+
+        ax.set_xlabel("Time step t")
+        ax.set_ylabel("Reward")
+        ax.legend()
+        fig.suptitle(f"{case_name} - Chronic {chronic_name}")
+
+        if save_dir:
+            file_name = f"agents-chronic-" + "{:05}".format(chronic_idx) + "-"
+            fig.savefig(os.path.join(save_dir, file_name + "rewards"))
+        plt.close(fig)
+
+    @staticmethod
+    def _plot_relative_flow(
+        chronic_data, case_name, chronic_idx, chronic_name, save_dir=None
+    ):
+        fig, ax = plt.subplots(figsize=Const.FIG_SIZE)
+        for agent_name in chronic_data:
+            if chronic_idx in chronic_data[agent_name].index:
+                t = chronic_data[agent_name].loc[chronic_idx]["time_steps"]
+                rho = [
+                    np.max(obs.rho)
+                    for obs in chronic_data[agent_name].loc[chronic_idx]["observations"]
+                ]
+
+                ax.plot(
+                    t, rho, linewidth=1, label=agent_name,
+                )
+
+        ax.set_xlabel("Time step t")
+        ax.set_ylabel(r"Relative flow $\rho$")
+        ax.legend()
+        ax.set_ylim([0.0, 2.0])
+        fig.suptitle(f"{case_name} - Chronic {chronic_name}")
+
+        if save_dir:
+            file_name = f"agents-chronic-" + "{:05}".format(chronic_idx) + "-"
+            fig.savefig(os.path.join(save_dir, file_name + "rhos"))
+        plt.close(fig)
+
+    @staticmethod
+    def _plot_distances(
+        chronic_data, dist, ylabel, case_name, chronic_idx, chronic_name, save_dir
+    ):
+        fig, ax = plt.subplots(figsize=Const.FIG_SIZE)
+        for agent_name in chronic_data:
+            if chronic_idx in chronic_data[agent_name].index:
+                t = chronic_data[agent_name].loc[chronic_idx]["time_steps"]
+                distances = chronic_data[agent_name].loc[chronic_idx][dist]
+                actions = chronic_data[agent_name].loc[chronic_idx]["actions"]
+
+                ax.plot(
+                    t, distances, linewidth=0.5, label=agent_name,
+                )
+
+                for i in range(len(t)):
+                    action_id = actions[i]
+                    if action_id != 0:
+                        ax.text(t[i], distances[i], str(action_id), fontsize=2)
+
+        ax.set_xlabel("Time step t")
+        ax.set_ylabel(ylabel)
+        ax.legend()
+        fig.suptitle(f"{case_name} - Chronic {chronic_name}")
+
+        if save_dir:
+            file_name = f"agents-chronic-" + "{:05}".format(chronic_idx) + "-"
+            fig.savefig(os.path.join(save_dir, file_name + dist))
+        plt.close(fig)
+

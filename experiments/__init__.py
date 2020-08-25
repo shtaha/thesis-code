@@ -1,4 +1,4 @@
-from .experiment_failure import ExperimentFailure
-from .experiment_mip_control import ExperimentMIPControl
+from .experiment_behaviour import ExperimentBehaviour
+from .experiment_performance import ExperimentPerformance
 from .experiment_switching import ExperimentSwitching
-from .experiment_timing_dc_opf import ExperimentDCOPFTiming
+from .experiment_timing import ExperimentDCOPFTiming

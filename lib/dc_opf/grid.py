@@ -107,6 +107,7 @@ class GridDCOPF(UnitConverter, TopologyConverter):
 
         self.slack_bus = None
         self.fixed_elements = None
+        self.big_m = None
 
         self.build_grid()
 
@@ -361,6 +362,10 @@ class GridDCOPF(UnitConverter, TopologyConverter):
         self.sub["cooldown"] = 0
         self.line["cooldown"] = 0
 
+        # Maintenance
+        self.line["next_maintenance"] = -1
+        self.line["duration_maintenance"] = 0
+
         # Fill with 0 if no value
         self.line["p_pu"] = self.line["p_pu"].fillna(0)
         self.gen["p_pu"] = self.gen["p_pu"].fillna(0)
@@ -379,6 +384,9 @@ class GridDCOPF(UnitConverter, TopologyConverter):
 
         # Substation topological symmetry
         self.fixed_elements = self.get_fixed_elements()
+
+        # Big-M for power flows
+        self.big_m = 1.0
 
     def print_grid(self):
         print("\nGRID\n")
@@ -598,6 +606,10 @@ class GridDCOPF(UnitConverter, TopologyConverter):
         # if time = 0, then action is legal
         self.sub["cooldown"] = obs_new.time_before_cooldown_sub
         self.line["cooldown"] = obs_new.time_before_cooldown_line
+
+        # Maintenance
+        self.line["next_maintenance"] = obs_new.time_next_maintenance
+        self.line["duration_maintenance"] = obs_new.duration_next_maintenance
 
         if not reset:
             assert np.equal(

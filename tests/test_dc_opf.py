@@ -646,7 +646,7 @@ class TestTopologyOptimizationDCOPF(unittest.TestCase):
 
                 if (
                     model.params.obj_gen_cost
-                    and model.params.obj_quad_line_margins
+                    and model.params.obj_reward_quad
                     and model.params.solver_name != "glpk"
                 ):
                     objective = (
@@ -657,8 +657,7 @@ class TestTopologyOptimizationDCOPF(unittest.TestCase):
                         ).sum()
                     )
                 elif (
-                    model.params.obj_quad_line_margins
-                    and model.params.solver_name != "glpk"
+                    model.params.obj_reward_quad and model.params.solver_name != "glpk"
                 ):
                     objective = +np.square(
                         model.convert_mw_to_per_unit(grid_tmp.res_line["p_from_mw"])
@@ -741,8 +740,9 @@ class TestTopologyOptimizationDCOPF(unittest.TestCase):
 
         params = SinglestepTopologyParameters(
             obj_gen_cost=True,
-            obj_lin_line_margins=False,
-            obj_quad_line_margins=True,
+            obj_reward_lin=False,
+            obj_reward_quad=True,
+            obj_reward_max=False,
             obj_lin_gen_penalty=False,
             obj_quad_gen_penalty=False,
         )
@@ -766,8 +766,9 @@ class TestTopologyOptimizationDCOPF(unittest.TestCase):
         params = MultistepTopologyParameters(
             horizon=1,
             obj_gen_cost=True,
-            obj_lin_line_margins=False,
-            obj_quad_line_margins=True,
+            obj_reward_lin=False,
+            obj_reward_quad=True,
+            obj_reward_max=False,
             obj_lin_gen_penalty=False,
             obj_quad_gen_penalty=False,
         )

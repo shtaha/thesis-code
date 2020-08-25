@@ -2,6 +2,7 @@ from timeit import default_timer as timer
 
 import numpy as np
 import pandas as pd
+import pyomo.environ as pyo
 
 from lib.dc_opf import (
     GridDCOPF,
@@ -80,7 +81,7 @@ class BaseAgentTest:
                 22.72505950927734375,
                 17.978687286376953125,
                 37.557476043701171875,
-                0,
+                67.636581,
                 61.26263427734375,
                 36.684833526611328125,
                 30.32820892333984375,
@@ -263,6 +264,58 @@ class AgentMIPTest(BaseAgentTest):
         action = self.grid.convert_mip_to_topology_vector(self.result, observation)[-1]
         return action
 
+    def act_with_objectives(self, observation, reward, done=False):
+        self._update(observation, reset=done)
+
+        """
+            Agent
+        """
+        self.model = TopologyOptimizationDCOPF(
+            self.case.env.name,
+            grid=self.grid,
+            forecasts=self.forecasts,
+            base_unit_p=self.grid.base_unit_p,
+            base_unit_v=self.grid.base_unit_v,
+            params=self.params,
+        )
+
+        self.model.build_model()
+        self.result = self.model.solve()
+        action = self.grid.convert_mip_to_topology_vector(self.result, observation)[-1]
+
+        """
+            Do-nothing agent
+        """
+        model_dn = TopologyOptimizationDCOPF(
+            self.case.env.name,
+            grid=self.grid,
+            forecasts=self.forecasts,
+            base_unit_p=self.grid.base_unit_p,
+            base_unit_v=self.grid.base_unit_v,
+            params=self.params,
+        )
+        model_dn.build_model_do_nothing()
+
+        result_dn = model_dn.solve()
+        action_dn = self.grid.convert_mip_to_topology_vector(result_dn, observation)[-1]
+
+        # Check if Do-nothing
+        assert action_dn == self.actions[0]
+
+        model = self.model.model
+        model_dn = model_dn.model
+
+        info = dict(
+            obj=pyo.value(model.objective),
+            mu_max=pyo.value(model.mu_max),
+            mu_gent=pyo.value(model.mu_gen),
+            obj_dn=pyo.value(model_dn.objective),
+            mu_max_dn=pyo.value(model_dn.mu_max),
+            mu_gen_dn=pyo.value(model_dn.mu_gen),
+        )
+
+        return action, info
+
     def act_with_timing(self, observation, reward, done=False):
         timing = dict()
         start_build = timer()
@@ -379,6 +432,7 @@ class AgentDoNothingTest(BaseAgentTest):
         self.reward = None
         self.obs_next = None
         self.done = None
+        self.result = None
 
         self.actions, self.actions_info = action_set
 
@@ -392,6 +446,9 @@ class AgentDoNothingTest(BaseAgentTest):
         self.done = done
 
         return action
+
+    def act_with_objectives(self, observation, reward, done=False):
+        return self.act(observation, reward, done=done), {}
 
     def act_with_timing(self, observation, reward, done=False):
         timing = dict()
@@ -453,6 +510,210 @@ class AgentDoNothingTest(BaseAgentTest):
             print("LINE\n" + res_line.to_string())
 
         return res_line, res_gen
+
+
+class AgentMultistepMIPTest(BaseAgentTest):
+    """
+        Agent class used for experimentation and testing.
+    """
+
+    def __init__(
+        self, case, action_set, reward_class=RewardL2RPN2019, **kwargs,
+    ):
+        BaseAgentTest.__init__(self, name="Agent Multistep MIP", case=case)
+
+        self.default_kwargs = kwargs
+        self.model_kwargs = self.default_kwargs
+        self.params = MultistepTopologyParameters(**self.model_kwargs)
+
+        self.forecasts = None
+        self.reset(obs=None)
+
+        self.model = None
+        self.result = None
+
+        self.reward_function = reward_class()
+        self.actions, self.actions_info = action_set
+
+    def set_kwargs(self, **kwargs):
+        self.model_kwargs = {**self.default_kwargs, **kwargs}
+        self.params = MultistepTopologyParameters(**self.model_kwargs)
+
+    def act(self, observation, reward, done=False):
+        self._update(observation, reset=done)
+        self.model = MultistepTopologyDCOPF(
+            self.case.env.name,
+            grid=self.grid,
+            forecasts=self.forecasts,
+            base_unit_p=self.grid.base_unit_p,
+            base_unit_v=self.grid.base_unit_v,
+            params=self.params,
+        )
+
+        self.model.build_model()
+        self.result = self.model.solve()
+
+        action = self.grid.convert_mip_to_topology_vector(self.result, observation)[-1]
+        return action
+
+    def act_with_objectives(self, observation, reward, done=False):
+        self._update(observation, reset=done)
+
+        """
+            Agent
+        """
+        self.model = MultistepTopologyDCOPF(
+            self.case.env.name,
+            grid=self.grid,
+            forecasts=self.forecasts,
+            base_unit_p=self.grid.base_unit_p,
+            base_unit_v=self.grid.base_unit_v,
+            params=self.params,
+        )
+
+        self.model.build_model()
+        self.result = self.model.solve()
+        action = self.grid.convert_mip_to_topology_vector(self.result, observation)[-1]
+
+        """
+            Do-nothing agent
+        """
+        model_dn = MultistepTopologyDCOPF(
+            self.case.env.name,
+            grid=self.grid,
+            forecasts=self.forecasts,
+            base_unit_p=self.grid.base_unit_p,
+            base_unit_v=self.grid.base_unit_v,
+            params=self.params,
+        )
+        model_dn.build_model_do_nothing()
+        result_dn = model_dn.solve()
+        action_dn = self.grid.convert_mip_to_topology_vector(result_dn, observation)[-1]
+
+        # Check if Do-nothing
+        assert action_dn == self.actions[0]
+
+        model = self.model.model
+        model_dn = model_dn.model
+
+        info = dict(
+            obj=pyo.value(model.objective),
+            mu_max=self.model._access_pyomo_variable(model.mu_max),
+            mu_gen=self.model._access_pyomo_variable(model.mu_gen),
+            obj_dn=pyo.value(model_dn.objective),
+            mu_max_dn=self.model._access_pyomo_variable(model_dn.mu_max),
+            mu_gen_dn=self.model._access_pyomo_variable(model_dn.mu_gen),
+        )
+
+        return action, info
+
+    def act_with_timing(self, observation, reward, done=False):
+        timing = dict()
+        start_build = timer()
+        self._update(observation, reset=done)
+
+        self.model = MultistepTopologyDCOPF(
+            f"{self.case.env.name} DC OPF Topology Optimization",
+            grid=self.grid,
+            forecasts=self.forecasts,
+            base_unit_p=self.grid.base_unit_p,
+            base_unit_v=self.grid.base_unit_v,
+            params=self.params,
+        )
+        self.model.build_model()
+        timing["build"] = timer() - start_build
+
+        start_solve = timer()
+        self.result = self.model.solve(verbose=False)
+
+        action = self.grid.convert_mip_to_topology_vector(self.result, observation)[-1]
+        timing["solve"] = timer() - start_solve
+
+        return action, timing
+
+    def reset(self, obs):
+        if self.params.forecasts:
+            self.forecasts = Forecasts(
+                env=self.env,
+                t=self.env.chronics_handler.real_data.data.current_index,
+                horizon=self.params.horizon,
+            )
+
+    def _update(self, obs, reset=False, verbose=False):
+        if self.params.forecasts:
+            self.forecasts.t = self.forecasts.t + 1
+        self.grid.update(obs, reset=reset, verbose=verbose)
+
+    def get_reward(self):
+        return self.reward_function.from_mip_solution(self.result)
+
+    def compare_with_observation(self, obs, verbose=False):
+        res_gen = self.result["res_gen"][["min_p_pu", "p_pu", "max_p_pu"]].copy()
+        res_gen["env_p_pu"] = self.grid.convert_mw_to_per_unit(obs.prod_p)
+        res_gen["diff"] = np.divide(
+            np.abs(res_gen["p_pu"] - res_gen["env_p_pu"]), res_gen["env_p_pu"] + 1e-9
+        )
+
+        res_line = self.result["res_line"][["p_pu", "max_p_pu"]].copy()
+        res_line = res_line.append(
+            self.result["res_trafo"][["p_pu", "max_p_pu"]].copy(), ignore_index=True
+        )
+        res_line["env_p_pu"] = self.grid.convert_mw_to_per_unit(
+            obs.p_or
+        )  # i_pu * v_pu * sqrt(3)
+        res_line["env_max_p_pu"] = np.abs(
+            np.divide(res_line["env_p_pu"], obs.rho + 1e-9)
+        )
+
+        res_line["rho"] = self.result["res_line"]["loading_percent"] / 100.0
+        res_line["env_rho"] = obs.rho
+
+        # Reactive/Active power ratio
+        res_gen["env_q_pu"] = self.grid.convert_mw_to_per_unit(obs.prod_q)
+        res_gen["env_gen_q_p"] = np.greater(obs.prod_p, 1e-9).astype(float) * np.abs(
+            np.divide(obs.prod_q, obs.prod_p + 1e-9)
+        )
+
+        res_line["diff_p"] = np.abs(
+            np.divide(
+                res_line["p_pu"] - res_line["env_p_pu"], res_line["env_p_pu"] + 1e-9
+            )
+        )
+        res_line["diff_rho"] = np.abs(
+            np.divide(res_line["rho"] - res_line["env_rho"], res_line["env_rho"] + 1e-9)
+        )
+
+        res_line["max_p_pu_ac"] = np.sqrt(
+            np.abs(
+                np.square(res_line["max_p_pu"])
+                - np.square(self.grid.convert_mw_to_per_unit(obs.q_or))
+            )
+        )
+
+        if verbose:
+            print("GEN\n" + res_gen.to_string())
+            print("LINE\n" + res_line.to_string())
+
+        return res_line, res_gen
+
+    def print_agent(self, default=False):
+        default_kwargs = MultistepTopologyParameters().to_dict()
+
+        pprint("\nAgent:", self.name, shift=36)
+        if default:
+            for arg in default_kwargs:
+                model_arg = self.model_kwargs[arg] if arg in self.model_kwargs else "-"
+                pprint(
+                    f"  - {arg}:", "{:<10}".format(str(model_arg)), default_kwargs[arg]
+                )
+        else:
+            for arg in self.model_kwargs:
+                pprint(
+                    f"  - {arg}:",
+                    "{:<10}".format(str(self.model_kwargs[arg])),
+                    default_kwargs[arg],
+                )
+        print("-" * 80)
 
 
 class AgentMixedTest(BaseAgentTest):
@@ -676,159 +937,6 @@ class AgentMIPAugmentedTest(AgentMIPTest):
     def _update(self, obs, reset=False, verbose=False):
         self.grid.update(obs, reset=reset, verbose=verbose)
         self.grid_inc.update(obs, reset=reset, verbose=verbose)
-
-
-class AgentMultistepMIPTest(BaseAgentTest):
-    """
-        Agent class used for experimentation and testing.
-    """
-
-    def __init__(
-        self, case, action_set, reward_class=RewardL2RPN2019, **kwargs,
-    ):
-        BaseAgentTest.__init__(self, name="Agent Multistep MIP", case=case)
-
-        self.default_kwargs = kwargs
-        self.model_kwargs = self.default_kwargs
-        self.params = MultistepTopologyParameters(**self.model_kwargs)
-
-        self.forecasts = None
-        self.reset(obs=None)
-
-        self.model = None
-        self.result = None
-
-        self.reward_function = reward_class()
-        self.actions, self.actions_info = action_set
-
-    def set_kwargs(self, **kwargs):
-        self.model_kwargs = {**self.default_kwargs, **kwargs}
-        self.params = MultistepTopologyParameters(**self.model_kwargs)
-
-    def act(self, observation, reward, done=False):
-        self._update(observation, reset=done)
-        self.model = MultistepTopologyDCOPF(
-            self.case.env.name,
-            grid=self.grid,
-            forecasts=self.forecasts,
-            base_unit_p=self.grid.base_unit_p,
-            base_unit_v=self.grid.base_unit_v,
-            params=self.params,
-        )
-
-        self.model.build_model()
-        self.result = self.model.solve()
-
-        action = self.grid.convert_mip_to_topology_vector(self.result, observation)[-1]
-        return action
-
-    def act_with_timing(self, observation, reward, done=False):
-        timing = dict()
-        start_build = timer()
-        self._update(observation, reset=done)
-
-        self.model = MultistepTopologyDCOPF(
-            f"{self.case.env.name} DC OPF Topology Optimization",
-            grid=self.grid,
-            forecasts=self.forecasts,
-            base_unit_p=self.grid.base_unit_p,
-            base_unit_v=self.grid.base_unit_v,
-            params=self.params,
-        )
-        self.model.build_model()
-        timing["build"] = timer() - start_build
-
-        start_solve = timer()
-        self.result = self.model.solve(verbose=False)
-
-        action = self.grid.convert_mip_to_topology_vector(self.result, observation)[-1]
-        timing["solve"] = timer() - start_solve
-
-        return action, timing
-
-    def reset(self, obs):
-        if self.params.forecasts:
-            self.forecasts = Forecasts(
-                env=self.env,
-                t=self.env.chronics_handler.real_data.data.current_index,
-                horizon=self.params.horizon,
-            )
-
-    def _update(self, obs, reset=False, verbose=False):
-        if self.params.forecasts:
-            self.forecasts.t = self.forecasts.t + 1
-        self.grid.update(obs, reset=reset, verbose=verbose)
-
-    def get_reward(self):
-        return self.reward_function.from_mip_solution(self.result)
-
-    def compare_with_observation(self, obs, verbose=False):
-        res_gen = self.result["res_gen"][["min_p_pu", "p_pu", "max_p_pu"]].copy()
-        res_gen["env_p_pu"] = self.grid.convert_mw_to_per_unit(obs.prod_p)
-        res_gen["diff"] = np.divide(
-            np.abs(res_gen["p_pu"] - res_gen["env_p_pu"]), res_gen["env_p_pu"] + 1e-9
-        )
-
-        res_line = self.result["res_line"][["p_pu", "max_p_pu"]].copy()
-        res_line = res_line.append(
-            self.result["res_trafo"][["p_pu", "max_p_pu"]].copy(), ignore_index=True
-        )
-        res_line["env_p_pu"] = self.grid.convert_mw_to_per_unit(
-            obs.p_or
-        )  # i_pu * v_pu * sqrt(3)
-        res_line["env_max_p_pu"] = np.abs(
-            np.divide(res_line["env_p_pu"], obs.rho + 1e-9)
-        )
-
-        res_line["rho"] = self.result["res_line"]["loading_percent"] / 100.0
-        res_line["env_rho"] = obs.rho
-
-        # Reactive/Active power ratio
-        res_gen["env_q_pu"] = self.grid.convert_mw_to_per_unit(obs.prod_q)
-        res_gen["env_gen_q_p"] = np.greater(obs.prod_p, 1e-9).astype(float) * np.abs(
-            np.divide(obs.prod_q, obs.prod_p + 1e-9)
-        )
-
-        res_line["diff_p"] = np.abs(
-            np.divide(
-                res_line["p_pu"] - res_line["env_p_pu"], res_line["env_p_pu"] + 1e-9
-            )
-        )
-        res_line["diff_rho"] = np.abs(
-            np.divide(res_line["rho"] - res_line["env_rho"], res_line["env_rho"] + 1e-9)
-        )
-
-        res_line["max_p_pu_ac"] = np.sqrt(
-            np.abs(
-                np.square(res_line["max_p_pu"])
-                - np.square(self.grid.convert_mw_to_per_unit(obs.q_or))
-            )
-        )
-
-        if verbose:
-            print("GEN\n" + res_gen.to_string())
-            print("LINE\n" + res_line.to_string())
-
-        return res_line, res_gen
-
-    def print_agent(self, default=False):
-        default_kwargs = MultistepTopologyParameters().to_dict()
-
-        pprint("\nAgent:", self.name, shift=36)
-        if default:
-            for arg in default_kwargs:
-                model_arg = self.model_kwargs[arg] if arg in self.model_kwargs else "-"
-                pprint(
-                    f"  - {arg}:", "{:<10}".format(str(model_arg)), default_kwargs[arg]
-                )
-        else:
-            for arg in self.model_kwargs:
-                pprint(
-                    f"  - {arg}:",
-                    "{:<10}".format(str(self.model_kwargs[arg])),
-                    default_kwargs[arg],
-                )
-        print("-" * 80)
 
 
 class AgentMixedMultistepTest(BaseAgentTest):

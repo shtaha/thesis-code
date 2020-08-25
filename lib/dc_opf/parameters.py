@@ -125,11 +125,13 @@ class SinglestepTopologyParameters(StandardParameters):
         con_requirement_balance=True,
         con_switching_limits=True,
         con_cooldown=True,
+        con_maintenance=True,
         con_unitary_action=True,
         obj_gen_cost=False,
-        obj_lin_line_margins=True,
-        obj_quad_line_margins=False,
-        obj_lambda_gen=20.0,
+        obj_reward_lin=False,
+        obj_reward_quad=False,
+        obj_reward_max=True,
+        obj_lambda_gen=100.0,
         obj_lin_gen_penalty=True,
         obj_quad_gen_penalty=False,
         obj_lambda_action=0.0,
@@ -151,14 +153,19 @@ class SinglestepTopologyParameters(StandardParameters):
 
         self.con_switching_limits = con_switching_limits
         self.con_cooldown = con_cooldown
+        self.con_maintenance = con_maintenance
         self.con_unitary_action = con_unitary_action
 
         self.obj_gen_cost = obj_gen_cost
-        self.obj_lin_line_margins = obj_lin_line_margins
-        self.obj_quad_line_margins = obj_quad_line_margins
+
+        self.obj_reward_lin = obj_reward_lin
+        self.obj_reward_quad = obj_reward_quad
+        self.obj_reward_max = obj_reward_max
+
         self.obj_lambda_gen = obj_lambda_gen
         self.obj_lin_gen_penalty = obj_lin_gen_penalty
         self.obj_quad_gen_penalty = obj_quad_gen_penalty
+
         self.obj_lambda_action = obj_lambda_action
 
 
