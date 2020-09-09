@@ -18,13 +18,11 @@ class ExperimentBehaviour(ExperimentBase):
         env = case.env
         case_name = self._get_case_name(case)
 
-        self.print_experiment("Control Performance")
+        self.print_experiment("Behaviour")
 
         agent.print_agent(default=verbose)
 
-        measurements = self._runner_mip_control(
-            env, agent, n_steps=n_steps, verbose=verbose
-        )
+        measurements = self._runner(env, agent, n_steps=n_steps, verbose=verbose)
 
         if verbose:
             print(
@@ -63,7 +61,7 @@ class ExperimentBehaviour(ExperimentBase):
         merger = PdfFileMerger()
         agent_name = agent.name.replace(" ", "-").lower()
         agent_files = []
-        for timing in [
+        for plot_name in [
             "rewards",
             "distance",
             "rho",
@@ -71,10 +69,11 @@ class ExperimentBehaviour(ExperimentBase):
             "generators_q",
             "generators_q-p",
             "power-flows",
+            "rhos",
             "production-demand",
             "action-ids",
         ]:
-            file = agent_name + "-" + timing + ".pdf"
+            file = agent_name + "-" + plot_name + ".pdf"
             if file in os.listdir(save_dir):
                 f = open(os.path.join(save_dir, file), "rb")
                 agent_files.append((file, f))
@@ -125,9 +124,6 @@ class ExperimentBehaviour(ExperimentBase):
         fig_est.suptitle("Agent Comparison - Reward EST")
         fig_dist.suptitle("Agent Comparison - Distance to reference topology")
 
-        fig_env.show()
-        fig_est.show()
-        fig_dist.show()
         if save_dir:
             file_name = "agents-"
             fig_env.savefig(os.path.join(save_dir, file_name + "rewards-env"))
@@ -135,7 +131,7 @@ class ExperimentBehaviour(ExperimentBase):
             fig_dist.savefig(os.path.join(save_dir, file_name + "distances"))
 
     @staticmethod
-    def _runner_mip_control(env, agent, n_steps=100, verbose=False):
+    def _runner(env, agent, n_steps=100, verbose=False):
         np.random.seed(0)
         env.seed(0)
         env.chronics_handler.tell_id(-1)
@@ -150,7 +146,6 @@ class ExperimentBehaviour(ExperimentBase):
         agent.reset(obs=obs)
         for t in range(n_steps):
             action = agent.act(obs, reward, done=done)
-
             obs_next, reward, done, info = env.step(action)
 
             if t % 100 == 0 or verbose:
@@ -206,11 +201,18 @@ class ExperimentBehaviour(ExperimentBase):
                 measurement[f"line-{line_id}"] = res_line["p_pu"][line_id]
                 measurement[f"env-line-{line_id}"] = res_line["env_p_pu"][line_id]
 
+                measurement[f"rho-{line_id}"] = res_line["rho"][line_id]
+                measurement[f"env-rho-{line_id}"] = res_line["env_rho"][line_id]
+
             measurements.append(measurement)
 
             obs = obs_next
             if done:
                 obs = env.reset()
+                pprint(
+                    "        - Length:",
+                    f"{t}/{env.chronics_handler.real_data.data.max_iter}",
+                )
                 pprint("    - Done! Next chronic:", env.chronics_handler.get_id())
                 agent.reset(obs=obs)
                 e = e + 1
@@ -312,57 +314,57 @@ class ExperimentBehaviour(ExperimentBase):
             fig.savefig(os.path.join(save_dir, file_name))
         plt.close(fig)
 
-        # fig, ax = plt.subplots(figsize=Const.FIG_SIZE)
-        # for gen_id in range(env.n_gen):
-        #     color = colors[gen_id % len(colors)]
-        #     ax.plot(
-        #         t,
-        #         measurements[f"env-gen-{gen_id}-q"],
-        #         label=f"Gen-{gen_id} - ENV",
-        #         c=color,
-        #         linestyle="--",
-        #         linewidth=1,
-        #     )
-        #
-        # ax.set_xlabel("Time step t")
-        # ax.set_ylabel("Q [p.u.]")
-        # fig.suptitle(title)
-        # if env.n_gen < 3:
-        #     ax.legend()
-        #
-        # fig.show()
-        # if save_dir:
-        #     file_name = "generators_q"
-        #     if prefix:
-        #         file_name = prefix + "-" + file_name
-        #
-        #     fig.savefig(os.path.join(save_dir, file_name))
-        #
-        # fig, ax = plt.subplots(figsize=Const.FIG_SIZE)
-        # for gen_id in range(env.n_gen):
-        #     color = colors[gen_id % len(colors)]
-        #     ax.plot(
-        #         t,
-        #         measurements[f"env-q-p-{gen_id}"],
-        #         label=f"Gen-{gen_id} - ENV",
-        #         c=color,
-        #         linestyle="--",
-        #         linewidth=1,
-        #     )
-        #
-        # ax.set_xlabel("Time step t")
-        # ax.set_ylabel("Q/P [p.u.]")
-        # fig.suptitle(title)
-        # if env.n_gen < 3:
-        #     ax.legend()
-        #
-        # fig.show()
-        # if save_dir:
-        #     file_name = "generators_q-p"
-        #     if prefix:
-        #         file_name = prefix + "-" + file_name
-        #
-        #     fig.savefig(os.path.join(save_dir, file_name))
+        fig, ax = plt.subplots(figsize=Const.FIG_SIZE)
+        for gen_id in range(env.n_gen):
+            color = colors[gen_id % len(colors)]
+            ax.plot(
+                t,
+                measurements[f"env-gen-{gen_id}-q"],
+                label=f"Gen-{gen_id} - ENV",
+                c=color,
+                linestyle="--",
+                linewidth=1,
+            )
+
+        ax.set_xlabel("Time step t")
+        ax.set_ylabel("Q [p.u.]")
+        fig.suptitle(title)
+        if env.n_gen < 3:
+            ax.legend()
+
+        if save_dir:
+            file_name = "generators_q"
+            if prefix:
+                file_name = prefix + "-" + file_name
+
+            fig.savefig(os.path.join(save_dir, file_name))
+        plt.close(fig)
+
+        fig, ax = plt.subplots(figsize=Const.FIG_SIZE)
+        for gen_id in range(env.n_gen):
+            color = colors[gen_id % len(colors)]
+            ax.plot(
+                t,
+                measurements[f"env-q-p-{gen_id}"],
+                label=f"Gen-{gen_id} - ENV",
+                c=color,
+                linestyle="--",
+                linewidth=1,
+            )
+
+        ax.set_xlabel("Time step t")
+        ax.set_ylabel("Q/P [p.u.]")
+        fig.suptitle(title)
+        if env.n_gen < 3:
+            ax.legend()
+
+        if save_dir:
+            file_name = "generators_q-p"
+            if prefix:
+                file_name = prefix + "-" + file_name
+
+            fig.savefig(os.path.join(save_dir, file_name))
+        plt.close(fig)
 
         fig, ax = plt.subplots(figsize=Const.FIG_SIZE)
         for line_id in range(env.n_line):
@@ -373,7 +375,7 @@ class ExperimentBehaviour(ExperimentBase):
                 label=f"Line-{line_id}",
                 c=color,
                 linestyle="-",
-                linewidth=1,
+                linewidth=0.5,
             )
             ax.plot(
                 t,
@@ -381,7 +383,7 @@ class ExperimentBehaviour(ExperimentBase):
                 label=f"Line-{line_id} - ENV",
                 c=color,
                 linestyle="--",
-                linewidth=1,
+                linewidth=0.5,
             )
 
         ax.set_xlabel("Time step t")
@@ -390,6 +392,38 @@ class ExperimentBehaviour(ExperimentBase):
 
         if save_dir:
             file_name = "power-flows"
+            if prefix:
+                file_name = prefix + "-" + file_name
+
+            fig.savefig(os.path.join(save_dir, file_name))
+        plt.close(fig)
+
+        fig, ax = plt.subplots(figsize=Const.FIG_SIZE)
+        for line_id in range(env.n_line):
+            color = colors[line_id % len(colors)]
+            ax.plot(
+                t,
+                measurements[f"rho-{line_id}"],
+                label=f"Line-{line_id}",
+                c=color,
+                linestyle="-",
+                linewidth=0.5,
+            )
+            ax.plot(
+                t,
+                measurements[f"env-rho-{line_id}"],
+                label=f"Line-{line_id} - ENV",
+                c=color,
+                linestyle="--",
+                linewidth=0.5,
+            )
+
+        ax.set_xlabel("Time step t")
+        ax.set_ylabel(r"$\rho$ [p.u.]")
+        fig.suptitle(title)
+
+        if save_dir:
+            file_name = "rhos"
             if prefix:
                 file_name = prefix + "-" + file_name
 

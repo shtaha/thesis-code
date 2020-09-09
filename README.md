@@ -11,6 +11,7 @@
     pip install glpk mosek gurobi # Solvers
     
     pip tensorflow jupyter pygame
+    pip install graph_nets "tensorflow>=2.1.0-rc1" "dm-sonnet>=2.0.0b0" tensorflow_probability --use-feature=2020-resolver
     
     pip install l2rpn-baselines
     pip install imageio
@@ -56,3 +57,26 @@
     sudo apt-get install glpk-utils
     glpsol --version  # Check
    
+# ETH Computing Resources
+
+    rsikonja@supermodularity.inf.ethz.ch
+    mail password
+    
+# Deep Mind Graph Networks
+
+    pip install grid2op matplotlib numba
+    pip install jupyter
+    pip install graph_nets "tensorflow>=2.1.0-rc1" "dm-sonnet>=2.0.0b0" tensorflow_probability --use-feature=2020-resolver
+
+
+# Microsoft GNNs
+
+    https://github.com/microsoft/tf2-gnn
+
+    pip install tf2_gnn
+    
+    python -m pip install --upgrade pip
+    pip check  # Check dependecy conflicts
+    
+    pip install <package> --use-feature=2020-resolver
+    

@@ -85,6 +85,10 @@ class ExperimentSwitching(ExperimentBase, ExperimentMixin):
                 chronic_data, case_name, chronic_idx, chronic_name, save_dir
             )
 
+            self._plot_objective_parts(
+                chronic_data, case_name, chronic_idx, chronic_name, save_dir
+            )
+
         self.aggregate_by_chronics(save_dir, delete_file=delete_file)
 
     def aggregate_by_chronics(self, save_dir, delete_file=True):
@@ -95,6 +99,7 @@ class ExperimentSwitching(ExperimentBase, ExperimentMixin):
             "distances_sub",
             "gains",
             "objectives",
+            "relative-obj",
             "rhos",
         ]:
             merger = PdfFileMerger()
@@ -119,14 +124,55 @@ class ExperimentSwitching(ExperimentBase, ExperimentMixin):
 
             self.close_files(chronic_files, save_dir, delete_file=delete_file)
 
+        agent_names = np.unique(
+            [
+                file.split("-chronic-")[0]
+                for file in os.listdir(save_dir)
+                if "-chronic-" in file
+            ]
+        )
+        for agent_name in agent_names:
+            for plot_name in ["mus", "fraction-obj"]:
+                merger = PdfFileMerger()
+                chronic_files = []
+                for file in os.listdir(save_dir):
+                    if (
+                        "-chronic-" in file
+                        and agent_name in file
+                        and plot_name + ".pdf" in file
+                    ):
+                        f = open(os.path.join(save_dir, file), "rb")
+                        chronic_files.append((file, f))
+                        merger.append(f)
+
+                if merger.inputs:
+                    with open(
+                        os.path.join(
+                            save_dir, "_" + f"{agent_name}-chronics-{plot_name}.pdf"
+                        ),
+                        "wb",
+                    ) as f:
+                        merger.write(f)
+
+                    # Reset merger
+                    merger.pages = []
+                    merger.inputs = []
+                    merger.output = None
+
+                self.close_files(chronic_files, save_dir, delete_file=delete_file)
+
     @staticmethod
     def _plot_gains(chronic_data, case_name, chronic_idx, chronic_name, save_dir):
         colors = Const.COLORS
 
         fig_obj, ax_obj = plt.subplots(figsize=Const.FIG_SIZE)
         fig_gain, ax_gain = plt.subplots(figsize=Const.FIG_SIZE)
+        fig_rel, ax_rel = plt.subplots(figsize=Const.FIG_SIZE)
         for agent_id, agent_name in enumerate(chronic_data):
-            if chronic_idx in chronic_data[agent_name].index and agent_name != "Do nothing agent":
+            if (
+                chronic_idx in chronic_data[agent_name].index
+                and agent_name != "Do nothing agent"
+            ):
                 color_id = agent_id % len(colors)
                 color = colors[color_id]
 
@@ -134,24 +180,40 @@ class ExperimentSwitching(ExperimentBase, ExperimentMixin):
                 actions = chronic_data[agent_name].loc[chronic_idx]["actions"]
 
                 obj = np.array(chronic_data[agent_name].loc[chronic_idx]["objectives"])
-                obj_dn = np.array(chronic_data[agent_name].loc[chronic_idx]["objectives_dn"])
+                obj_dn = np.array(
+                    chronic_data[agent_name].loc[chronic_idx]["objectives_dn"]
+                )
                 mu_max = np.array(chronic_data[agent_name].loc[chronic_idx]["mu_max"])
 
-                ax_obj.plot(t, obj, linewidth=0.5, c=color, linestyle="-", label=agent_name)
+                ax_obj.plot(
+                    t, obj, linewidth=0.5, c=color, linestyle="-", label=agent_name
+                )
                 ax_obj.plot(t, obj_dn, linewidth=0.5, c=color, linestyle="--")
                 ax_obj.plot(t, mu_max, linewidth=0.5, c=color, linestyle="-.")
 
                 gain = obj_dn - obj
                 markerline, stemlines, _ = ax_gain.stem(
-                    t, gain, use_line_collection=True, markerfmt=f"C{color_id}o", basefmt=" ", linefmt=f"C{color_id}", label=agent_name,
+                    t,
+                    gain,
+                    use_line_collection=True,
+                    markerfmt=f"C{color_id}o",
+                    basefmt=" ",
+                    linefmt=f"C{color_id}",
+                    label=agent_name,
                 )
                 plt.setp(markerline, markersize=1)
                 plt.setp(stemlines, linewidth=0.5)
 
+                rel_gain = np.divide(obj, obj_dn + 1e-9)
+                ax_rel.hist(
+                    rel_gain, lw=1.0, bins=25, histtype="step", label=agent_name
+                )
+
                 for i in range(len(t)):
-                    action_id = actions[i]
-                    if action_id != 0:
-                        ax_gain.text(t[i], gain[i], str(action_id), fontsize=2)
+                    if isinstance(actions[i], int):
+                        action_id = actions[i]
+                        if action_id != 0:
+                            ax_gain.text(t[i], gain[i], str(action_id), fontsize=2)
 
         ax_obj.set_xlabel("Time step t")
         ax_obj.set_ylabel("Objective value")
@@ -164,18 +226,154 @@ class ExperimentSwitching(ExperimentBase, ExperimentMixin):
         ax_gain.legend()
         fig_gain.suptitle(f"{case_name} - Chronic {chronic_name}")
 
+        ax_rel.set_xlabel("Relative objective value")
+        ax_rel.set_ylabel("Count")
+        ax_rel.legend()
+        fig_rel.suptitle(f"{case_name} - Chronic {chronic_name}")
+
         if save_dir:
             file_name = f"agents-chronic-" + "{:05}".format(chronic_idx) + "-"
             fig_obj.savefig(os.path.join(save_dir, file_name + "objectives"))
             fig_gain.savefig(os.path.join(save_dir, file_name + "gains"))
+            fig_rel.savefig(os.path.join(save_dir, file_name + "relative-obj"))
+
         plt.close(fig_obj)
         plt.close(fig_gain)
+        plt.close(fig_rel)
+
+    @staticmethod
+    def _plot_objective_parts(
+        chronic_data, case_name, chronic_idx, chronic_name, save_dir
+    ):
+        colors = Const.COLORS
+
+        for agent_id, agent_name in enumerate(chronic_data):
+            chronic = chronic_data[agent_name].loc[chronic_idx]
+
+            t = np.array(chronic["time_steps"])
+
+            obj = np.array(chronic["objectives"])
+            obj_dn = np.array(chronic["objectives_dn"])
+            rel_gain = np.divide(obj, obj_dn + 1e-9)
+
+            mu_max = np.array(chronic["mu_max"])
+            mu_gen = np.array(chronic["mu_gen"])
+            mu_max_dn = np.array(chronic["mu_max_dn"])
+            mu_gen_dn = np.array(chronic["mu_gen_dn"])
+
+            fig_mu, ax_mu = plt.subplots(figsize=Const.FIG_SIZE)
+            fig_frac, ax_frac = plt.subplots(figsize=Const.FIG_SIZE)
+
+            width = 0.25
+            indices_gain = np.less_equal(rel_gain, 0.98)
+            x = np.arange(int(indices_gain.sum()))
+
+            t = t[indices_gain]
+            mu_max = mu_max[indices_gain]
+            mu_gen = mu_gen[indices_gain]
+            mu_max_dn = mu_max_dn[indices_gain]
+            mu_gen_dn = mu_gen_dn[indices_gain]
+            obj_dn = obj_dn[indices_gain]
+
+            horizon = 1
+            if len(mu_max.shape) > 1:
+                horizon = mu_max.shape[1]
+                mu_max = mu_max.sum(axis=1)
+                mu_gen = mu_gen.sum(axis=1)
+                mu_max_dn = mu_max_dn.sum(axis=1)
+                mu_gen_dn = mu_gen_dn.sum(axis=1)
+                obj_dn = obj_dn
+
+            ax_mu.bar(
+                x, mu_max / horizon, width=width, label=r"$\mu^{max}$", color=colors[0],
+            )
+            ax_mu.bar(
+                x,
+                mu_gen / horizon,
+                bottom=mu_max / horizon,
+                width=width,
+                label=r"$\mu^{gen}$",
+                color=colors[1],
+            )
+            ax_frac.bar(
+                x,
+                100.0 * mu_max / obj_dn / horizon,
+                width=width,
+                label=r"$\mu^{max}$",
+                color=colors[0],
+            )
+            ax_frac.bar(
+                x,
+                100.0 * 100.0 * mu_gen / obj_dn / horizon,
+                bottom=100.0 * mu_max / obj_dn / horizon,
+                width=width,
+                label=r"$\lambda^{gen} \cdot \mu^{gen}$",
+                color=colors[1],
+            )
+
+            # Do-nothing objective
+            ax_mu.bar(
+                x + width,
+                mu_max_dn / horizon,
+                width=width,
+                label=r"$\mu^{max}_{DN}$",
+                color=colors[2],
+            )
+            ax_mu.bar(
+                x + width,
+                mu_gen_dn / horizon,
+                bottom=mu_max_dn / horizon,
+                width=width,
+                label=r"$\mu^{gen}_{DN}$",
+                color=colors[3],
+            )
+
+            ax_frac.bar(
+                x + width,
+                100.0 * mu_max_dn / obj_dn / horizon,
+                width=width,
+                label=r"$\mu^{max}_{DN}$",
+                color=colors[2],
+            )
+            ax_frac.bar(
+                x + width,
+                100.0 * 100.0 * mu_gen_dn / obj_dn / horizon,
+                bottom=100.0 * mu_max_dn / obj_dn / horizon,
+                width=width,
+                label=r"$\lambda^{gen} \cdot \mu^{gen}_{DN}$",
+                color=colors[3],
+            )
+
+            ax_mu.set_xlabel("Time step t")
+            ax_mu.set_ylabel(r"$\mu$")
+            ax_mu.set_xticks(x)
+            ax_mu.set_xticklabels(t)
+            ax_mu.legend()
+            fig_mu.suptitle(f"{case_name} - Chronic {chronic_name}")
+
+            ax_frac.set_xlabel("Time step t")
+            ax_frac.set_ylabel(r"Objective value fraction by terms [\\%]")
+            ax_frac.set_xticks(x)
+            ax_frac.set_xticklabels(t)
+            ax_frac.set_yticks(np.arange(0, 111, 10))
+            ax_frac.set_yticklabels([f"{tick} \\%" for tick in np.arange(0, 111, 10)])
+            ax_frac.legend()
+            fig_frac.suptitle(f"{case_name} - Chronic {chronic_name}")
+
+            if save_dir:
+                agent_name_ = agent_name.replace(" ", "-").lower()
+                file_name = (
+                    f"{agent_name_}-chronic-" + "{:05}".format(chronic_idx) + "-"
+                )
+                fig_mu.savefig(os.path.join(save_dir, file_name + "mus"))
+                fig_frac.savefig(os.path.join(save_dir, file_name + "fraction-obj"))
+
+            plt.close(fig_mu)
+            plt.close(fig_frac)
 
     @staticmethod
     def _runner(case, env, agent, done_chronic_indices=()):
-        chronics_dir, chronics, chronics_sorted = get_sorted_chronics(
-            case=case, env=env
-        )
+        chronics_dir, chronics, chronics_sorted = get_sorted_chronics(env=env)
         pprint("Chronics:", chronics_dir)
 
         np.random.seed(0)
@@ -186,14 +384,18 @@ class ExperimentSwitching(ExperimentBase, ExperimentMixin):
             if chronic_idx in done_chronic_indices:
                 continue
 
+            n_steps = 100
             if case.name == "Case RTE 5":
-                if chronic_idx != 0:
+                n_steps = 250
+                if chronic_idx > 4:
                     continue
             elif case.name == "Case L2RPN 2019":
-                if chronic_idx != 10 and chronic_idx != 20:
+                n_steps = 500
+                if chronic_idx > 2:
                     continue
             elif case.name == "Case L2RPN 2020 WCCI":
-                if chronic_idx != 0:
+                n_steps = 100
+                if chronic_idx > 1:
                     continue
 
             chronic_org_idx = chronics.index(chronic)
@@ -238,7 +440,7 @@ class ExperimentSwitching(ExperimentBase, ExperimentMixin):
                 if t % 50 == 0:
                     pprint("Step:", t)
 
-                if t > 500:
+                if t > n_steps:
                     done = True
 
                 if done:
@@ -250,14 +452,8 @@ class ExperimentSwitching(ExperimentBase, ExperimentMixin):
                     if action == agent_action
                 ]
 
-                if "unitary_action" in agent.model_kwargs:
-                    if not agent.model_kwargs["unitary_action"] and len(action_id) != 1:
-                        action_id = np.nan
-                    else:
-                        assert (
-                            len(action_id) == 1
-                        )  # Exactly one action should be equivalent
-                        action_id = int(action_id[0])
+                if len(action_id) != 1:
+                    action_id = np.nan
                 else:
                     assert (
                         len(action_id) == 1

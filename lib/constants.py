@@ -3,6 +3,7 @@ import matplotlib.colors as mcolors
 
 class Constants(object):
     RESULTS_DIR = "./results"
+    EXPERIENCE_DIR = "./experience"
 
     ENV_NAME = "l2rpn_wcci_2020"
 

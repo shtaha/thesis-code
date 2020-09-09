@@ -276,14 +276,16 @@ class MultistepTopologyDCOPF(StandardDCOPF):
 
     def _build_variables_generators(self):
         if self.forecasts:
-            init_value = self.forecasts.prod_p
+            init_value = np.maximum(self.forecasts.prod_p, 0.0)
         else:
-            init_value = np.tile(self.grid.gen.p_pu, (self.params.horizon, 1))
+            value = np.maximum(self.grid.gen.p_pu, 0.0)
+            init_value = np.tile(value, (self.params.horizon, 1))
 
         if init_value.shape[0] != self.params.horizon or init_value.shape[1] != len(
             self.load.index
         ):
-            init_value = np.tile(self.grid.gen.p_pu, (self.params.horizon, 1))
+            value = np.maximum(self.grid.gen.p_pu, 0.0)
+            init_value = np.tile(value, (self.params.horizon, 1))
 
         self.model.gen_p = pyo.Var(
             self.model.time_set,
@@ -1793,7 +1795,7 @@ class MultistepTopologyDCOPF(StandardDCOPF):
 
         # Solution status
         solution_status = self.solver_status["Solver"][0]["Termination condition"]
-        if solution_status == "infeasible":
+        if verbose and solution_status == "infeasible":
             log_infeasible_constraints(
                 self.model, tol=self.params.tol, log_expression=False
             )

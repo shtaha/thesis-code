@@ -1,32 +1,24 @@
 import os
 
-from experiments import ExperimentBehaviour
+from experience import ExperienceCollector
 from lib.agents import make_test_agent
 from lib.constants import Constants as Const
 from lib.data_utils import make_dir
 from lib.dc_opf import load_case, CaseParameters
 from lib.run_utils import create_logger
-from lib.visualizer import Visualizer
+from lib.visualizer import Visualizer, pprint
 
 visualizer = Visualizer()
 
-save_dir = make_dir(os.path.join(Const.RESULTS_DIR, "behaviour-ac-improved"))
+save_dir = make_dir(os.path.join(Const.EXPERIENCE_DIR, "data"))
 
-env_dc = False
-verbose = True
+env_dc = True
+verbose = False
 
-experiment_behaviour = ExperimentBehaviour()
 kwargs = dict()
 
 # for case_name in ["rte_case5_example", "l2rpn_2019", "l2rpn_wcci_2020"]:
-for case_name in ["l2rpn_wcci_2020"]:
-    if case_name == "l2rpn_wcci_2020":
-        n_steps = 50
-    elif case_name == "l2rpn_2019":
-        n_steps = 100
-    else:
-        n_steps = 500
-
+for case_name in ["rte_case5_example"]:
     env_pf = "dc" if env_dc else "ac"
     case_save_dir = make_dir(os.path.join(save_dir, f"{case_name}-{env_pf}"))
 
@@ -60,15 +52,7 @@ for case_name in ["l2rpn_wcci_2020"]:
         agent = make_test_agent(agent_name, case, action_set, **kwargs)
 
         """
-            Experiments.
+            Collect experience.
         """
-        experiment_behaviour.evaluate_performance(
-            case=case,
-            agent=agent,
-            save_dir=case_save_dir,
-            n_steps=n_steps,
-            verbose=verbose,
-        )
-        experiment_behaviour.aggregate_by_agent(agent=agent, save_dir=case_save_dir)
-
-    experiment_behaviour.compare_agents(save_dir=case_save_dir)
+        collector = ExperienceCollector(save_dir=case_save_dir)
+        collector.collect(env, agent, n_chronics=2, n_steps=-1)

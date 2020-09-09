@@ -16,8 +16,10 @@ from lib.rewards import RewardL2RPN2019
 from lib.visualizer import pprint
 
 
-def make_agent(agent_name, case, action_set, delta_max_p_pu=0.10, horizon=2, **kwargs):
-    if agent_name == "multi_mip_agent":
+def make_test_agent(
+    agent_name, case, action_set, delta_max_p_pu=0.10, horizon=2, **kwargs
+):
+    if agent_name == "agent-multistep-mip":
         agent = AgentMultistepMIPTest(
             case=case, action_set=action_set, horizon=horizon, **kwargs
         )
@@ -25,7 +27,7 @@ def make_agent(agent_name, case, action_set, delta_max_p_pu=0.10, horizon=2, **k
         agent = AgentMixedMultistepTest(
             case=case, action_set=action_set, horizon=horizon, **kwargs
         )
-    elif agent_name == "mip_agent":
+    elif agent_name == "agent-mip":
         agent = AgentMIPTest(case=case, action_set=action_set, **kwargs)
     elif agent_name == "mixed_agent":
         agent = AgentMixedTest(case=case, action_set=action_set, **kwargs)
@@ -35,7 +37,7 @@ def make_agent(agent_name, case, action_set, delta_max_p_pu=0.10, horizon=2, **k
         )
     elif agent_name == "greedy_agent":
         agent = AgentGreedy(case=case, action_set=action_set)
-    elif agent_name == "do_nothing_agent":
+    elif agent_name == "do-nothing-agent":
         agent = AgentDoNothingTest(case=case, action_set=action_set)
     else:
         raise ValueError(f"Agent name {agent_name} is invalid.")
@@ -88,71 +90,6 @@ class BaseAgentTest:
                 27.9899425506591796875,
                 17.3205089569091796875,
                 26.89875030517578125,
-            ]
-        elif case.name == "Case L2RPN 2020 WCCI":
-            self.grid.line["max_p_pu"] = [
-                10.34969615936279296875,
-                49.04752349853515625,
-                81.554656982421875,
-                52.223407745361328125,
-                153.9566802978515625,
-                82.9648895263671875,
-                76.391754150390625,
-                72.041534423828125,
-                84.55583953857421875,
-                70.16881561279296875,
-                73.47566986083984375,
-                41.18366241455078125,
-                90.69977569580078125,
-                30.571044921875,
-                41.805126190185546875,
-                39.06516265869140625,
-                20.9405651092529296875,
-                48.832401275634765625,
-                143.7423858642578125,
-                143.7423858642578125,
-                23.591571807861328125,
-                42.976337432861328125,
-                49.509838104248046875,
-                61.413707733154296875,
-                39.390995025634765625,
-                23.9979095458984375,
-                30.0451908111572265625,
-                71.21840667724609375,
-                70.1432037353515625,
-                23.014141082763671875,
-                90.1365814208984375,
-                40.21715545654296875,
-                31.84604644775390625,
-                36.95296478271484375,
-                22.0413532257080078125,
-                25.5037555694580078125,
-                38.01557159423828125,
-                33.177227020263671875,
-                34.84120941162109375,
-                22.015750885009765625,
-                80.17830657958984375,
-                50.815425872802734375,
-                153.36785888671875,
-                52.94020843505859375,
-                59.8265228271484375,
-                236.513275146484375,
-                308.75799560546875,
-                392.236785888671875,
-                149.2463226318359375,
-                149.2463226318359375,
-                67.35284423828125,
-                56.984966278076171875,
-                82.6358642578125,
-                81.41123199462890625,
-                78.13031768798828125,
-                215.18048095703125,
-                236.513275146484375,
-                163.85028076171875,
-                387.6204833984375,
-            ]
-            self.grid.trafo["max_p_pu"] = self.grid.line["max_p_pu"][
-                self.grid.line["trafo"].values
             ]
 
     def act(self, observation, reward, done=False):
@@ -229,6 +166,14 @@ class AgentMIPTest(BaseAgentTest):
         self, case, action_set, reward_class=RewardL2RPN2019, **kwargs,
     ):
         BaseAgentTest.__init__(self, name="Agent MIP", case=case)
+
+        if "n_max_line_status_changed" not in kwargs:
+            kwargs[
+                "n_max_line_status_changed"
+            ] = case.env.parameters.MAX_LINE_STATUS_CHANGED
+
+        if "n_max_sub_changed" not in kwargs:
+            kwargs["n_max_sub_changed"] = case.env.parameters.MAX_SUB_CHANGED
 
         self.default_kwargs = kwargs
         self.model_kwargs = self.default_kwargs
@@ -308,7 +253,7 @@ class AgentMIPTest(BaseAgentTest):
         info = dict(
             obj=pyo.value(model.objective),
             mu_max=pyo.value(model.mu_max),
-            mu_gent=pyo.value(model.mu_gen),
+            mu_gen=pyo.value(model.mu_gen),
             obj_dn=pyo.value(model_dn.objective),
             mu_max_dn=pyo.value(model_dn.mu_max),
             mu_gen_dn=pyo.value(model_dn.mu_gen),
@@ -366,9 +311,7 @@ class AgentMIPTest(BaseAgentTest):
         res_line = res_line.append(
             self.result["res_trafo"][["p_pu", "max_p_pu"]].copy(), ignore_index=True
         )
-        res_line["env_p_pu"] = self.grid.convert_mw_to_per_unit(
-            obs.p_or
-        )  # i_pu * v_pu * sqrt(3)
+        res_line["env_p_pu"] = self.grid.convert_mw_to_per_unit(obs.p_or)
         res_line["env_max_p_pu"] = np.abs(
             np.divide(res_line["env_p_pu"], obs.rho + 1e-9)
         )
@@ -376,19 +319,14 @@ class AgentMIPTest(BaseAgentTest):
         res_line["rho"] = self.result["res_line"]["loading_percent"] / 100.0
         res_line["env_rho"] = obs.rho
 
+        res_line["env_q_pu"] = self.grid.convert_mw_to_per_unit(
+            obs.q_or
+        )  # i_pu * v_pu * sqrt(3) * sin(fi)
+
         # Reactive/Active power ratio
         res_gen["env_q_pu"] = self.grid.convert_mw_to_per_unit(obs.prod_q)
         res_gen["env_gen_q_p"] = np.greater(obs.prod_p, 1e-9).astype(float) * np.abs(
             np.divide(obs.prod_q, obs.prod_p + 1e-9)
-        )
-
-        res_line["diff_p"] = np.abs(
-            np.divide(
-                res_line["p_pu"] - res_line["env_p_pu"], res_line["env_p_pu"] + 1e-9
-            )
-        )
-        res_line["diff_rho"] = np.abs(
-            np.divide(res_line["rho"] - res_line["env_rho"], res_line["env_rho"] + 1e-9)
         )
 
         if verbose:
@@ -521,6 +459,13 @@ class AgentMultistepMIPTest(BaseAgentTest):
         self, case, action_set, reward_class=RewardL2RPN2019, **kwargs,
     ):
         BaseAgentTest.__init__(self, name="Agent Multistep MIP", case=case)
+
+        if "n_max_line_status_changed" not in kwargs:
+            kwargs[
+                "n_max_line_status_changed"
+            ] = case.env.parameters.MAX_LINE_STATUS_CHANGED
+        if "n_max_sub_changed" not in kwargs:
+            kwargs["n_max_sub_changed"] = case.env.parameters.MAX_SUB_CHANGED
 
         self.default_kwargs = kwargs
         self.model_kwargs = self.default_kwargs

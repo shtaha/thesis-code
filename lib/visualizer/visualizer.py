@@ -28,13 +28,15 @@ class Visualizer:
 
 
 def print_matrix(matrix, name=None, spacing=None, decimals=4):
-    if name:
-        if type(matrix) == np.ndarray:
-            shape = matrix.shape
-        else:
-            shape = len(matrix)
+    if type(matrix) == np.ndarray:
+        shape = matrix.shape
+    else:
+        shape = len(matrix)
 
+    if name:
         print(name, "=", str(shape), str(type(matrix)))
+    else:
+        print(str(shape), str(type(matrix)))
 
     lines = []
     matrix = np.squeeze(matrix)

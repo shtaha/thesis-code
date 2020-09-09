@@ -151,21 +151,21 @@ class ExperimentPerformance(ExperimentBase, ExperimentMixin):
                         chronic_files.append((file, f))
                         merger.append(f)
 
-            if merger.inputs:
-                with open(
-                    os.path.join(
-                        save_dir, "_" + f"{agent_name}-chronics-{plot_name}.pdf"
-                    ),
-                    "wb",
-                ) as f:
-                    merger.write(f)
+                if merger.inputs:
+                    with open(
+                        os.path.join(
+                            save_dir, "_" + f"{agent_name}-chronics-{plot_name}.pdf"
+                        ),
+                        "wb",
+                    ) as f:
+                        merger.write(f)
 
-                # Reset merger
-                merger.pages = []
-                merger.inputs = []
-                merger.output = None
+                    # Reset merger
+                    merger.pages = []
+                    merger.inputs = []
+                    merger.output = None
 
-            self.close_files(chronic_files, save_dir, delete_file=delete_file)
+                self.close_files(chronic_files, save_dir, delete_file=delete_file)
 
     @staticmethod
     def _plot_durations(
@@ -250,15 +250,19 @@ class ExperimentPerformance(ExperimentBase, ExperimentMixin):
                 and chronic_idx in chronic_data[agent_name].index
             ):
                 fig, ax = plt.subplots(figsize=Const.FIG_SIZE)
-                t = chronic_data[agent_name].loc[chronic_idx]["time_steps"]
+                chronic = chronic_data[agent_name].loc[chronic_idx]
+                t = chronic["time_steps"]
 
-                results = chronic_data[agent_name].loc[chronic_idx]["results"]
-                observations = chronic_data[agent_name].loc[chronic_idx]["observations"]
-
+                results = chronic["results"]
                 res_gen = np.vstack(
                     [result["res_gen"]["p_pu"].values for result in results if result]
                 )
-                res_gen_env = np.vstack([obs.prod_p for obs in observations if obs])
+
+                if "observations" in chronic:
+                    observations = chronic["observations"]
+                    res_gen_env = np.vstack([obs.prod_p for obs in observations if obs])
+                else:
+                    res_gen_env = np.vstack(chronic["generators"])
 
                 for gen_id in range(res_gen.shape[1]):
                     color = colors[gen_id % len(colors)]
@@ -287,9 +291,7 @@ class ExperimentPerformance(ExperimentBase, ExperimentMixin):
 
     @staticmethod
     def _runner(case, env, agent, done_chronic_indices=()):
-        chronics_dir, chronics, chronics_sorted = get_sorted_chronics(
-            case=case, env=env
-        )
+        chronics_dir, chronics, chronics_sorted = get_sorted_chronics(env=env)
         pprint("Chronics:", chronics_dir)
 
         np.random.seed(0)
@@ -301,14 +303,20 @@ class ExperimentPerformance(ExperimentBase, ExperimentMixin):
                 continue
 
             if case.name == "Case RTE 5":
-                if chronic_idx > 1:
-                    continue
+                pass
             elif case.name == "Case L2RPN 2019":
-                if chronic_idx != 10:
+                # Test
+                # if chronic_idx not in [0, 10, 100, 200] and chronic_idx not in [196]:
+                if chronic_idx not in [0, 10, 196]:
                     continue
+                # Random
+                # if chronic_idx not in np.random.randint(0, len(chronics_sorted), 10):
+                #     continue
             elif case.name == "Case L2RPN 2020 WCCI":
-                if chronic_idx % 480 != 0:
+                if chronic_idx not in [0, 240, 480]:
                     continue
+                # if chronic_idx % 480 == 0:
+                #     continue
 
             chronic_org_idx = chronics.index(chronic)
             env.chronics_handler.tell_id(chronic_org_idx - 1)  # Set chronic id
@@ -337,7 +345,8 @@ class ExperimentPerformance(ExperimentBase, ExperimentMixin):
             rewards = []
             rewards_sim = []
             rewards_dn = []
-            observations = []
+            rhos = []
+            generators = []
             results = []
             distances = []
             distances_status = []
@@ -349,31 +358,11 @@ class ExperimentPerformance(ExperimentBase, ExperimentMixin):
 
                 t = env.chronics_handler.real_data.data.current_index
 
-                if t % 50 == 0:
+                if t % 100 == 0:
                     pprint("Step:", t)
 
                 if done:
                     pprint("        - Length:", f"{t}/{chronic_len}")
-
-                action_id = [
-                    idx
-                    for idx, agent_action in enumerate(agent.actions)
-                    if action == agent_action
-                ]
-
-                if "unitary_action" in agent.model_kwargs:
-                    if not agent.model_kwargs["unitary_action"] and len(action_id) != 1:
-                        action_id = np.nan
-                    else:
-                        assert (
-                            len(action_id) == 1
-                        )  # Exactly one action should be equivalent
-                        action_id = int(action_id[0])
-                else:
-                    assert (
-                        len(action_id) == 1
-                    )  # Exactly one action should be equivalent
-                    action_id = int(action_id[0])
 
                 # Compare to DN action
                 if action != agent.actions[0]:
@@ -388,7 +377,7 @@ class ExperimentPerformance(ExperimentBase, ExperimentMixin):
                 )
 
                 obs = obs_next
-                actions.append(action_id)
+                actions.append(action)
                 actions_info.append(action.as_dict())
                 time_steps.append(t)
 
@@ -396,7 +385,8 @@ class ExperimentPerformance(ExperimentBase, ExperimentMixin):
                 rewards_sim.append(float(reward_sim))
                 rewards_dn.append(float(reward_dn))
 
-                observations.append(obs)
+                rhos.append(np.max(obs.rho))
+                generators.append(obs.prod_p)
                 results.append(agent.result)
 
                 distances.append(dist)
@@ -419,7 +409,8 @@ class ExperimentPerformance(ExperimentBase, ExperimentMixin):
                     "distances": distances,
                     "distances_status": distances_status,
                     "distances_sub": distances_sub,
-                    "observations": observations,
+                    "rhos": rhos,
+                    "generators": generators,
                     "results": results,
                 }
             )

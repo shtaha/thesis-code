@@ -1,11 +1,7 @@
 import os
 
-import grid2op
-from grid2op.Environment import Environment
-
 from experiments import ExperimentDCOPFTiming
-from lib.action_space import ActionSpaceGenerator
-from lib.agents import make_agent
+from lib.agents import make_test_agent
 from lib.constants import Constants as Const
 from lib.data_utils import make_dir
 from lib.dc_opf import load_case, CaseParameters
@@ -24,11 +20,11 @@ kwargs = dict()
 
 for case_name in ["rte_case5_example", "l2rpn_2019", "l2rpn_wcci_2020"]:
     if case_name == "l2rpn_wcci_2020":
-        n_timings = 10
+        n_timings = 50
     elif case_name == "l2rpn_2019":
-        n_timings = 10
+        n_timings = 50
     else:
-        n_timings = 10
+        n_timings = 25
 
     env_pf = "dc" if env_dc else "ac"
     case_save_dir = make_dir(os.path.join(save_dir, f"{case_name}-{env_pf}"))
@@ -36,46 +32,30 @@ for case_name in ["rte_case5_example", "l2rpn_2019", "l2rpn_wcci_2020"]:
     create_logger(logger_name=f"{case_name}-{env_pf}", save_dir=case_save_dir)
 
     """
-        Initialize environment parameters.    
+        Initialize environment.
     """
     parameters = CaseParameters(case_name=case_name, env_dc=env_dc)
-
-    """
-        Initialize environment and case.
-    """
-    env: Environment = grid2op.make_from_dataset_path(
-        dataset_path=os.path.join(os.path.expanduser("~"), "data_grid2op", case_name),
-        backend=grid2op.Backend.PandaPowerBackend(),
-        action_class=grid2op.Action.TopologyAction,
-        observation_class=grid2op.Observation.CompleteObservation,
-        reward_class=grid2op.Reward.L2RPNReward,
-        param=parameters,
-    )
-    case = load_case(case_name, env=env)
-
-    """
-        Initialize action set.
-    """
-    action_generator = ActionSpaceGenerator(env)
-    action_set = action_generator.get_topology_action_set(
-        save_dir=case_save_dir, verbose=verbose
+    case = load_case(case_name, env_parameters=parameters)
+    env = case.env
+    action_set = case.generate_unitary_action_set(
+        case, case_save_dir=case_save_dir, verbose=verbose
     )
 
     for agent_name in [
-        "mip_agent",
-        "multi_mip_agent",
+        "agent-mip",
+        "agent-multistep-mip",
     ]:
+        if case_name == "rte_case5_example":
+            kwargs["obj_lambda_action"] = 0.004
+        elif case_name == "l2rpn_2019":
+            kwargs["obj_lambda_action"] = 0.07
+        else:
+            kwargs["obj_lambda_action"] = 0.05
+
         """
             Initialize agent.
         """
-        agent = make_agent(
-            agent_name,
-            case,
-            action_set,
-            n_max_line_status_changed=case.env.parameters.MAX_LINE_STATUS_CHANGED,
-            n_max_sub_changed=case.env.parameters.MAX_SUB_CHANGED,
-            **kwargs,
-        )
+        agent = make_test_agent(agent_name, case, action_set, **kwargs)
 
         """
             Experiments.
@@ -159,9 +139,9 @@ for case_name in ["rte_case5_example", "l2rpn_2019", "l2rpn_wcci_2020"]:
                     {"obj_reward_quad": True, "obj_reward_max": False},
                     "Quadratic margins",
                 ),
-                ({"obj_reward_lin": True, "obj_reward_max": False,}, "L2RPN Reward",),
+                ({"obj_reward_lin": True, "obj_reward_max": False}, "L2RPN Reward",),
                 (
-                    {"obj_lin_gen_penalty": False, "obj_quad_gen_penalty": True,},
+                    {"obj_lin_gen_penalty": False, "obj_quad_gen_penalty": True},
                     "Quadratic gen. penalty",
                 ),
             ],

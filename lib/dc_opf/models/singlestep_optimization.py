@@ -1290,7 +1290,7 @@ class TopologyOptimizationDCOPF(StandardDCOPF):
 
         # Solution status
         solution_status = self.solver_status["Solver"][0]["Termination condition"]
-        if solution_status == "infeasible":
+        if verbose and solution_status == "infeasible":
             log_infeasible_constraints(
                 self.model, tol=self.params.tol, log_expression=False
             )

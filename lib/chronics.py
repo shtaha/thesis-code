@@ -2,7 +2,7 @@ import datetime
 import os
 
 
-def get_sorted_chronics(case, env):
+def get_sorted_chronics(env):
     chronics_dir = env.chronics_handler.path
     chronics = os.listdir(chronics_dir)
 
@@ -11,7 +11,7 @@ def get_sorted_chronics(case, env):
         filter(lambda x: os.path.isdir(os.path.join(chronics_dir, x)), chronics)
     )
 
-    if case.name == "Case RTE 5" or case.name == "Case L2RPN 2019":
+    if env.name in ["rte_case5_example", "l2rpn_2019"]:
         chronics_sorted = sorted(chronics, key=lambda x: int(x))
     else:
         chronics_sorted = sorted(

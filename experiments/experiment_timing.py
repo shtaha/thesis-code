@@ -285,7 +285,7 @@ class ExperimentDCOPFTiming(ExperimentBase):
                 label=label,
                 ax=ax,
                 bins=n_bins,
-                hist=True,
+                hist=False,
                 kde=True,
                 norm_hist=True,
             )

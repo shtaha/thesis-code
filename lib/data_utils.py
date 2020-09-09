@@ -34,7 +34,14 @@ def indices_to_hot(
     Only works for 1D-vector.
     """
     vector = np.zeros((length,), dtype=dtype)
-    vector[hot_indices] = np.True_
+
+    if dtype == np.bool:
+        hot = np.True_
+    else:
+        hot = 1
+
+    if len(hot_indices):
+        vector[hot_indices] = hot
     return vector
 
 

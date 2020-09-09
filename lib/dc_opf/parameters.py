@@ -75,7 +75,7 @@ class AbstractParameters(ABC):
 
 class SolverParameters(AbstractParameters):
     def __init__(
-        self, solver_name="gurobi", tol=0.01, warm_start=False, time_limit=5,
+        self, solver_name="gurobi", tol=0.0001, warm_start=False, time_limit=5,
     ):
         if sys.platform != "win32":
             solver_name = "glpk"
@@ -118,7 +118,7 @@ class SinglestepTopologyParameters(StandardParameters):
         forecasts=True,
         n_max_line_status_changed=1,
         n_max_sub_changed=1,
-        con_allow_onesided_disconnection=True,
+        con_allow_onesided_disconnection=False,
         con_allow_onesided_reconnection=False,
         con_symmetry=True,
         con_requirement_at_least_two=True,
@@ -126,7 +126,7 @@ class SinglestepTopologyParameters(StandardParameters):
         con_switching_limits=True,
         con_cooldown=True,
         con_maintenance=True,
-        con_unitary_action=True,
+        con_unitary_action=False,
         obj_gen_cost=False,
         obj_reward_lin=False,
         obj_reward_quad=False,

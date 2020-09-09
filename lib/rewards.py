@@ -3,23 +3,13 @@ import pandas as pd
 
 
 class RewardL2RPN2019:
-    @staticmethod
-    def from_observation(obs):
+    def from_observation(self, obs):
         relative_flows = obs.rho
-        relative_flows = np.minimum(relative_flows, 1.0)  # Clip if rho > 1.0
-
-        line_scores = np.maximum(
-            1.0 - relative_flows ** 2, np.zeros_like(relative_flows)
-        )
-
-        reward = line_scores.sum()
+        print("obs", relative_flows)
+        reward = self.from_relative_flows(relative_flows)
         return reward
 
-    @staticmethod
-    def from_mip_solution(result):
-        def f(x):
-            return 1.0 - np.square((1.0 - x))
-
+    def from_mip_solution(self, result):
         line_flow = pd.concat(
             [result["res_line"]["p_pu"], result["res_trafo"]["p_pu"]], ignore_index=True
         )
@@ -29,12 +19,20 @@ class RewardL2RPN2019:
         )
 
         relative_flows = np.abs(
-            np.divide(line_flow, max_line_flow)
+            np.divide(line_flow, max_line_flow + 1e-9)
         )  # rho_l = abs(F_l / F_l^max)
+        relative_flows = relative_flows * np.greater(relative_flows, 1e-9).astype(float)
+
+        reward = self.from_relative_flows(relative_flows)
+        return reward
+
+    @staticmethod
+    def from_relative_flows(relative_flows):
         relative_flows = np.minimum(relative_flows, 1.0)  # Clip if rho > 1.0
 
-        line_margins = np.maximum(0.0, 1.0 - relative_flows)  # Clip if margin < 0.0
-        line_scores = f(line_margins)
+        line_scores = np.maximum(
+            1.0 - relative_flows ** 2, np.zeros_like(relative_flows)
+        )
 
         reward = line_scores.sum()
         return reward

@@ -22,6 +22,7 @@ class GridDCOPF(UnitConverter, TopologyConverter):
     def __init__(self, case, base_unit_v, base_unit_p=1e6):
         UnitConverter.__init__(self, base_unit_v=base_unit_v, base_unit_p=base_unit_p)
         self.case = case
+        self.env_dc = self.case.env.parameters.ENV_DC
 
         # Initialize grid elements
         self.sub = pd.DataFrame(
@@ -63,6 +64,7 @@ class GridDCOPF(UnitConverter, TopologyConverter):
                 "b_pu",
                 "p_pu",
                 "max_p_pu",
+                "max_p_pu_dc",
                 "status",
                 "trafo",
                 "cooldown",
@@ -100,6 +102,7 @@ class GridDCOPF(UnitConverter, TopologyConverter):
                 "b_pu",
                 "p_pu",
                 "max_p_pu",
+                "max_p_pu_dc",
                 "status",
                 "trafo",
             ]
@@ -181,6 +184,7 @@ class GridDCOPF(UnitConverter, TopologyConverter):
             * line_max_i_pu
             * self.bus["v_pu"].values[self.case.grid_backend.line["from_bus"].values]
         )
+        self.line["max_p_pu_dc"] = self.line["max_p_pu"].values
 
         self.line["p_pu"] = self.convert_mw_to_per_unit(
             self.case.grid_backend.res_line["p_from_mw"]
@@ -258,6 +262,7 @@ class GridDCOPF(UnitConverter, TopologyConverter):
             self.trafo["max_p_pu"] = self.convert_mw_to_per_unit(
                 self.case.grid_backend.trafo["sn_mva"]
             )
+        self.trafo["max_p_pu_dc"] = self.trafo["max_p_pu"].values
 
         self.trafo["status"] = self.case.grid_backend.trafo["in_service"]
 
@@ -480,6 +485,9 @@ class GridDCOPF(UnitConverter, TopologyConverter):
 
         self.topo_vect, self.line_status = self._get_topology_vector()
 
+        if not reset and not self.env_dc:
+            self._update_ac_thermal_limits(obs_new, verbose=verbose)
+
         # Check if topology vector and line statuses are updated
         assert np.equal(self.topo_vect, obs_new.topo_vect).all()
         assert np.equal(self.line_status, obs_new.line_status).all()
@@ -622,6 +630,27 @@ class GridDCOPF(UnitConverter, TopologyConverter):
 
         # Update grid.bus data
         self._update_buses()
+
+    def _update_ac_thermal_limits(self, obs_new, verbose=False):
+        v_pu = self.convert_kv_to_per_unit(obs_new.v_or)
+        q_pu = self.convert_mw_to_per_unit(obs_new.q_or)
+
+        max_i_pu = self.convert_a_to_per_unit(self.case.env.get_thermal_limit())
+        max_s_pu = np.sqrt(3) * max_i_pu * v_pu
+
+        rho = obs_new.rho
+
+        self.line["max_p_pu"] = np.sqrt(
+            np.maximum(np.square(max_s_pu) - np.square(q_pu / (rho + 1e-9)), 0.0)
+        )
+
+        res = self.line[["max_p_pu", "max_p_pu_dc"]].copy()
+        res["env_max_p_pu"] = self.convert_mw_to_per_unit(
+            np.divide(obs_new.p_or, rho + 1e-9)
+        )
+
+        if verbose:
+            print(res)
 
     def _update_flows(self, obs):
         """

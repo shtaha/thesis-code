@@ -82,11 +82,13 @@ class ExperimentMixin:
         fig, ax = plt.subplots(figsize=Const.FIG_SIZE)
         for agent_name in chronic_data:
             if chronic_idx in chronic_data[agent_name].index:
-                t = chronic_data[agent_name].loc[chronic_idx]["time_steps"]
-                rho = [
-                    np.max(obs.rho)
-                    for obs in chronic_data[agent_name].loc[chronic_idx]["observations"]
-                ]
+                chronic = chronic_data[agent_name].loc[chronic_idx]
+                t = chronic["time_steps"]
+
+                if "observation" in chronic:
+                    rho = [np.max(obs.rho) for obs in chronic["observations"]]
+                else:
+                    rho = np.array(chronic["rhos"])
 
                 ax.plot(
                     t, rho, linewidth=1, label=agent_name,
@@ -119,9 +121,10 @@ class ExperimentMixin:
                 )
 
                 for i in range(len(t)):
-                    action_id = actions[i]
-                    if action_id != 0:
-                        ax.text(t[i], distances[i], str(action_id), fontsize=2)
+                    if isinstance(actions[i], int):
+                        action_id = actions[i]
+                        if action_id != 0:
+                            ax.text(t[i], distances[i], str(action_id), fontsize=2)
 
         ax.set_xlabel("Time step t")
         ax.set_ylabel(ylabel)
@@ -132,4 +135,3 @@ class ExperimentMixin:
             file_name = f"agents-chronic-" + "{:05}".format(chronic_idx) + "-"
             fig.savefig(os.path.join(save_dir, file_name + dist))
         plt.close(fig)
-

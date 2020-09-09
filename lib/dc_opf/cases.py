@@ -1,15 +1,18 @@
+import os
 from abc import ABC, abstractmethod
 
 import grid2op
 import numpy as np
 import pandapower as pp
 import pandas as pd
+from grid2op.Environment import Environment
 
+from lib.action_space import ActionSpaceGenerator
 from lib.visualizer import describe_environment
 from .unit_converter import UnitConverter
 
 
-def load_case(case_name, env=None, verbose=False):
+def load_case(case_name, env_parameters=None, verbose=False):
     if case_name == "case3":
         case = OPFCase3()
     elif case_name == "case6":
@@ -17,11 +20,11 @@ def load_case(case_name, env=None, verbose=False):
     elif case_name == "case4":
         case = OPFCase4()
     elif case_name in ["rte_case5", "rte_case5_example"]:
-        case = OPFRTECase5(env=env)
+        case = OPFRTECase5(env_parameters=env_parameters)
     elif case_name in ["l2rpn2019", "l2rpn_2019"]:
-        case = OPFL2RPN2019(env=env)
+        case = OPFL2RPN2019(env_parameters=env_parameters)
     elif case_name in ["l2rpn2020", "l2rpn_wcci_2020", "l2rpn_2020"]:
-        case = OPFL2RPN2020(env=env)
+        case = OPFL2RPN2020(env_parameters=env_parameters)
     else:
         raise ValueError(f"Invalid case name. Case {case_name} does not exist.")
 
@@ -63,6 +66,28 @@ class OPFCaseMixin:
         grid.gen["gen_max_ramp_down"] = env.gen_max_ramp_down
         grid.gen["gen_min_uptime"] = env.gen_min_uptime
         grid.gen["gen_min_downtime"] = env.gen_min_downtime
+
+    @staticmethod
+    def make_environment(case_name, parameters):
+        env: Environment = grid2op.make_from_dataset_path(
+            dataset_path=os.path.join(
+                os.path.expanduser("~"), "data_grid2op", case_name
+            ),
+            backend=grid2op.Backend.PandaPowerBackend(),
+            action_class=grid2op.Action.TopologyAction,
+            observation_class=grid2op.Observation.CompleteObservation,
+            reward_class=grid2op.Reward.L2RPNReward,
+            param=parameters,
+        )
+        return env
+
+    @staticmethod
+    def generate_unitary_action_set(case, case_save_dir=None, verbose=False):
+        action_generator = ActionSpaceGenerator(case.env)
+        action_set = action_generator.get_topology_action_set(
+            save_dir=case_save_dir, verbose=verbose
+        )
+        return action_set
 
 
 class OPFCase3(OPFAbstractCase, UnitConverter):
@@ -588,15 +613,14 @@ class OPFCase4(OPFAbstractCase, UnitConverter):
 
 
 class OPFRTECase5(OPFAbstractCase, UnitConverter, OPFCaseMixin):
-    def __init__(self, env=None):
+    def __init__(self, env_parameters=None):
         UnitConverter.__init__(self, base_unit_p=1e6, base_unit_v=1e5)
 
         self.name = "Case RTE 5"
 
-        if not env:
-            self.env = grid2op.make(dataset="rte_case5_example")
-        else:
-            self.env = env
+        self.env = self.make_environment(
+            case_name="rte_case5_example", parameters=env_parameters
+        )
 
         self.grid_org = self.build_case_grid()
         self.grid_backend = self.update_backend(self.env)
@@ -631,15 +655,14 @@ class OPFRTECase5(OPFAbstractCase, UnitConverter, OPFCaseMixin):
 
 
 class OPFL2RPN2019(OPFAbstractCase, UnitConverter, OPFCaseMixin):
-    def __init__(self, env=None):
+    def __init__(self, env_parameters=None):
         UnitConverter.__init__(self, base_unit_p=1e6, base_unit_v=1e5)
 
         self.name = "Case L2RPN 2019"
 
-        if not env:
-            self.env = grid2op.make(dataset="l2rpn_2019")
-        else:
-            self.env = env
+        self.env = self.make_environment(
+            case_name="l2rpn_2019", parameters=env_parameters
+        )
 
         self.grid_org = self.build_case_grid()
         self.grid_backend = self.update_backend(self.env)
@@ -670,15 +693,14 @@ class OPFL2RPN2019(OPFAbstractCase, UnitConverter, OPFCaseMixin):
 
 
 class OPFL2RPN2020(OPFAbstractCase, UnitConverter, OPFCaseMixin):
-    def __init__(self, env=None):
+    def __init__(self, env_parameters=None):
         UnitConverter.__init__(self, base_unit_p=1e6, base_unit_v=138000.0)
 
         self.name = "Case L2RPN 2020 WCCI"
 
-        if not env:
-            self.env = grid2op.make(dataset="l2rpn_wcci_2020")
-        else:
-            self.env = env
+        self.env = self.make_environment(
+            case_name="l2rpn_wcci_2020", parameters=env_parameters
+        )
 
         self.grid_org = self.build_case_grid()
         self.grid_backend = self.update_backend(self.env)
