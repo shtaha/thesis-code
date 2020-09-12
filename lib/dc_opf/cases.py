@@ -69,16 +69,19 @@ class OPFCaseMixin:
 
     @staticmethod
     def make_environment(case_name, parameters):
-        env: Environment = grid2op.make_from_dataset_path(
-            dataset_path=os.path.join(
-                os.path.expanduser("~"), "data_grid2op", case_name
-            ),
-            backend=grid2op.Backend.PandaPowerBackend(),
-            action_class=grid2op.Action.TopologyAction,
-            observation_class=grid2op.Observation.CompleteObservation,
-            reward_class=grid2op.Reward.L2RPNReward,
-            param=parameters,
-        )
+        if parameters:
+            env: Environment = grid2op.make_from_dataset_path(
+                dataset_path=os.path.join(
+                    os.path.expanduser("~"), "data_grid2op", case_name
+                ),
+                backend=grid2op.Backend.PandaPowerBackend(),
+                action_class=grid2op.Action.TopologyAction,
+                observation_class=grid2op.Observation.CompleteObservation,
+                reward_class=grid2op.Reward.L2RPNReward,
+                param=parameters,
+            )
+        else:
+            env = grid2op.make(case_name)
         return env
 
     @staticmethod

@@ -524,9 +524,7 @@ class ActionSpaceGenerator(object):
                 )
 
             actions_descriptions = pd.DataFrame(actions_descriptions)
-            with open(
-                os.path.join(save_dir, f"{self.env.name}-action_space.csv"), "w"
-            ) as f:
+            with open(os.path.join(save_dir, f"action_space.csv"), "w") as f:
                 f.write(actions_descriptions.to_string())
 
         return actions, actions_info

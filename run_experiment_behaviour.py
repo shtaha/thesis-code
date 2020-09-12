@@ -3,7 +3,7 @@ import os
 from experiments import ExperimentBehaviour
 from lib.agents import make_test_agent
 from lib.constants import Constants as Const
-from lib.data_utils import make_dir
+from lib.data_utils import make_dir, env_pf
 from lib.dc_opf import load_case, CaseParameters
 from lib.run_utils import create_logger
 from lib.visualizer import Visualizer
@@ -18,8 +18,7 @@ verbose = True
 experiment_behaviour = ExperimentBehaviour()
 kwargs = dict()
 
-# for case_name in ["rte_case5_example", "l2rpn_2019", "l2rpn_wcci_2020"]:
-for case_name in ["l2rpn_wcci_2020"]:
+for case_name in ["rte_case5_example", "l2rpn_2019", "l2rpn_wcci_2020"]:
     if case_name == "l2rpn_wcci_2020":
         n_steps = 50
     elif case_name == "l2rpn_2019":
@@ -27,10 +26,8 @@ for case_name in ["l2rpn_wcci_2020"]:
     else:
         n_steps = 500
 
-    env_pf = "dc" if env_dc else "ac"
-    case_save_dir = make_dir(os.path.join(save_dir, f"{case_name}-{env_pf}"))
-
-    create_logger(logger_name=f"{case_name}-{env_pf}", save_dir=case_save_dir)
+    case_save_dir = make_dir(os.path.join(save_dir, f"{case_name}-{env_pf(env_dc)}"))
+    create_logger(logger_name=f"logger", save_dir=case_save_dir)
 
     """
         Initialize environment.
@@ -43,9 +40,9 @@ for case_name in ["l2rpn_wcci_2020"]:
     )
 
     for agent_name in [
-        # "do-nothing-agent",
+        "do-nothing-agent",
         "agent-mip",
-        # "agent-multistep-mip",
+        "agent-multistep-mip",
     ]:
         if case_name == "rte_case5_example":
             kwargs["obj_lambda_action"] = 0.004

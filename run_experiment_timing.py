@@ -3,7 +3,7 @@ import os
 from experiments import ExperimentDCOPFTiming
 from lib.agents import make_test_agent
 from lib.constants import Constants as Const
-from lib.data_utils import make_dir
+from lib.data_utils import make_dir, env_pf
 from lib.dc_opf import load_case, CaseParameters
 from lib.run_utils import create_logger
 from lib.visualizer import Visualizer
@@ -22,14 +22,12 @@ for case_name in ["rte_case5_example", "l2rpn_2019", "l2rpn_wcci_2020"]:
     if case_name == "l2rpn_wcci_2020":
         n_timings = 50
     elif case_name == "l2rpn_2019":
-        n_timings = 50
+        n_timings = 25
     else:
         n_timings = 25
 
-    env_pf = "dc" if env_dc else "ac"
-    case_save_dir = make_dir(os.path.join(save_dir, f"{case_name}-{env_pf}"))
-
-    create_logger(logger_name=f"{case_name}-{env_pf}", save_dir=case_save_dir)
+    case_save_dir = make_dir(os.path.join(save_dir, f"{case_name}-{env_pf(env_dc)}"))
+    create_logger(logger_name=f"logger", save_dir=case_save_dir)
 
     """
         Initialize environment.
@@ -115,7 +113,7 @@ for case_name in ["rte_case5_example", "l2rpn_2019", "l2rpn_wcci_2020"]:
                     {"con_cooldown": False, "con_maintenance": False},
                     "Cooldown and Maintenance",
                 ),
-                ({"con_unitary_action": False}, "Unitary action"),
+                ({"con_unitary_action": True}, "Unitary action"),
             ],
             n_timings=n_timings,
             verbose=verbose,

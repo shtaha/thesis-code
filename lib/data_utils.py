@@ -56,3 +56,11 @@ def hot_to_indices(bool_array: np.ndarray) -> np.ndarray:
 def read_bz2_to_dataframe(file_path, sep=";"):
     data_csv = bz2.BZ2File(file_path).read().decode()
     return pd.read_csv(StringIO(data_csv), sep=sep)
+
+
+def env_pf(env_dc):
+    return "dc" if env_dc else "ac"
+
+
+def is_nonetype(obj):
+    return isinstance(obj, type(None))

@@ -6,11 +6,15 @@ import tensorflow as tf
 from graph_nets import utils_tf
 
 from experience import ExperienceCollector
-from lib.data_utils import make_dir
+from lib.data_utils import make_dir, env_pf
 from lib.dc_opf import load_case, CaseParameters, GridDCOPF
-from lib.gns import obses_to_combined_graphs_dict_list, obses_to_graphs_dict_list
-from lib.gns import stack_graphs, graph_dict_to_graph, equal_graphs, print_graphs_tuple
-from lib.visualizer import pprint
+from lib.gns import (
+    obses_to_graphs_dict_list,
+    dict_list_to_combined_dict,
+    tf_graph_dataset,
+)
+from lib.gns import stack_graphs, equal_graphs
+from lib.visualizer import pprint, print_matrix
 
 
 class TestGNs(unittest.TestCase):
@@ -21,8 +25,9 @@ class TestGNs(unittest.TestCase):
         agent_name = "agent-mip"
 
         env_dc = True
-        env_pf = "dc" if env_dc else "ac"
-        case_save_dir = make_dir(os.path.join(save_dir, f"{case_name}-{env_pf}"))
+        case_save_dir = make_dir(
+            os.path.join(save_dir, f"{case_name}-{env_pf(env_dc)}")
+        )
 
         parameters = CaseParameters(case_name=case_name, env_dc=env_dc)
         case = load_case(case_name, env_parameters=parameters)
@@ -36,7 +41,7 @@ class TestGNs(unittest.TestCase):
             case, base_unit_v=case.base_unit_v, base_unit_p=case.base_unit_p
         )
 
-        targets = np.array(
+        labels = np.array(
             list(map(lambda action: int(action != env.action_space({})), actions)),
             dtype=np.int,
         )
@@ -47,14 +52,12 @@ class TestGNs(unittest.TestCase):
         graphs_dict_list = obses_to_graphs_dict_list(
             observations, dones, grid, max_length=max_length
         )
-        combined_graphs_dict_list = obses_to_combined_graphs_dict_list(
-            observations, dones, grid, max_length=max_length
-        )
+        combined_graphs_dict_list = dict_list_to_combined_dict(graphs_dict_list)
 
-        dataset = tf.data.Dataset.from_tensor_slices(
-            (combined_graphs_dict_list, targets[:max_length])
-        )
-        dataset = dataset.map(graph_dict_to_graph)
+        graph_dataset = tf_graph_dataset(combined_graphs_dict_list)
+        label_dataset = tf.data.Dataset.from_tensor_slices(labels[:max_length])
+        dataset = tf.data.Dataset.zip((graph_dataset, label_dataset))
+
         dataset = dataset.repeat(1)
         dataset = dataset.batch(batch_size)
 
@@ -69,7 +72,14 @@ class TestGNs(unittest.TestCase):
             check = tf.squeeze(equal_graphs(graph_batch, graph_batch_from_list)).numpy()
 
             pprint("Batch:", batch_idx, check)
-            print_graphs_tuple(graph_batch)
-            print_graphs_tuple(graph_batch_from_list)
+
+            if not check:
+                for field in [
+                    "globals",
+                    "nodes",
+                    "edges",
+                ]:
+                    print_matrix(getattr(graph_batch, field))
+                    print_matrix(getattr(graph_batch_from_list, field))
 
             self.assertTrue(check)

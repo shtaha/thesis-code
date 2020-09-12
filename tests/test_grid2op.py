@@ -11,8 +11,8 @@ from lib.visualizer import describe_environment, print_grid
 class TestGrid2op(unittest.TestCase):
     def test_rte_case5(self):
         try:
-            env = grid2op.make(dataset="rte_case5_example")
-            case = OPFRTECase5(env=env)
+            case = OPFRTECase5()
+            env = case.env
 
             grid = case.update_backend(env)
 
@@ -28,8 +28,8 @@ class TestGrid2op(unittest.TestCase):
 
     def test_l2rpn2019(self):
         try:
-            env = grid2op.make(dataset="l2rpn_2019")
-            case = OPFL2RPN2019(env=env)
+            case = OPFL2RPN2019()
+            env = case.env
 
             grid = case.update_backend(env)
 
@@ -50,8 +50,8 @@ class TestGrid2op(unittest.TestCase):
                 self.assertTrue(True)
                 return
 
-            env = grid2op.make(dataset="l2rpn_wcci_2020")
-            case = OPFL2RPN2020(env=env)
+            case = OPFL2RPN2020()
+            env = case.env
 
             grid = case.update_backend(env)
 

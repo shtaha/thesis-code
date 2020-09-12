@@ -2,7 +2,8 @@ import numpy as np
 from graph_nets import graphs
 from graph_nets import utils_tf
 
-from lib.data_utils import indices_to_hot
+from ..data_utils import indices_to_hot
+from ..dc_opf import GridDCOPF
 
 
 def print_graphs_tuple(graphs_tuple, verbose=False):
@@ -27,7 +28,7 @@ def print_graphs_tuple(graphs_tuple, verbose=False):
         print("n_edge:\n{}".format(graphs_tuple.n_edge))
 
 
-def obs_to_graph_dict_by_grid(obs, grid):
+def obs_to_graph_dict_by_grid_buses(obs, grid):
     """
     Convert observation to a graph network data dictionary.
 
@@ -139,7 +140,118 @@ def obs_to_graph_dict_by_grid(obs, grid):
     return graph_dict
 
 
-def obses_to_graphs_dict_list(obses, dones, grid, max_length=-1):
+def obs_to_graph_dict_by_grid(obs, grid):
+    """
+    Convert observation to a graph network data dictionary.
+
+    Data dictionary consists of:
+        globals: np.ndarray (n_globals, )
+            Represents global attributes of a graph.
+
+        nodes: np.ndarray (n_nodes, n_node_features)
+            Represents feature vector for each node in the graph.
+
+        edges: np.ndarray (n_edges, n_edge_features)
+            Represents feature vector for each edge in the graph.
+
+
+    Observation attributes are:
+        year, month, day, hour_of_day, minute_of_hour, day_of_week:
+            Included in globals. year and minute_of_hour omitted.
+
+        prod_p, prod_q, prod_v:
+            Included in node features.
+
+        load_p, load_q, load_v:
+            Included in node features.
+
+        p_or, q_or, v_or, a_or, p_ex, q_ex, v_ex, a_ex:
+            Included in edge features.
+
+        rho:
+            Included in edge features.
+
+        topo_vect:
+            Included in edge connections.
+
+        line_status:
+            Included as a mask on edge values.
+
+        time_before_cooldown_sub:
+            Not included. Can be added to node features.
+
+        time_before_cooldown_line, timestep_overflow, time_next_maintenance, duration_next_maintenance:
+            Not included. Can be added to edge features.
+
+        target_dispatch, actual_dispatch:
+            Not included.
+
+    """
+    n_sub = grid.n_sub
+    n_line = grid.n_line
+    n_gen = grid.n_gen
+    n_load = grid.n_load
+
+    global_features = np.array([obs.month, obs.day, obs.day_of_week, obs.hour_of_day])
+
+    edges_or = np.zeros((n_line, 13))
+    # Features
+    edges_or[:, 0] = obs.p_or
+    edges_or[:, 1] = obs.q_or
+    edges_or[:, 2] = obs.a_or
+    edges_or[:, 3] = obs.v_or
+    edges_or[:, 4] = obs.p_ex
+    edges_or[:, 5] = obs.q_ex
+    edges_or[:, 6] = obs.a_ex
+    edges_or[:, 7] = obs.v_ex
+    edges_or[:, 8] = obs.rho
+
+    # Topology
+    edges_or[:, 9] = np.equal(grid.line.sub_bus_or, 1).astype(np.float)
+    edges_or[:, 10] = np.equal(grid.line.sub_bus_or, 2).astype(np.float)
+    edges_or[:, 11] = np.equal(grid.line.sub_bus_ex, 1).astype(np.float)
+    edges_or[:, 12] = np.equal(grid.line.sub_bus_ex, 2).astype(np.float)
+    edges_or[:, 9:] = np.multiply(
+        edges_or[:, 9:], np.atleast_2d(obs.line_status.astype(np.float)).T
+    )
+    edges_ex = edges_or
+
+    # Double edges
+    senders_or = grid.line.sub_or.values
+    receivers_or = grid.line.sub_ex.values
+    senders_ex = grid.line.sub_ex.values
+    receivers_ex = grid.line.sub_or.values
+
+    edge_features = np.concatenate((edges_or, edges_ex), axis=0)
+    senders = np.concatenate((senders_or, senders_ex), axis=0)
+    receivers = np.concatenate((receivers_or, receivers_ex), axis=0)
+
+    node_features = np.zeros((n_sub, 2 * (n_gen + n_load)))
+    for sub_id in grid.sub.index:
+        gen_hot = indices_to_hot(grid.sub.gen[sub_id], length=n_gen, dtype=np.float)
+        load_hot = indices_to_hot(grid.sub.load[sub_id], length=n_load, dtype=np.float)
+        gen_inj = np.concatenate((obs.prod_p * gen_hot, obs.prod_q * gen_hot))
+        load_inj = np.concatenate((obs.load_p * load_hot, obs.load_q * load_hot))
+        node_features[sub_id, :] = np.concatenate((gen_inj, load_inj))
+
+    global_features = global_features.astype(np.float)
+    node_features = node_features.astype(np.float)
+    edge_features = edge_features.astype(np.float)
+
+    graph_dict = {
+        "globals": global_features,
+        "nodes": node_features,
+        "edges": edge_features,
+        "senders": senders,
+        "receivers": receivers,
+    }
+
+    return graph_dict
+
+
+def obses_to_graphs_dict_list(obses, dones, case, max_length=-1):
+    grid = GridDCOPF(case, base_unit_v=case.base_unit_v, base_unit_p=case.base_unit_p)
+
     graphs_dict_list = []
 
     grid.update(obses[0], reset=True)
@@ -158,7 +270,9 @@ def obses_to_graphs_dict_list(obses, dones, grid, max_length=-1):
     return graphs_dict_list
 
 
-def obses_to_combined_graphs_dict_list(obses, dones, grid, max_length=-1):
+def obses_to_combined_graphs_dict_list(obses, dones, case, max_length=-1):
+    grid = GridDCOPF(case, base_unit_v=case.base_unit_v, base_unit_p=case.base_unit_p)
+
     combined_graphs_dict_list = {
         "globals": [],
         "nodes": [],
@@ -182,3 +296,43 @@ def obses_to_combined_graphs_dict_list(obses, dones, grid, max_length=-1):
             break
 
     return combined_graphs_dict_list
+
+
+def combined_dict_to_dict_list(combined_dict):
+    n_elements = None
+
+    fields = combined_dict.keys()
+    for field in fields:
+        field_values = combined_dict[field]
+        if field_values:
+            n_elements = len(field_values)
+            break
+
+    dict_list = []
+    for i in range(n_elements):
+        graph_dict = dict()
+        for field in fields:
+            graph_dict[field] = combined_dict[field][i]
+
+        dict_list.append(graph_dict)
+
+    return dict_list
+
+
+def dict_list_to_combined_dict(dict_list):
+    combined_dict = {
+        "globals": [],
+        "edges": [],
+        "nodes": [],
+        "senders": [],
+        "receivers": [],
+    }
+    for graph_dict in dict_list:
+        for field in graph_dict:
+            combined_dict[field].append(graph_dict[field])
+
+    for field in combined_dict:
+        if not len(combined_dict[field]):
+            combined_dict[field] = None
+
+    return combined_dict

@@ -22,7 +22,9 @@ class GridDCOPF(UnitConverter, TopologyConverter):
     def __init__(self, case, base_unit_v, base_unit_p=1e6):
         UnitConverter.__init__(self, base_unit_v=base_unit_v, base_unit_p=base_unit_p)
         self.case = case
-        self.env_dc = self.case.env.parameters.ENV_DC
+
+        if self.case.env:
+            self.env_dc = self.case.env.parameters.ENV_DC
 
         # Initialize grid elements
         self.sub = pd.DataFrame(
@@ -391,7 +393,7 @@ class GridDCOPF(UnitConverter, TopologyConverter):
         self.fixed_elements = self.get_fixed_elements()
 
         # Big-M for power flows
-        self.big_m = 1.0
+        self.big_m = 2.0
 
     def print_grid(self):
         print("\nGRID\n")

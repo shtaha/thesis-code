@@ -34,7 +34,9 @@ class ExperienceCollector(object):
         pprint("", f"{phase} Experience")
         print("-" * 80)
 
-    def collect(self, env, agent, n_chronics=10, n_steps=-1, verbose=False):
+    def collect(
+        self, env, agent, do_chronics=(), n_chronics=10, n_steps=-1, verbose=False
+    ):
         self.print_collector("Collecting")
         agent.print_agent(default=verbose)
 
@@ -55,14 +57,13 @@ class ExperienceCollector(object):
 
             # Environment specific filtering
             if env.name == "rte_case5_example":
-                if chronic_idx not in [13, 14, 15, 16, 17, 16, 18, 19]:
+                if chronic_idx not in do_chronics:
                     continue
-                pass
             elif env.name == "l2rpn_2019":
-                if chronic_idx not in [0, 10, 100, 200, 196]:
+                if chronic_idx not in do_chronics:
                     continue
             elif env.name == "l2rpn_wcci_2020":
-                if (chronic_idx % 240) not in [0, 1]:
+                if chronic_idx not in do_chronics:
                     continue
 
             chronic_org_idx = chronics.index(chronic_name)
@@ -92,7 +93,7 @@ class ExperienceCollector(object):
                 t = env.chronics_handler.real_data.data.current_index
 
                 if t % 200 == 0:
-                    pprint("Step:", t)
+                    pprint("        - Step:", t)
 
                 if done:
                     pprint("        - Length:", f"{t}/{chronic_len}")
