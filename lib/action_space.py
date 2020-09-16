@@ -3,7 +3,6 @@ import itertools
 import os
 from typing import List, Tuple, Dict
 
-import grid2op
 import numpy as np
 import pandas as pd
 from grid2op.Action import (
@@ -528,3 +527,59 @@ class ActionSpaceGenerator(object):
                 f.write(actions_descriptions.to_string())
 
         return actions, actions_info
+
+
+def get_action_effect(action, env):
+    do_nothing = True
+    unitary = True
+    set_bus = dict()
+    set_line_status = dict()
+
+    if action != env.action_space({}):
+        do_nothing = False
+        for sub_id in range(len(env.sub_info)):
+            effect = action.effect_on(substation_id=sub_id)
+
+            assert not effect["change_bus"].any()  # Change bus is not allowed
+            if effect["set_bus"].any():
+                set_bus[sub_id] = effect["set_bus"]
+
+        for line_id in range(env.n_line):
+            effect = action.effect_on(line_id=line_id)
+
+            # Change line status is not allowed
+            assert not (
+                effect["change_bus_or"]
+                or effect["change_bus_ex"]
+                or effect["change_line_status"]
+            )
+            if effect["set_line_status"] == 1 or effect["set_line_status"] == -1:
+                set_line_status[line_id] = effect["set_line_status"]
+
+            # If reconnection, do not count substation change
+            if effect["set_line_status"] == 1:
+                sub_or = env.line_or_to_subid[line_id]
+                sub_ex = env.line_ex_to_subid[line_id]
+
+                assert sub_or in set_bus and sub_ex in set_bus
+                set_bus.pop(sub_or, None)
+                set_bus.pop(sub_ex, None)
+
+        unitary = bool(len(set_line_status) and len(set_bus))
+    return do_nothing, unitary, set_bus, set_line_status
+
+
+def get_actions_effects(actions, env):
+    action_do_nothing = []
+    action_unitary = []
+    action_set_bus = []
+    action_set_line_status = []
+    for i, action in enumerate(actions):
+        do_nothing, unitary, set_bus, set_line_status = get_action_effect(action, env)
+
+        action_do_nothing.append(do_nothing)
+        action_unitary.append(unitary)
+        action_set_bus.append(set_bus)
+        action_set_line_status.append(set_line_status)
+
+    return action_do_nothing, action_unitary, action_set_bus, action_set_line_status

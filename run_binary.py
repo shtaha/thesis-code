@@ -86,6 +86,7 @@ n_batch = 32
 tf.random.set_seed(0)
 dataset = tf.data.Dataset.zip((graph_dataset, label_dataset))
 
+dataset = dataset.prefetch(tf.data.experimental.AUTOTUNE)
 dataset = dataset.shuffle(len(labels))
 dataset = dataset.repeat(n_epochs)
 dataset = dataset.batch(n_batch)

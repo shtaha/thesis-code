@@ -1,101 +1,74 @@
+import copy
 import os
 
 import matplotlib.pyplot as plt
 import numpy as np
-import pandas as pd
 from PyPDF2 import PdfFileMerger
 
+from experience import ExperienceCollector
 from lib.chronics import get_sorted_chronics
 from lib.constants import Constants as Const
 from lib.rl_utils import compute_returns
 from lib.visualizer import pprint
-from .experiment_base import ExperimentBase, ExperimentMixin
+from .experiment_base import ExperimentBase
 
 
-class ExperimentPerformance(ExperimentBase, ExperimentMixin):
-    def analyse(self, case, agent, save_dir=None, verbose=False):
+class ExperimentPerformance(ExperimentBase):
+    def __init__(self, save_dir):
+        self.collector = ExperienceCollector(save_dir=save_dir)
+
+    def analyse(
+        self, case, agent, do_chronics=(), n_chronics=-1, n_steps=-1, verbose=False,
+    ):
         env = case.env
 
-        self.print_experiment("Failures and Switching")
-        agent.print_agent(default=verbose)
-
-        file_name = agent.name.replace(" ", "-").lower() + "-chronics"
-        chronic_data, done_chronic_indices = self._load_done_chronics(
-            file_name=file_name, save_dir=save_dir
-        )
-
-        new_chronic_data = self._runner(
-            case=case, env=env, agent=agent, done_chronic_indices=done_chronic_indices
-        )
-        chronic_data = chronic_data.append(new_chronic_data)
-
-        self._save_chronics(
-            chronic_data=chronic_data, file_name=file_name, save_dir=save_dir
+        self.collector.full_reset()
+        self._runner(
+            env,
+            agent,
+            do_chronics=do_chronics,
+            n_chronics=n_chronics,
+            n_steps=n_steps,
+            verbose=verbose,
         )
 
     def compare_agents(self, case, save_dir=None, delete_file=True):
         case_name = self._get_case_name(case)
         chronic_data = dict()
 
-        agent_names = []
-        for file in os.listdir(save_dir):
-            if "-chronics.pkl" in file:
-                agent_name = file[: -len("-chronics.pkl")]
-                agent_name = agent_name.replace("-", " ").capitalize()
-                agent_names.append(agent_name)
-                chronic_data[agent_name] = pd.read_pickle(os.path.join(save_dir, file))
-
-        chronic_indices_all = pd.Index([], name="chronic_idx")
-        for agent_name in agent_names:
-            chronic_indices_all = chronic_indices_all.union(
-                chronic_data[agent_name].index
-            )
-
-        chronic_names_all = pd.DataFrame(
-            columns=["chronic_name"], index=chronic_indices_all
+        agent_names = np.unique(
+            [
+                file.split("-chronic-")[0]
+                for file in os.listdir(save_dir)
+                if "-chronic-" in file and "agents" not in file
+            ]
         )
+
+        chronic_indices_all = []
         for agent_name in agent_names:
-            chronic_names_all["chronic_name"].loc[
-                chronic_data[agent_name].index
-            ] = chronic_data[agent_name]["chronic_name"]
+            self.collector.load_data(agent_name, case.env)
+            chronic_indices_all.extend(self.collector.chronic_ids)
+            chronic_data[agent_name] = copy.deepcopy(self.collector.data)
+
+        chronic_indices_all = np.unique(chronic_indices_all).tolist()
 
         for chronic_idx in chronic_indices_all:
-            chronic_name = chronic_names_all["chronic_name"].loc[chronic_idx]
+            self._plot_rewards(chronic_data, case_name, chronic_idx, save_dir)
 
-            self._plot_rewards(
-                chronic_data, case_name, chronic_idx, chronic_name, save_dir
-            )
-
-            self._plot_relative_flow(
-                chronic_data, case_name, chronic_idx, chronic_name, save_dir
-            )
+            self._plot_relative_flow(chronic_data, case_name, chronic_idx, save_dir)
 
             for dist, ylabel in [
                 ("distances", "Unitary action distance to reference topology"),
-                ("distances_status", "Line status distance to reference topology"),
+                ("distances_line", "Line status distance to reference topology"),
                 ("distances_sub", "Substation distance distance to reference topology"),
             ]:
                 self._plot_distances(
-                    chronic_data,
-                    dist,
-                    ylabel,
-                    case_name,
-                    chronic_idx,
-                    chronic_name,
-                    save_dir,
+                    chronic_data, dist, ylabel, case_name, chronic_idx, save_dir,
                 )
 
-            self._plot_generators(
-                chronic_data, case_name, chronic_idx, chronic_name, save_dir
-            )
+        self._plot_durations(chronic_data, chronic_indices_all, case_name, save_dir)
 
-        self._plot_durations(
-            chronic_data, chronic_names_all, agent_names, case_name, save_dir
-        )
-
-        self._plot_returns(
-            chronic_data, chronic_names_all, agent_names, case_name, save_dir
-        )
+        self._plot_returns(chronic_data, chronic_indices_all, case_name, save_dir)
 
         self.aggregate_by_chronics(save_dir, delete_file=delete_file)
 
@@ -103,7 +76,7 @@ class ExperimentPerformance(ExperimentBase, ExperimentMixin):
         for plot_name in [
             "rewards",
             "distances",
-            "distances_status",
+            "distances_line",
             "distances_sub",
             "advantages",
             "rhos",
@@ -168,31 +141,133 @@ class ExperimentPerformance(ExperimentBase, ExperimentMixin):
                 self.close_files(chronic_files, save_dir, delete_file=delete_file)
 
     @staticmethod
-    def _plot_durations(
-        chronic_data, chronic_names_all, agent_names, case_name, save_dir=None
-    ):
+    def _plot_rewards(chronic_data, case_name, chronic_idx, save_dir=None):
         fig, ax = plt.subplots(figsize=Const.FIG_SIZE)
-        width = 0.3 / len(agent_names)
 
-        x_all = np.arange(len(chronic_names_all.index))
-        for agent_id, agent_name in enumerate(agent_names):
-            chronic_names = chronic_data[agent_name]["chronic_name"].values
+        chronic_name = str(chronic_idx)
+        for agent_name in chronic_data:
+            agent_data = chronic_data[agent_name]
+
+            if chronic_idx in agent_data:
+                rewards = agent_data[chronic_idx]["rewards"]
+                t = np.arange(len(rewards))
+
+                ax.plot(
+                    t, rewards, linewidth=1, label=agent_name,
+                )
+
+            if agent_data[chronic_idx]["chronic_name"]:
+                chronic_name = agent_data[chronic_idx]["chronic_name"]
+
+        ax.set_xlabel("Time step t")
+        ax.set_ylabel("Reward")
+        ax.legend()
+        fig.suptitle(f"{case_name} - Chronic {chronic_name}")
+
+        if save_dir:
+            file_name = f"agents-chronic-" + "{:05}".format(chronic_idx) + "-"
+            fig.savefig(os.path.join(save_dir, file_name + "rewards"))
+        plt.close(fig)
+
+    @staticmethod
+    def _plot_relative_flow(chronic_data, case_name, chronic_idx, save_dir=None):
+        fig, ax = plt.subplots(figsize=Const.FIG_SIZE)
+
+        chronic_name = str(chronic_idx)
+        for agent_name in chronic_data:
+            agent_data = chronic_data[agent_name]
+
+            if chronic_idx in agent_data:
+                obses = agent_data[chronic_idx]["obses"][:-1]
+                rho = [np.max(obs.rho) for obs in obses]
+                t = np.arange(len(obses))
+
+                ax.plot(
+                    t, rho, linewidth=1, label=agent_name,
+                )
+
+            if agent_data[chronic_idx]["chronic_name"]:
+                chronic_name = agent_data[chronic_idx]["chronic_name"]
+
+        ax.set_xlabel("Time step t")
+        ax.set_ylabel(r"Relative flow $\rho$")
+        ax.legend()
+        ax.set_ylim([0.0, 2.0])
+        fig.suptitle(f"{case_name} - Chronic {chronic_name}")
+
+        if save_dir:
+            file_name = f"agents-chronic-" + "{:05}".format(chronic_idx) + "-"
+            fig.savefig(os.path.join(save_dir, file_name + "rhos"))
+        plt.close(fig)
+
+    @staticmethod
+    def _plot_distances(
+        chronic_data, dist, ylabel, case_name, chronic_idx, save_dir=None
+    ):
+        plot = False
+        for agent_name in chronic_data:
+            plot = plot and bool(len(chronic_data[agent_name][chronic_idx][dist]))
+
+        if plot:
+            fig, ax = plt.subplots(figsize=Const.FIG_SIZE)
+
+            chronic_name = str(chronic_idx)
+            for agent_name in chronic_data:
+                agent_data = chronic_data[agent_name]
+
+                if chronic_idx in agent_data:
+                    distances = agent_data[chronic_idx][dist]
+                    t = np.arange(len(distances))
+
+                    ax.plot(
+                        t, distances, linewidth=0.5, label=agent_name,
+                    )
+
+                    chronic_name = agent_data[chronic_idx]["chronic_name"]
+
+            ax.set_xlabel("Time step t")
+            ax.set_ylabel(ylabel)
+            ax.legend()
+            fig.suptitle(f"{case_name} - Chronic {chronic_name}")
+
+            if save_dir:
+                file_name = f"agents-chronic-" + "{:05}".format(chronic_idx) + "-"
+                fig.savefig(os.path.join(save_dir, file_name + dist))
+            plt.close(fig)
+
+    @staticmethod
+    def _plot_durations(chronic_data, chronic_indices_all, case_name, save_dir=None):
+        fig, ax = plt.subplots(figsize=Const.FIG_SIZE)
+        width = 0.3 / len(chronic_data.keys())
+
+        x_all = np.arange(len(chronic_indices_all))
+
+        chronic_names_all = [""] * len(chronic_indices_all)
+        chronic_lengths_all = [0] * len(chronic_indices_all)
+        for agent_id, agent_name in enumerate(chronic_data):
+            agent_data = chronic_data[agent_name]
+
+            agent_chronic_indices = [chronic_idx for chronic_idx in agent_data]
+
+            for chronic_idx in agent_chronic_indices:
+                idx = chronic_indices_all.index(chronic_idx)
+                chronic_name = str(agent_data[chronic_idx]["chronic_name"])
+                chronic_len = agent_data[chronic_idx]["chronic_len"]
+                chronic_names_all[idx] = chronic_name
+                chronic_lengths_all[idx] = chronic_len
 
             x = []
-            for x_, name in zip(x_all, chronic_names_all["chronic_name"]):
-                if name in chronic_names:
+            for x_, chronic_idx in zip(x_all, chronic_indices_all):
+                if chronic_idx in agent_data:
                     x.append(x_)
             x = np.array(x)
 
-            y = chronic_data[agent_name]["duration"]
+            y = [agent_data[chronic_idx]["duration"] for chronic_idx in agent_data]
             ax.barh(x + agent_id * width, y, width, left=0.001, label=agent_name)
 
-            ax.scatter(
-                chronic_data[agent_name]["chronic_length"], x, marker="|", c="black"
-            )
-
+        ax.scatter(chronic_lengths_all, x_all, marker="|", c="black")
         ax.set_yticks(x_all)
-        ax.set_yticklabels(chronic_names_all["chronic_name"])
+        ax.set_yticklabels(chronic_names_all)
         ax.invert_yaxis()
         ax.legend()
 
@@ -206,29 +281,36 @@ class ExperimentPerformance(ExperimentBase, ExperimentMixin):
         plt.close(fig)
 
     @staticmethod
-    def _plot_returns(
-        chronic_data, chronic_names_all, agent_names, case_name, save_dir=None
-    ):
+    def _plot_returns(chronic_data, chronic_indices_all, case_name, save_dir=None):
         fig, ax = plt.subplots(figsize=Const.FIG_SIZE)
-        width = 0.3 / len(agent_names)
+        width = 0.3 / len(chronic_data.keys())
 
-        x_all = np.arange(len(chronic_names_all.index))
-        for agent_id, agent_name in enumerate(agent_names):
-            chronic_names = chronic_data[agent_name]["chronic_name"].values
+        x_all = np.arange(len(chronic_indices_all))
+
+        chronic_names_all = [""] * len(chronic_indices_all)
+        for agent_id, agent_name in enumerate(chronic_data):
+            agent_data = chronic_data[agent_name]
+
+            agent_chronic_indices = [chronic_idx for chronic_idx in agent_data]
+
+            for chronic_idx in agent_chronic_indices:
+                idx = chronic_indices_all.index(chronic_idx)
+                chronic_name = str(agent_data[chronic_idx]["chronic_name"])
+                chronic_names_all[idx] = chronic_name
 
             x = []
-            for x_, name in zip(x_all, chronic_names_all["chronic_name"]):
-                if name in chronic_names:
+            for x_, chronic_idx in zip(x_all, chronic_indices_all):
+                if chronic_idx in agent_data:
                     x.append(x_)
             x = np.array(x)
 
-            y = chronic_data[agent_name]["return"]
-            ax.barh(x + agent_id * width, y, width, left=0.001)
+            y = [agent_data[chronic_idx]["total_return"] for chronic_idx in agent_data]
+            ax.barh(x + agent_id * width, y, width, left=0.001, label=agent_name)
 
         ax.set_yticks(x_all)
-        ax.set_yticklabels(chronic_names_all["chronic_name"])
+        ax.set_yticklabels(chronic_names_all)
         ax.invert_yaxis()
-        ax.legend(tuple(agent_names))
+        ax.legend()
 
         ax.set_ylabel("Chronic")
         ax.set_xlabel("Chronic return")
@@ -239,186 +321,96 @@ class ExperimentPerformance(ExperimentBase, ExperimentMixin):
             fig.savefig(os.path.join(save_dir, file_name + "returns"))
         plt.close(fig)
 
-    @staticmethod
-    def _plot_generators(
-        chronic_data, case_name, chronic_idx, chronic_name, save_dir=None
+    def _runner(
+        self, env, agent, do_chronics=(), n_chronics=-1, n_steps=-1, verbose=False
     ):
-        colors = Const.COLORS
-        for agent_name in chronic_data:
-            if (
-                agent_name != "Do nothing agent"
-                and chronic_idx in chronic_data[agent_name].index
-            ):
-                fig, ax = plt.subplots(figsize=Const.FIG_SIZE)
-                chronic = chronic_data[agent_name].loc[chronic_idx]
-                t = chronic["time_steps"]
+        self.print_experiment("Performance")
+        agent.print_agent(default=verbose)
 
-                results = chronic["results"]
-                res_gen = np.vstack(
-                    [result["res_gen"]["p_pu"].values for result in results if result]
-                )
+        agent_name = agent.name.replace(" ", "-").lower()
+        self.collector._load_chronics(agent_name=agent_name)
 
-                if "observations" in chronic:
-                    observations = chronic["observations"]
-                    res_gen_env = np.vstack([obs.prod_p for obs in observations if obs])
-                else:
-                    res_gen_env = np.vstack(chronic["generators"])
-
-                for gen_id in range(res_gen.shape[1]):
-                    color = colors[gen_id % len(colors)]
-                    ax.plot(
-                        t, res_gen[:, gen_id], c=color, linestyle="-", linewidth=0.5,
-                    )
-                    ax.plot(
-                        t,
-                        res_gen_env[:, gen_id],
-                        c=color,
-                        linestyle="--",
-                        linewidth=0.5,
-                    )
-
-                ax.set_xlabel("Time step t")
-                ax.set_ylabel(r"$P_g$ [p.u.]")
-                fig.suptitle(f"{case_name} - Chronic {chronic_name}")
-
-                if save_dir:
-                    agent_name_ = agent_name.replace(" ", "-").lower()
-                    file_name = (
-                        f"{agent_name_}-chronic-" + "{:05}".format(chronic_idx) + "-"
-                    )
-                    fig.savefig(os.path.join(save_dir, file_name + "generators"))
-                plt.close(fig)
-
-    @staticmethod
-    def _runner(case, env, agent, done_chronic_indices=()):
         chronics_dir, chronics, chronics_sorted = get_sorted_chronics(env=env)
         pprint("Chronics:", chronics_dir)
 
-        np.random.seed(0)
-        env.seed(0)
+        if len(self.collector.chronic_ids):
+            pprint(
+                "    - Done chronics:",
+                ", ".join(map(lambda x: str(x), sorted(self.collector.chronic_ids))),
+            )
 
-        chronic_data = []
-        for chronic_idx, chronic in enumerate(chronics_sorted):
-            if chronic_idx in done_chronic_indices:
+        if len(do_chronics):
+            pprint(
+                "    - To do chronics:",
+                ", ".join(map(lambda x: str(x), sorted(do_chronics))),
+            )
+
+        done_chronic_ids = []
+        for chronic_idx, chronic_name in enumerate(chronics_sorted):
+            if len(done_chronic_ids) >= n_chronics > 0:
+                break
+
+            # If chronic already done
+            if chronic_idx in self.collector.chronic_ids:
                 continue
 
-            if case.name == "Case RTE 5":
-                pass
-            elif case.name == "Case L2RPN 2019":
-                # Test
-                # if chronic_idx not in [0, 10, 100, 200] and chronic_idx not in [196]:
-                if chronic_idx not in [0, 10, 196]:
+            # Environment specific filtering
+            if env.name == "rte_case5_example":
+                if chronic_idx not in do_chronics:
                     continue
-                # Random
-                # if chronic_idx not in np.random.randint(0, len(chronics_sorted), 10):
-                #     continue
-            elif case.name == "Case L2RPN 2020 WCCI":
-                if chronic_idx not in [0, 240, 480]:
+            elif env.name == "l2rpn_2019":
+                if chronic_idx not in do_chronics:
                     continue
-                # if chronic_idx % 480 == 0:
-                #     continue
+            elif env.name == "l2rpn_wcci_2020":
+                if chronic_idx not in do_chronics:
+                    continue
 
-            chronic_org_idx = chronics.index(chronic)
+            chronic_org_idx = chronics.index(chronic_name)
             env.chronics_handler.tell_id(chronic_org_idx - 1)  # Set chronic id
 
             obs = env.reset()
             agent.reset(obs=obs)
-            chronic_len = env.chronics_handler.real_data.data.max_iter
 
-            chronic_name = "/".join(
+            chronic_len = env.chronics_handler.real_data.data.max_iter
+            chronic_path_name = "/".join(
                 os.path.normpath(env.chronics_handler.get_id()).split(os.sep)[-3:]
             )
+            pprint("    - Chronic:", chronic_path_name)
 
-            pprint("    - Chronic:", chronic_name)
-
-            if case.name == "Case L2RPN 2020 WCCI":
-                chronic_name = env.chronics_handler.get_name().split("_")
-                chronic_name = "-".join([chronic_name[1][:3], chronic_name[2]])
-            else:
-                chronic_name = env.chronics_handler.get_name()
-
-            done = False
-            reward = 0.0
             t = 0
-            actions = []
-            actions_info = []
-            rewards = []
-            rewards_sim = []
-            rewards_dn = []
-            rhos = []
-            generators = []
-            results = []
-            distances = []
-            distances_status = []
-            distances_sub = []
-            time_steps = []
-            while not done:
-                action = agent.act(obs, reward, done)
+            done = False
+            reward = np.nan
+
+            """
+                Collect data.
+            """
+            while not done and not (t >= n_steps > 0):
+                action = agent.act(obs, reward=reward, done=done)
                 obs_next, reward, done, info = env.step(action)
+                self.collector._add(obs, action, reward, done)
+
+                dist, dist_status, dist_status = agent.distance_to_ref_topology(
+                    obs_next.topo_vect, obs_next.line_status
+                )
+                self.collector._add_plus(dist, dist_status, dist_status)
 
                 t = env.chronics_handler.real_data.data.current_index
 
-                if t % 100 == 0:
-                    pprint("Step:", t)
+                if t % 200 == 0:
+                    pprint("        - Step:", t)
 
                 if done:
                     pprint("        - Length:", f"{t}/{chronic_len}")
 
-                # Compare to DN action
-                if action != agent.actions[0]:
-                    # obs_sim, reward_sim, done_sim, info_sim = obs.simulate(action)
-                    reward_sim = reward
-                    obs_dn, reward_dn, done_dn, info_dn = obs.simulate(agent.actions[0])
-                else:
-                    reward_sim, reward_dn = 0.0, 0.0
-
-                dist, dist_status, dist_sub = agent.distance_to_ref_topology(
-                    obs_next.topo_vect, obs_next.line_status
-                )
-
                 obs = obs_next
-                actions.append(action)
-                actions_info.append(action.as_dict())
-                time_steps.append(t)
 
-                rewards.append(float(reward))
-                rewards_sim.append(float(reward_sim))
-                rewards_dn.append(float(reward_dn))
+            self.collector.obses.append(obs.to_vect())
+            self.collector.total_return = compute_returns(self.collector.rewards)[0]
+            self.collector.duration = t
+            self.collector.chronic_len = chronic_len
+            self.collector.chronic_name = chronic_name
 
-                rhos.append(np.max(obs.rho))
-                generators.append(obs.prod_p)
-                results.append(agent.result)
+            done_chronic_ids.append(chronic_idx)
 
-                distances.append(dist)
-                distances_status.append(dist_status)
-                distances_sub.append(dist_sub)
-
-            total_return = compute_returns(rewards)[0]
-            chronic_data.append(
-                {
-                    "chronic_idx": chronic_idx,
-                    "chronic_org_idx": chronic_org_idx,
-                    "chronic_name": chronic_name,
-                    "actions": actions,
-                    "actions_info": actions_info,
-                    "time_steps": time_steps,
-                    "rewards": rewards,
-                    "return": total_return,
-                    "chronic_length": chronic_len,
-                    "duration": t,
-                    "distances": distances,
-                    "distances_status": distances_status,
-                    "distances_sub": distances_sub,
-                    "rhos": rhos,
-                    "generators": generators,
-                    "results": results,
-                }
-            )
-
-        if chronic_data:
-            chronic_data = pd.DataFrame(chronic_data)
-            chronic_data = chronic_data.set_index("chronic_idx")
-        else:
-            chronic_data = pd.DataFrame()
-
-        return chronic_data
+            self.collector._save_chronic(agent_name, chronic_idx, verbose)
+            self.collector.reset()

@@ -10,10 +10,10 @@ from lib.visualizer import Visualizer
 
 visualizer = Visualizer()
 
-save_dir = make_dir(os.path.join(Const.RESULTS_DIR, "behaviour-ac-improved"))
+save_dir = make_dir(os.path.join(Const.RESULTS_DIR, "behaviour-test"))
 
-env_dc = False
-verbose = True
+env_dc = True
+verbose = False
 
 experiment_behaviour = ExperimentBehaviour()
 kwargs = dict()
@@ -25,6 +25,7 @@ for case_name in ["rte_case5_example", "l2rpn_2019", "l2rpn_wcci_2020"]:
         n_steps = 100
     else:
         n_steps = 500
+    n_steps = 10
 
     case_save_dir = make_dir(os.path.join(save_dir, f"{case_name}-{env_pf(env_dc)}"))
     create_logger(logger_name=f"logger", save_dir=case_save_dir)
@@ -40,8 +41,8 @@ for case_name in ["rte_case5_example", "l2rpn_2019", "l2rpn_wcci_2020"]:
     )
 
     for agent_name in [
-        "do-nothing-agent",
-        "agent-mip",
+        # "do-nothing-agent",
+        # "agent-mip",
         "agent-multistep-mip",
     ]:
         if case_name == "rte_case5_example":

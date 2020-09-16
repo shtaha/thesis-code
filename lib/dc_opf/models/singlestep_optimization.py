@@ -341,16 +341,28 @@ class TopologyOptimizationDCOPF(StandardDCOPF):
     def _build_variable_mu(self):
         init_value = np.abs(self.line.p_pu) / self.line.max_p_pu
         init_value[np.isnan(init_value)] = 0.0
+
+        value = init_value.copy()
+        value[np.greater_equal(init_value, 1.0)] = 0.0
         self.model.mu = pyo.Var(
             self.model.line_set,
             domain=pyo.NonNegativeReals,
             bounds=(0.0, 1.0),
-            initialize=self._create_map_ids_to_values(self.line.index, init_value,),
+            initialize=self._create_map_ids_to_values(self.line.index, value),
+        )
+
+        value = init_value.copy()
+        value[np.less_equal(init_value, 1.0)] = 0.0
+        self.model.mu_overflow = pyo.Var(
+            self.model.line_set,
+            domain=pyo.NonNegativeReals,
+            bounds=(0.0, self.grid.max_rho),
+            initialize=self._create_map_ids_to_values(self.line.index, value),
         )
 
         self.model.mu_max = pyo.Var(
             domain=pyo.NonNegativeReals,
-            bounds=(0.0, 1.0),
+            bounds=(0.0, self.grid.max_rho),
             initialize=np.max(init_value),
         )
 
@@ -403,6 +415,9 @@ class TopologyOptimizationDCOPF(StandardDCOPF):
 
         if self.params.con_cooldown:
             self._build_constraint_cooldown()
+
+        if self.params.con_overflow:
+            self._build_constraint_overflow()
 
         if self.params.con_maintenance:
             self._build_constraint_maintenance()
@@ -462,12 +477,11 @@ class TopologyOptimizationDCOPF(StandardDCOPF):
     def _build_constraint_line_flows(self):
         self.__build_constraint_line_flows_sum()  # Actual power flow in a line
         self.__build_constraint_line_sub_bus_flows()  # Power flow definition
-        self.__build_constraint_line_bounds()  # Power flow thermal limits
+        self.__build_constraint_line_sub_bus_flow_bounds()  # Sub bus power flow thermal limits
+        self.__build_constraint_line_flow_bounds()  # Line power flow thermal limits
 
-        self.__build_constraint_overflow()  # Power flow bounds, underflow and overflow
-
-        if self.params.obj_reward_max:
-            self.__build_constraint_mu_max()
+        self.__build_constraint_line_overflow()  # Power flow bounds, underflow and overflow
+        self.__build_constraint_mu_max()  # Maximum relative flow
 
     def __build_constraint_line_flows_sum(self):
         # Power flow equation with topology switching
@@ -539,7 +553,7 @@ class TopologyOptimizationDCOPF(StandardDCOPF):
             rule=_constraint_line_flow_upper,
         )
 
-    def __build_constraint_line_bounds(self):
+    def __build_constraint_line_sub_bus_flow_bounds(self):
         def _constraint_line_flow_bounds_or_lower(
             model, line_id, sub_bus_or, sub_bus_ex
         ):
@@ -549,7 +563,7 @@ class TopologyOptimizationDCOPF(StandardDCOPF):
                 x_or = model.x_line_or_2[line_id]
 
             return (
-                -self.grid.big_m * model.line_flow_max[line_id] * x_or
+                -self.grid.max_rho * model.line_flow_max[line_id] * x_or
                 <= model.line_sub_bus_flow[line_id, sub_bus_or, sub_bus_ex]
             )
 
@@ -563,7 +577,7 @@ class TopologyOptimizationDCOPF(StandardDCOPF):
 
             return (
                 model.line_sub_bus_flow[line_id, sub_bus_or, sub_bus_ex]
-                <= self.grid.big_m * model.line_flow_max[line_id] * x_or
+                <= self.grid.max_rho * model.line_flow_max[line_id] * x_or
             )
 
         def _constraint_line_flow_bounds_ex_lower(
@@ -575,7 +589,7 @@ class TopologyOptimizationDCOPF(StandardDCOPF):
                 x_ex = model.x_line_ex_2[line_id]
 
             return (
-                -self.grid.big_m * model.line_flow_max[line_id] * x_ex
+                -self.grid.max_rho * model.line_flow_max[line_id] * x_ex
                 <= model.line_sub_bus_flow[line_id, sub_bus_or, sub_bus_ex]
             )
 
@@ -589,7 +603,7 @@ class TopologyOptimizationDCOPF(StandardDCOPF):
 
             return (
                 model.line_sub_bus_flow[line_id, sub_bus_or, sub_bus_ex]
-                <= self.grid.big_m * model.line_flow_max[line_id] * x_ex
+                <= self.grid.max_rho * model.line_flow_max[line_id] * x_ex
             )
 
         self.model.constraint_line_flow_bounds_or_lower = pyo.Constraint(
@@ -618,28 +632,38 @@ class TopologyOptimizationDCOPF(StandardDCOPF):
             rule=_constraint_line_flow_bounds_ex_upper,
         )
 
-    def __build_constraint_overflow(self):
-        def _constraint_line_limit_upper(model, line_id):
+    def __build_constraint_line_flow_bounds(self):
+        def _constraint_line_flow_bounds_upper(model, line_id):
             return model.line_flow[line_id] <= model.line_flow_max[line_id] * (
-                model.mu[line_id] + self.grid.big_m * model.f_line[line_id]
+                model.mu[line_id] + model.mu_overflow[line_id]
             )
 
-        def _constraint_line_limit_lower(model, line_id):
+        def _constraint_line_flow_bounds_lower(model, line_id):
             return (
                 -model.line_flow_max[line_id]
-                * (model.mu[line_id] + self.grid.big_m * model.f_line[line_id])
+                * (model.mu[line_id] + model.mu_overflow[line_id])
                 <= model.line_flow[line_id]
             )
 
-        def _constraint_mu_overflow(model, line_id):
-            return model.mu[line_id] <= 1 - model.f_line[line_id]
-
-        self.model.constraint_line_limit_upper = pyo.Constraint(
-            self.model.line_set, rule=_constraint_line_limit_upper
+        self.model.constraint_line_flow_bounds_upper = pyo.Constraint(
+            self.model.line_set, rule=_constraint_line_flow_bounds_upper
         )
 
-        self.model.constraint_line_limit_lower = pyo.Constraint(
-            self.model.line_set, rule=_constraint_line_limit_lower
+        self.model.constraint_line_flow_bounds_lower = pyo.Constraint(
+            self.model.line_set, rule=_constraint_line_flow_bounds_lower
+        )
+
+    def __build_constraint_line_overflow(self):
+        def _constraint_mu_not_overflow(model, line_id):
+            return model.mu[line_id] <= 1.0 - model.f_line[line_id]
+
+        def _constraint_mu_overflow(model, line_id):
+            return (
+                model.mu_overflow[line_id] <= self.grid.max_rho * model.f_line[line_id]
+            )
+
+        self.model.constraint_mu_not_overflow = pyo.Constraint(
+            self.model.line_set, rule=_constraint_mu_not_overflow
         )
 
         self.model.constraint_mu_overflow = pyo.Constraint(
@@ -650,15 +674,15 @@ class TopologyOptimizationDCOPF(StandardDCOPF):
         def _constraint_mu_mu_max(model, line_id):
             return model.mu[line_id] <= model.mu_max
 
-        def _constraint_f_line_mu_max(model, line_id):
-            return self.grid.big_m * model.f_line[line_id] <= model.mu_max
+        def _constraint_mu_overflow_mu_max(model, line_id):
+            return model.mu_overflow[line_id] <= model.mu_max
 
         self.model.constraint_mu_mu_max = pyo.Constraint(
             self.model.line_set, rule=_constraint_mu_mu_max
         )
 
-        self.model.constraint_f_line_mu_max = pyo.Constraint(
-            self.model.line_set, rule=_constraint_f_line_mu_max
+        self.model.constraint_mu_overflow_mu_max = pyo.Constraint(
+            self.model.line_set, rule=_constraint_mu_overflow_mu_max
         )
 
     def _build_constraint_bus_balance(self):
@@ -941,6 +965,20 @@ class TopologyOptimizationDCOPF(StandardDCOPF):
                 self.model.x_substation_topology_switch[sub_id].fix(0)
                 self.model.x_substation_topology_switch[sub_id].setlb(0)
                 self.model.x_substation_topology_switch[sub_id].setub(0)
+
+    def _build_constraint_overflow(self):
+        # Disconnect a power line if too long in overflow
+        self.model.overflow = pyo.ConstraintList()
+
+        for line_id in self.line.index:
+            if self.params.n_max_timestep_overflow - self.line.t_overflow[line_id] == 1:
+                expr = (
+                    self.model.x_line_or_1[line_id]
+                    + self.model.x_line_or_2[line_id]
+                    + self.model.x_line_ex_1[line_id]
+                    + self.model.x_line_ex_2[line_id]
+                )
+                self.model.overflow.add(expr == 0)
 
     def _build_constraint_maintenance(self):
         for line_id in self.line.index:

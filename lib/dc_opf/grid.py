@@ -70,6 +70,7 @@ class GridDCOPF(UnitConverter, TopologyConverter):
                 "status",
                 "trafo",
                 "cooldown",
+                "t_overflow",
             ]
         )
         self.gen = pd.DataFrame(
@@ -112,7 +113,7 @@ class GridDCOPF(UnitConverter, TopologyConverter):
 
         self.slack_bus = None
         self.fixed_elements = None
-        self.big_m = None
+        self.max_rho = None
 
         self.build_grid()
 
@@ -369,6 +370,9 @@ class GridDCOPF(UnitConverter, TopologyConverter):
         self.sub["cooldown"] = 0
         self.line["cooldown"] = 0
 
+        # Overflow
+        self.line["t_overflow"] = 0
+
         # Maintenance
         self.line["next_maintenance"] = -1
         self.line["duration_maintenance"] = 0
@@ -393,7 +397,7 @@ class GridDCOPF(UnitConverter, TopologyConverter):
         self.fixed_elements = self.get_fixed_elements()
 
         # Big-M for power flows
-        self.big_m = 2.0
+        self.max_rho = 2.0
 
     def print_grid(self):
         print("\nGRID\n")
@@ -616,6 +620,9 @@ class GridDCOPF(UnitConverter, TopologyConverter):
         # if time = 0, then action is legal
         self.sub["cooldown"] = obs_new.time_before_cooldown_sub
         self.line["cooldown"] = obs_new.time_before_cooldown_line
+
+        # Overflow
+        self.line["t_overflow"] = obs_new.timestep_overflow
 
         # Maintenance
         self.line["next_maintenance"] = obs_new.time_next_maintenance

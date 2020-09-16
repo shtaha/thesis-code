@@ -57,7 +57,9 @@ def print_matrix(matrix, name=None, spacing=None, decimals=4):
                     pattern = "{:>" + str(int(spacing)) + "}"
                     line = line + pattern.format(int(cell))
                 else:
-                    pattern = "{:>" + str(int(spacing)) + "." + str(int(decimals)) + "}"
+                    pattern = (
+                        "{:>" + str(int(spacing)) + "." + str(int(decimals)) + "f}"
+                    )
                     line = line + pattern.format(cell)
             else:
                 pattern = "{:>" + str(int(spacing)) + "}"

@@ -7,7 +7,7 @@ from graph_nets import utils_tf
 
 from experience import ExperienceCollector
 from lib.data_utils import make_dir, env_pf
-from lib.dc_opf import load_case, CaseParameters, GridDCOPF
+from lib.dc_opf import load_case, CaseParameters
 from lib.gns import (
     obses_to_graphs_dict_list,
     dict_list_to_combined_dict,
@@ -37,10 +37,6 @@ class TestGNs(unittest.TestCase):
         collector.load_data(agent_name=agent_name, env=env)
         observations, actions, rewards, dones = collector.aggregate_data()
 
-        grid = GridDCOPF(
-            case, base_unit_v=case.base_unit_v, base_unit_p=case.base_unit_p
-        )
-
         labels = np.array(
             list(map(lambda action: int(action != env.action_space({})), actions)),
             dtype=np.int,
@@ -50,7 +46,7 @@ class TestGNs(unittest.TestCase):
         max_length = 10 * batch_size + 1
 
         graphs_dict_list = obses_to_graphs_dict_list(
-            observations, dones, grid, max_length=max_length
+            observations, dones, case, max_length=max_length
         )
         combined_graphs_dict_list = dict_list_to_combined_dict(graphs_dict_list)
 

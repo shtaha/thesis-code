@@ -455,6 +455,9 @@ class MultistepTopologyDCOPF(StandardDCOPF):
     def _build_variable_mu(self):
         init_value = np.abs(self.line.p_pu) / self.line.max_p_pu
         init_value[np.isnan(init_value)] = 0.0
+
+        value = init_value.copy()
+        value[np.greater_equal(init_value, 1.0)] = 0.0
         self.model.mu = pyo.Var(
             self.model.time_set,
             self.model.line_set,
@@ -463,18 +466,30 @@ class MultistepTopologyDCOPF(StandardDCOPF):
             initialize=self._create_map_dual_ids_to_values(
                 self.forecasts.time_steps,
                 self.line.index,
-                np.tile(init_value, (self.params.horizon, 1)),
+                np.tile(value, (self.params.horizon, 1)),
             ),
         )
 
-        init_value = np.tile(np.max(init_value), self.params.horizon)
+        value = init_value.copy()
+        value[np.less_equal(init_value, 1.0)] = 0.0
+        self.model.mu_overflow = pyo.Var(
+            self.model.time_set,
+            self.model.line_set,
+            domain=pyo.NonNegativeReals,
+            bounds=(0.0, self.grid.max_rho),
+            initialize=self._create_map_dual_ids_to_values(
+                self.forecasts.time_steps,
+                self.line.index,
+                np.tile(value, (self.params.horizon, 1)),
+            ),
+        )
+
+        value = np.tile(np.max(init_value), self.params.horizon)
         self.model.mu_max = pyo.Var(
             self.model.time_set,
             domain=pyo.NonNegativeReals,
-            bounds=(0.0, 1.0),
-            initialize=self._create_map_ids_to_values(
-                self.forecasts.time_steps, init_value
-            ),
+            bounds=(0.0, self.grid.max_rho),
+            initialize=self._create_map_ids_to_values(self.forecasts.time_steps, value),
         )
 
     def _build_variable_overflow(self):
@@ -535,6 +550,9 @@ class MultistepTopologyDCOPF(StandardDCOPF):
 
         if self.params.con_cooldown:
             self._build_constraint_cooldown()
+
+        if self.params.con_overflow:
+            self._build_constraint_overflow()
 
         if self.params.con_maintenance:
             self._build_constraint_maintenance()
@@ -600,12 +618,11 @@ class MultistepTopologyDCOPF(StandardDCOPF):
     def _build_constraint_line_flows(self):
         self.__build_constraint_line_flows_sum()  # Actual power flow in a line
         self.__build_constraint_line_sub_bus_flows()  # Power flow definition
-        self.__build_constraint_line_bounds()  # Power flow thermal limits
+        self.__build_constraint_line_sub_bus_flow_bounds()  # Sub bus power flow thermal limits
+        self.__build_constraint_line_flow_bounds()  # Line power flow thermal limits
 
-        self.__build_constraint_overflow()  # Power flow bounds, underflow and overflow
-
-        if self.params.obj_reward_max:
-            self.__build_constraint_mu_max()
+        self.__build_constraint_line_overflow()  # Power flow bounds, underflow and overflow
+        self.__build_constraint_mu_max()  # Maximum relative flow
 
     def __build_constraint_line_flows_sum(self):
         # Power flow equation with topology switching
@@ -683,7 +700,7 @@ class MultistepTopologyDCOPF(StandardDCOPF):
             rule=_constraint_line_flow_upper,
         )
 
-    def __build_constraint_line_bounds(self):
+    def __build_constraint_line_sub_bus_flow_bounds(self):
         def _constraint_line_flow_bounds_or_lower(
             model, t, line_id, sub_bus_or, sub_bus_ex
         ):
@@ -693,7 +710,7 @@ class MultistepTopologyDCOPF(StandardDCOPF):
                 x_or = model.x_line_or_2[t, line_id]
 
             return (
-                -self.grid.big_m * model.line_flow_max[line_id] * x_or
+                -self.grid.max_rho * model.line_flow_max[line_id] * x_or
                 <= model.line_sub_bus_flow[t, line_id, sub_bus_or, sub_bus_ex]
             )
 
@@ -707,7 +724,7 @@ class MultistepTopologyDCOPF(StandardDCOPF):
 
             return (
                 model.line_sub_bus_flow[t, line_id, sub_bus_or, sub_bus_ex]
-                <= self.grid.big_m * model.line_flow_max[line_id] * x_or
+                <= self.grid.max_rho * model.line_flow_max[line_id] * x_or
             )
 
         def _constraint_line_flow_bounds_ex_lower(
@@ -719,7 +736,7 @@ class MultistepTopologyDCOPF(StandardDCOPF):
                 x_ex = model.x_line_ex_2[t, line_id]
 
             return (
-                -self.grid.big_m * model.line_flow_max[line_id] * x_ex
+                -self.grid.max_rho * model.line_flow_max[line_id] * x_ex
                 <= model.line_sub_bus_flow[t, line_id, sub_bus_or, sub_bus_ex]
             )
 
@@ -733,7 +750,7 @@ class MultistepTopologyDCOPF(StandardDCOPF):
 
             return (
                 model.line_sub_bus_flow[t, line_id, sub_bus_or, sub_bus_ex]
-                <= self.grid.big_m * model.line_flow_max[line_id] * x_ex
+                <= self.grid.max_rho * model.line_flow_max[line_id] * x_ex
             )
 
         self.model.constraint_line_flow_bounds_or_lower = pyo.Constraint(
@@ -766,28 +783,43 @@ class MultistepTopologyDCOPF(StandardDCOPF):
             rule=_constraint_line_flow_bounds_ex_upper,
         )
 
-    def __build_constraint_overflow(self):
-        def _constraint_line_limit_upper(model, t, line_id):
+    def __build_constraint_line_flow_bounds(self):
+        def _constraint_line_flow_bounds_upper(model, t, line_id):
             return model.line_flow[t, line_id] <= model.line_flow_max[line_id] * (
-                model.mu[t, line_id] + self.grid.big_m * model.f_line[t, line_id]
+                model.mu[t, line_id] + model.mu_overflow[t, line_id]
             )
 
-        def _constraint_line_limit_lower(model, t, line_id):
+        def _constraint_line_flow_bounds_lower(model, t, line_id):
             return (
                 -model.line_flow_max[line_id]
-                * (model.mu[t, line_id] + self.grid.big_m * model.f_line[t, line_id])
+                * (model.mu[t, line_id] + model.mu_overflow[t, line_id])
                 <= model.line_flow[t, line_id]
             )
 
-        def _constraint_mu_overflow(model, t, line_id):
-            return model.mu[t, line_id] <= 1 - model.f_line[t, line_id]
-
-        self.model.constraint_line_limit_upper = pyo.Constraint(
-            self.model.time_set, self.model.line_set, rule=_constraint_line_limit_upper
+        self.model.constraint_line_flow_bounds_upper = pyo.Constraint(
+            self.model.time_set,
+            self.model.line_set,
+            rule=_constraint_line_flow_bounds_upper,
         )
 
-        self.model.constraint_line_limit_lower = pyo.Constraint(
-            self.model.time_set, self.model.line_set, rule=_constraint_line_limit_lower
+        self.model.constraint_line_flow_bounds_lower = pyo.Constraint(
+            self.model.time_set,
+            self.model.line_set,
+            rule=_constraint_line_flow_bounds_lower,
+        )
+
+    def __build_constraint_line_overflow(self):
+        def _constraint_mu_not_overflow(model, t, line_id):
+            return model.mu[t, line_id] <= 1.0 - model.f_line[t, line_id]
+
+        def _constraint_mu_overflow(model, t, line_id):
+            return (
+                model.mu_overflow[t, line_id]
+                <= self.grid.max_rho * model.f_line[t, line_id]
+            )
+
+        self.model.constraint_mu_not_overflow = pyo.Constraint(
+            self.model.time_set, self.model.line_set, rule=_constraint_mu_not_overflow
         )
 
         self.model.constraint_mu_overflow = pyo.Constraint(
@@ -798,15 +830,17 @@ class MultistepTopologyDCOPF(StandardDCOPF):
         def _constraint_mu_mu_max(model, t, line_id):
             return model.mu[t, line_id] <= model.mu_max[t]
 
-        def _constraint_f_line_mu_max(model, t, line_id):
-            return self.grid.big_m * model.f_line[t, line_id] <= model.mu_max[t]
+        def _constraint_mu_overflow_mu_max(model, t, line_id):
+            return model.mu_overflow[t, line_id] <= model.mu_max[t]
 
         self.model.constraint_mu_mu_max = pyo.Constraint(
             self.model.time_set, self.model.line_set, rule=_constraint_mu_mu_max
         )
 
-        self.model.constraint_f_line_mu_max = pyo.Constraint(
-            self.model.time_set, self.model.line_set, rule=_constraint_f_line_mu_max
+        self.model.constraint_mu_overflow_mu_max = pyo.Constraint(
+            self.model.time_set,
+            self.model.line_set,
+            rule=_constraint_mu_overflow_mu_max,
         )
 
     def _build_constraint_bus_balance(self):
@@ -1543,6 +1577,27 @@ class MultistepTopologyDCOPF(StandardDCOPF):
                             self.model.x_substation_topology_switch[t + tau, sub_id]
                             <= (1 - self.model.x_substation_topology_switch[t, sub_id])
                         )
+
+    def _build_constraint_overflow(self):
+        # Disconnect a power line if too long in overflow
+        self.model.overflow = pyo.ConstraintList()
+
+        for line_id in self.line.index:
+            for t in self.forecasts.time_steps:
+                if (
+                    self.params.n_max_timestep_overflow
+                    - self.line.t_overflow[line_id]
+                    - t
+                    == 1
+                    and self.line.t_overflow[line_id] > 0
+                ):
+                    expr = (
+                        self.model.x_line_or_1[t, line_id]
+                        + self.model.x_line_or_2[t, line_id]
+                        + self.model.x_line_ex_1[t, line_id]
+                        + self.model.x_line_ex_2[t, line_id]
+                    )
+                    self.model.overflow.add(expr == 0)
 
     def _build_constraint_maintenance(self):
         for line_id in self.line.index:

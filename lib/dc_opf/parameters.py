@@ -118,6 +118,7 @@ class SinglestepTopologyParameters(StandardParameters):
         forecasts=True,
         n_max_line_status_changed=1,
         n_max_sub_changed=1,
+        n_max_timestep_overflow=2,
         con_allow_onesided_disconnection=False,
         con_allow_onesided_reconnection=False,
         con_symmetry=True,
@@ -125,6 +126,7 @@ class SinglestepTopologyParameters(StandardParameters):
         con_requirement_balance=True,
         con_switching_limits=True,
         con_cooldown=True,
+        con_overflow=True,
         con_maintenance=True,
         con_unitary_action=False,
         obj_gen_cost=False,
@@ -144,6 +146,7 @@ class SinglestepTopologyParameters(StandardParameters):
 
         self.n_max_line_status_changed = n_max_line_status_changed
         self.n_max_sub_changed = n_max_sub_changed
+        self.n_max_timestep_overflow = n_max_timestep_overflow
 
         self.con_allow_onesided_disconnection = con_allow_onesided_disconnection
         self.con_allow_onesided_reconnection = con_allow_onesided_reconnection
@@ -153,6 +156,7 @@ class SinglestepTopologyParameters(StandardParameters):
 
         self.con_switching_limits = con_switching_limits
         self.con_cooldown = con_cooldown
+        self.con_overflow = con_overflow
         self.con_maintenance = con_maintenance
         self.con_unitary_action = con_unitary_action
 

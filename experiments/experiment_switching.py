@@ -20,7 +20,7 @@ class ExperimentSwitching(ExperimentBase, ExperimentMixin):
         agent.print_agent(default=verbose)
 
         file_name = agent.name.replace(" ", "-").lower() + "-chronics"
-        chronic_data, done_chronic_indices = self._load_done_chronics(
+        chronic_data, done_chronic_indices = self._load_done_chronics_from_pickle(
             file_name=file_name, save_dir=save_dir
         )
 

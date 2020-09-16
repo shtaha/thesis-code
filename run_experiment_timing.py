@@ -10,17 +10,17 @@ from lib.visualizer import Visualizer
 
 visualizer = Visualizer()
 
-save_dir = make_dir(os.path.join(Const.RESULTS_DIR, "timing"))
+save_dir = make_dir(os.path.join(Const.RESULTS_DIR, "timing-n"))
 
 env_dc = True
 verbose = False
 
 experiment_timing = ExperimentDCOPFTiming()
-kwargs = dict()
+kwargs = dict(time_limit=30)
 
 for case_name in ["rte_case5_example", "l2rpn_2019", "l2rpn_wcci_2020"]:
     if case_name == "l2rpn_wcci_2020":
-        n_timings = 50
+        n_timings = 25
     elif case_name == "l2rpn_2019":
         n_timings = 25
     else:
@@ -40,7 +40,7 @@ for case_name in ["rte_case5_example", "l2rpn_2019", "l2rpn_wcci_2020"]:
     )
 
     for agent_name in [
-        "agent-mip",
+        # "agent-mip",
         "agent-multistep-mip",
     ]:
         if case_name == "rte_case5_example":

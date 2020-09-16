@@ -175,6 +175,11 @@ class AgentMIPTest(BaseAgentTest):
         if "n_max_sub_changed" not in kwargs:
             kwargs["n_max_sub_changed"] = case.env.parameters.MAX_SUB_CHANGED
 
+        if "n_max_timestep_overflow" not in kwargs:
+            kwargs[
+                "n_max_timestep_overflow"
+            ] = case.env.parameters.NB_TIMESTEP_OVERFLOW_ALLOWED
+
         self.default_kwargs = kwargs
         self.model_kwargs = self.default_kwargs
         self.params = SinglestepTopologyParameters(**self.model_kwargs)
@@ -464,8 +469,14 @@ class AgentMultistepMIPTest(BaseAgentTest):
             kwargs[
                 "n_max_line_status_changed"
             ] = case.env.parameters.MAX_LINE_STATUS_CHANGED
+
         if "n_max_sub_changed" not in kwargs:
             kwargs["n_max_sub_changed"] = case.env.parameters.MAX_SUB_CHANGED
+
+        if "n_max_timestep_overflow" not in kwargs:
+            kwargs[
+                "n_max_timestep_overflow"
+            ] = case.env.parameters.NB_TIMESTEP_OVERFLOW_ALLOWED
 
         self.default_kwargs = kwargs
         self.model_kwargs = self.default_kwargs

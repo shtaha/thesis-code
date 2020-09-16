@@ -10,7 +10,7 @@
     pip install pyomo
     pip install glpk mosek gurobi # Solvers
     
-    pip tensorflow jupyter pygame
+    pip jupyter pygame
     pip install graph_nets "tensorflow>=2.1.0-rc1" "dm-sonnet>=2.0.0b0" tensorflow_probability --use-feature=2020-resolver
     
     pip install l2rpn-baselines

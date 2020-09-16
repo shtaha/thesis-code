@@ -13,23 +13,29 @@ from .experiment_base import ExperimentBase
 
 class ExperimentDCOPFTiming(ExperimentBase):
     def compare_by_solver_and_parts(
-        self, case, agent, save_dir, solver_names, n_bins=25, **kwargs,
+        self, case, agent, save_dir, solver_names, **kwargs,
     ):
         file_name = agent.name.replace(" ", "-").lower() + "-solvers"
         case_name = self._get_case_name(case)
 
         self.print_experiment("Timing - Solver and Parts")
 
-        data_dict = dict()
-        for solver_name in solver_names:
-            data_dict[solver_name] = self._runner_timing(
-                env=case.env, agent=agent, solver_name=solver_name, **kwargs,
-            )
+        data_df = self._load_csv(save_path=os.path.join(save_dir, file_name + ".csv"))
+        if not len(data_df) > 0:
+            data_dict = dict()
+            for solver_name in solver_names:
+                data_dict[solver_name] = self._runner_timing(
+                    env=case.env, agent=agent, solver_name=solver_name, **kwargs,
+                )
+        else:
+            params = np.unique(data_df["params"].values).tolist()
+            data_dict = dict()
+            for param in params:
+                data_dict[param] = data_df[data_df["params"] == param]
 
         self._plot_and_save(
             times=[data_dict[param]["solve"] for param in data_dict],
             labels=[param.capitalize() for param in data_dict],
-            n_bins=n_bins,
             title=f"{case_name}, {agent.name} - MIP solver comparison",
             legend_title="Solver",
             save_path=os.path.join(save_dir, file_name),
@@ -37,9 +43,8 @@ class ExperimentDCOPFTiming(ExperimentBase):
 
         data_parts = data_dict["gurobi"]
         self._plot_and_save(
-            times=[data_parts[part] for part in data_parts.columns],
+            times=[data_parts[part] for part in ["build", "solve"]],
             labels=[part.capitalize() for part in data_parts.columns],
-            n_bins=n_bins,
             title=f"{case_name}, {agent.name} - Step parts comparison",
             legend_title="Part",
             save_path=os.path.join(
@@ -51,22 +56,28 @@ class ExperimentDCOPFTiming(ExperimentBase):
             data_dict=data_dict, save_path=os.path.join(save_dir, file_name + ".csv")
         )
 
-    def compare_by_tolerance(self, case, agent, save_dir, tols, n_bins=25, **kwargs):
+    def compare_by_tolerance(self, case, agent, save_dir, tols, **kwargs):
         file_name = agent.name.replace(" ", "-").lower() + "-tolerances"
         case_name = self._get_case_name(case)
 
         self.print_experiment("Timing - Tolerances")
 
-        data_dict = dict()
-        for tol in tols:
-            data_dict[str(tol)] = self._runner_timing(
-                env=case.env, agent=agent, tol=tol, **kwargs,
-            )
+        data_df = self._load_csv(save_path=os.path.join(save_dir, file_name + ".csv"))
+        if not len(data_df) > 0:
+            data_dict = dict()
+            for tol in tols:
+                data_dict[str(tol)] = self._runner_timing(
+                    env=case.env, agent=agent, tol=tol, **kwargs,
+                )
+        else:
+            params = np.unique(data_df["params"].values).tolist()
+            data_dict = dict()
+            for param in params:
+                data_dict[param] = data_df[data_df["params"] == param]
 
         self._plot_and_save(
             times=[data_dict[param]["solve"] for param in data_dict],
             labels=[param for param in data_dict],
-            n_bins=n_bins,
             title=f"{case_name}, {agent.name} - Duality gap tolerance comparison",
             legend_title="Tolerance",
             save_path=os.path.join(save_dir, file_name),
@@ -76,22 +87,28 @@ class ExperimentDCOPFTiming(ExperimentBase):
             data_dict=data_dict, save_path=os.path.join(save_dir, file_name + ".csv")
         )
 
-    def compare_by_delta_max(self, case, agent, save_dir, deltas, n_bins=25, **kwargs):
+    def compare_by_delta_max(self, case, agent, save_dir, deltas, **kwargs):
         file_name = agent.name.replace(" ", "-").lower() + "-deltas"
         case_name = self._get_case_name(case)
 
         self.print_experiment("Timing - Bounds on bus voltage angles")
 
-        data_dict = dict()
-        for delta_max in deltas:
-            data_dict[str(delta_max)] = self._runner_timing(
-                env=case.env, agent=agent, delta_max=delta_max, **kwargs,
-            )
+        data_df = self._load_csv(save_path=os.path.join(save_dir, file_name + ".csv"))
+        if not len(data_df) > 0:
+            data_dict = dict()
+            for delta_max in deltas:
+                data_dict[str(delta_max)] = self._runner_timing(
+                    env=case.env, agent=agent, delta_max=delta_max, **kwargs,
+                )
+        else:
+            params = np.unique(data_df["params"].values).tolist()
+            data_dict = dict()
+            for param in params:
+                data_dict[param] = data_df[data_df["params"] == param]
 
         self._plot_and_save(
             times=[data_dict[param]["solve"] for param in data_dict],
             labels=[param for param in data_dict],
-            n_bins=n_bins,
             title=f"{case_name}, {agent.name} - Bounds on bus voltage angles",
             legend_title=r"$\delta^{\mathrm{max}}$",
             save_path=os.path.join(save_dir, file_name),
@@ -102,31 +119,37 @@ class ExperimentDCOPFTiming(ExperimentBase):
         )
 
     def compare_by_switching_limits(
-        self, case, agent, save_dir, switch_limits, n_bins=25, **kwargs,
+        self, case, agent, save_dir, switch_limits, **kwargs,
     ):
         file_name = agent.name.replace(" ", "-").lower() + "-limits"
         case_name = self._get_case_name(case)
 
         self.print_experiment("Timing - Maximum switching limit")
 
-        data_dict = dict()
-        for limits in switch_limits:
-            n_max_line_status_changed, n_max_sub_changed = limits
-            limits_str = f"{n_max_line_status_changed}-{n_max_sub_changed}"
+        data_df = self._load_csv(save_path=os.path.join(save_dir, file_name + ".csv"))
+        if not len(data_df) > 0:
+            data_dict = dict()
+            for limits in switch_limits:
+                n_max_line_status_changed, n_max_sub_changed = limits
+                limits_str = f"{n_max_line_status_changed}-{n_max_sub_changed}"
 
-            data_dict[limits_str] = self._runner_timing(
-                env=case.env,
-                agent=agent,
-                n_max_line_status_changed=n_max_line_status_changed,
-                n_max_sub_changed=n_max_sub_changed,
-                con_unitary_action=False,  # Otherwise
-                **kwargs,
-            )
+                data_dict[limits_str] = self._runner_timing(
+                    env=case.env,
+                    agent=agent,
+                    n_max_line_status_changed=n_max_line_status_changed,
+                    n_max_sub_changed=n_max_sub_changed,
+                    con_unitary_action=False,  # Otherwise
+                    **kwargs,
+                )
+        else:
+            params = np.unique(data_df["params"].values).tolist()
+            data_dict = dict()
+            for param in params:
+                data_dict[param] = data_df[data_df["params"] == param]
 
         self._plot_and_save(
             times=[data_dict[param]["solve"] for param in data_dict],
             labels=[param for param in data_dict],
-            n_bins=n_bins,
             title=f"{case_name}, {agent.name} - Maximum switching limit comparison",
             legend_title=r"$n_\mathcal{P}$-$n_\mathcal{S}$",
             save_path=os.path.join(save_dir, file_name),
@@ -137,23 +160,29 @@ class ExperimentDCOPFTiming(ExperimentBase):
         )
 
     def compare_by_constraint_activations(
-        self, case, agent, save_dir, constraint_activations, n_bins=25, **kwargs,
+        self, case, agent, save_dir, constraint_activations, **kwargs,
     ):
         file_name = agent.name.replace(" ", "-").lower() + "-activations"
         case_name = self._get_case_name(case)
 
         self.print_experiment("Timing - Constraint Activations")
 
-        data_dict = dict()
-        for act_dict, act_str in constraint_activations:
-            data_dict[act_str] = self._runner_timing(
-                env=case.env, agent=agent, **act_dict, **kwargs,
-            )
+        data_df = self._load_csv(save_path=os.path.join(save_dir, file_name + ".csv"))
+        if not len(data_df) > 0:
+            data_dict = dict()
+            for act_dict, act_str in constraint_activations:
+                data_dict[act_str] = self._runner_timing(
+                    env=case.env, agent=agent, **act_dict, **kwargs,
+                )
+        else:
+            params = np.unique(data_df["params"].values).tolist()
+            data_dict = dict()
+            for param in params:
+                data_dict[param] = data_df[data_df["params"] == param]
 
         self._plot_and_save(
             times=[data_dict[param]["solve"] for param in data_dict],
             labels=[param for param in data_dict],
-            n_bins=n_bins,
             title=f"{case_name}, {agent.name} - Constraint activations comparison",
             legend_title="Constraint deactivation",
             save_path=os.path.join(save_dir, file_name),
@@ -164,23 +193,29 @@ class ExperimentDCOPFTiming(ExperimentBase):
         )
 
     def compare_by_objective(
-        self, case, agent, save_dir, objectives, n_bins=25, **kwargs,
+        self, case, agent, save_dir, objectives, **kwargs,
     ):
         file_name = agent.name.replace(" ", "-").lower() + "-objectives"
         case_name = self._get_case_name(case)
 
         self.print_experiment("Timing - Objective")
 
-        data_dict = dict()
-        for obj_dict, obj_str in objectives:
-            data_dict[obj_str] = self._runner_timing(
-                env=case.env, agent=agent, **obj_dict, **kwargs,
-            )
+        data_df = self._load_csv(save_path=os.path.join(save_dir, file_name + ".csv"))
+        if not len(data_df) > 0:
+            data_dict = dict()
+            for obj_dict, obj_str in objectives:
+                data_dict[obj_str] = self._runner_timing(
+                    env=case.env, agent=agent, **obj_dict, **kwargs,
+                )
+        else:
+            params = np.unique(data_df["params"].values).tolist()
+            data_dict = dict()
+            for param in params:
+                data_dict[param] = data_df[data_df["params"] == param]
 
         self._plot_and_save(
             times=[data_dict[param]["solve"] for param in data_dict],
             labels=[param for param in data_dict],
-            n_bins=n_bins,
             title=f"{case_name}, {agent.name} - Objective function comparison",
             legend_title="Objective modification",
             save_path=os.path.join(save_dir, file_name),
@@ -191,23 +226,29 @@ class ExperimentDCOPFTiming(ExperimentBase):
         )
 
     def compare_by_warmstart(
-        self, case, agent, save_dir, n_bins=25, **kwargs,
+        self, case, agent, save_dir, **kwargs,
     ):
         file_name = agent.name.replace(" ", "-").lower() + "-warmstart"
         case_name = self._get_case_name(case)
 
         self.print_experiment("Timing - Warm Start")
 
-        data_dict = dict()
-        for warm_start in [True, False]:
-            data_dict[str(warm_start)] = self._runner_timing(
-                env=case.env, agent=agent, warm_start=warm_start, **kwargs,
-            )
+        data_df = self._load_csv(save_path=os.path.join(save_dir, file_name + ".csv"))
+        if not len(data_df) > 0:
+            data_dict = dict()
+            for warm_start in [True, False]:
+                data_dict[str(warm_start)] = self._runner_timing(
+                    env=case.env, agent=agent, warm_start=warm_start, **kwargs,
+                )
+        else:
+            params = np.unique(data_df["params"].values).tolist()
+            data_dict = dict()
+            for param in params:
+                data_dict[param] = data_df[data_df["params"] == param]
 
         self._plot_and_save(
             times=[data_dict[param]["solve"] for param in data_dict],
             labels=[param for param in data_dict],
-            n_bins=n_bins,
             title=f"{case_name}, {agent.name} - Solver warm start comparison",
             legend_title="Warm start",
             save_path=os.path.join(save_dir, file_name),
@@ -217,24 +258,28 @@ class ExperimentDCOPFTiming(ExperimentBase):
             data_dict=data_dict, save_path=os.path.join(save_dir, file_name + ".csv")
         )
 
-    def compare_by_lambda_gen(
-        self, case, agent, save_dir, lambdas, n_bins=25, **kwargs
-    ):
+    def compare_by_lambda_gen(self, case, agent, save_dir, lambdas, **kwargs):
         file_name = agent.name.replace(" ", "-").lower() + "-lambdas"
         case_name = self._get_case_name(case)
 
         self.print_experiment("Timing - Generator penalty scaling")
 
-        data_dict = dict()
-        for lambd in lambdas:
-            data_dict[str(lambd)] = self._runner_timing(
-                env=case.env, agent=agent, obj_lambda_gen=lambd, **kwargs,
-            )
+        data_df = self._load_csv(save_path=os.path.join(save_dir, file_name + ".csv"))
+        if not len(data_df) > 0:
+            data_dict = dict()
+            for lambd in lambdas:
+                data_dict[str(lambd)] = self._runner_timing(
+                    env=case.env, agent=agent, obj_lambda_gen=lambd, **kwargs,
+                )
+        else:
+            params = np.unique(data_df["params"].values).tolist()
+            data_dict = dict()
+            for param in params:
+                data_dict[param] = data_df[data_df["params"] == param]
 
         self._plot_and_save(
             times=[data_dict[param]["solve"] for param in data_dict],
             labels=[param for param in data_dict],
-            n_bins=n_bins,
             title=f"{case_name}, {agent.name} - Generator penalty scaling comparison",
             legend_title="Regularization parameter",
             save_path=os.path.join(save_dir, file_name),
@@ -275,19 +320,13 @@ class ExperimentDCOPFTiming(ExperimentBase):
 
     @staticmethod
     def _plot_and_save(
-        times, labels, n_bins=25, title=None, legend_title=None, save_path=None,
+        times, labels, title=None, legend_title=None, save_path=None,
     ):
         fig, ax = plt.subplots(figsize=Const.FIG_SIZE)
         ax.set_title(title)
         for time, label in zip(times, labels):
-            sns.distplot(
-                time,
-                label=label,
-                ax=ax,
-                bins=n_bins,
-                hist=False,
-                kde=True,
-                norm_hist=True,
+            sns.kdeplot(
+                time, label=label, ax=ax,
             )
 
         ax.set_xlabel("Time [s]")
@@ -316,6 +355,19 @@ class ExperimentDCOPFTiming(ExperimentBase):
                 save_path = save_path + ".csv"
 
             data.to_csv(save_path)
+
+    @staticmethod
+    def _load_csv(save_path):
+        if save_path:
+            file_extension = os.path.splitext(save_path)[1]
+            if not file_extension:
+                save_path = save_path + ".csv"
+
+            if os.path.isfile(save_path):
+                data = pd.read_csv(save_path)
+                return data
+
+        return pd.DataFrame([])
 
     @staticmethod
     def aggregate_by_agent(agent, save_dir, delete_file=True):

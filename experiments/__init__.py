@@ -1,3 +1,4 @@
+from .experiment_actions import analyse_actions
 from .experiment_behaviour import ExperimentBehaviour
 from .experiment_performance import ExperimentPerformance
 from .experiment_switching import ExperimentSwitching

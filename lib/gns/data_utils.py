@@ -1,8 +1,10 @@
+from collections import deque
+
 import numpy as np
 from graph_nets import graphs
 from graph_nets import utils_tf
 
-from ..data_utils import indices_to_hot
+from ..data_utils import indices_to_hot, is_nonetype
 from ..dc_opf import GridDCOPF
 
 
@@ -187,34 +189,76 @@ def obs_to_graph_dict_by_grid(obs, grid):
             Not included.
 
     """
+
     n_sub = grid.n_sub
     n_line = grid.n_line
     n_gen = grid.n_gen
     n_load = grid.n_load
 
-    global_features = np.array([obs.month, obs.day, obs.day_of_week, obs.hour_of_day])
+    # Features
+    global_features = np.zeros((4,))
+    if not is_nonetype(obs):
+        global_features = np.array(
+            [obs.month, obs.day, obs.day_of_week, obs.hour_of_day]
+        )
 
     edges_or = np.zeros((n_line, 13))
-    # Features
-    edges_or[:, 0] = obs.p_or
-    edges_or[:, 1] = obs.q_or
-    edges_or[:, 2] = obs.a_or
-    edges_or[:, 3] = obs.v_or
-    edges_or[:, 4] = obs.p_ex
-    edges_or[:, 5] = obs.q_ex
-    edges_or[:, 6] = obs.a_ex
-    edges_or[:, 7] = obs.v_ex
-    edges_or[:, 8] = obs.rho
+    if not is_nonetype(obs):
+        edges_or[:, 0] = obs.p_or
+        edges_or[:, 1] = obs.q_or
+        edges_or[:, 2] = obs.a_or
+        edges_or[:, 3] = obs.v_or
+        edges_or[:, 4] = obs.p_ex
+        edges_or[:, 5] = obs.q_ex
+        edges_or[:, 6] = obs.a_ex
+        edges_or[:, 7] = obs.v_ex
+        edges_or[:, 8] = obs.rho
 
-    # Topology
-    edges_or[:, 9] = np.equal(grid.line.sub_bus_or, 1).astype(np.float)
-    edges_or[:, 10] = np.equal(grid.line.sub_bus_or, 2).astype(np.float)
-    edges_or[:, 11] = np.equal(grid.line.sub_bus_ex, 1).astype(np.float)
-    edges_or[:, 12] = np.equal(grid.line.sub_bus_ex, 2).astype(np.float)
-    edges_or[:, 9:] = np.multiply(
-        edges_or[:, 9:], np.atleast_2d(obs.line_status.astype(np.float)).T
-    )
+        # Topology
+        edges_or[:, 9] = np.equal(grid.line.sub_bus_or, 1).astype(np.float)
+        edges_or[:, 10] = np.equal(grid.line.sub_bus_or, 2).astype(np.float)
+        edges_or[:, 11] = np.equal(grid.line.sub_bus_ex, 1).astype(np.float)
+        edges_or[:, 12] = np.equal(grid.line.sub_bus_ex, 2).astype(np.float)
+        edges_or[:, 9:] = np.multiply(
+            edges_or[:, 9:], np.atleast_2d(obs.line_status.astype(np.float)).T
+        )
+
     edges_ex = edges_or
+    edge_features = np.concatenate((edges_or, edges_ex), axis=0)
+
+    node_features = np.zeros((n_sub, 2 * 2 * (n_gen + n_load)))
+    if not is_nonetype(obs):
+        for sub_id in grid.sub.index:
+
+            # Generator features
+            sub_mask = np.equal(grid.gen["sub"], sub_id).astype(np.float)
+
+            sub_bus_mask = sub_mask * np.equal(grid.gen["sub_bus"], 1).astype(np.float)
+            gen_inj_sub_bus_1 = np.concatenate(
+                (obs.prod_p * sub_bus_mask, obs.prod_q * sub_bus_mask)
+            )
+
+            sub_bus_mask = sub_mask * np.equal(grid.gen["sub_bus"], 2).astype(np.float)
+            gen_inj_sub_bus_2 = np.concatenate(
+                (obs.prod_p * sub_bus_mask, obs.prod_q * sub_bus_mask)
+            )
+
+            # Load features
+            sub_mask = np.equal(grid.load["sub"], sub_id).astype(np.float)
+
+            sub_bus_mask = sub_mask * np.equal(grid.load["sub_bus"], 1).astype(np.float)
+            load_inj_sub_bus_1 = np.concatenate(
+                (obs.load_p * sub_bus_mask, obs.load_q * sub_bus_mask)
+            )
+
+            sub_bus_mask = sub_mask * np.equal(grid.load["sub_bus"], 2).astype(np.float)
+            load_inj_sub_bus_2 = np.concatenate(
+                (obs.load_p * sub_bus_mask, obs.load_q * sub_bus_mask)
+            )
+
+            gen_inj = np.concatenate((gen_inj_sub_bus_1, gen_inj_sub_bus_2))
+            load_inj = np.concatenate((load_inj_sub_bus_1, load_inj_sub_bus_2))
+            node_features[sub_id, :] = np.concatenate((gen_inj, load_inj))
 
     # Double edges
     senders_or = grid.line.sub_or.values
@@ -222,21 +266,16 @@ def obs_to_graph_dict_by_grid(obs, grid):
     senders_ex = grid.line.sub_ex.values
     receivers_ex = grid.line.sub_or.values
 
-    edge_features = np.concatenate((edges_or, edges_ex), axis=0)
+    # Edges from substation to substation
     senders = np.concatenate((senders_or, senders_ex), axis=0)
     receivers = np.concatenate((receivers_or, receivers_ex), axis=0)
 
-    node_features = np.zeros((n_sub, 2 * (n_gen + n_load)))
-    for sub_id in grid.sub.index:
-        gen_hot = indices_to_hot(grid.sub.gen[sub_id], length=n_gen, dtype=np.float)
-        load_hot = indices_to_hot(grid.sub.load[sub_id], length=n_load, dtype=np.float)
-        gen_inj = np.concatenate((obs.prod_p * gen_hot, obs.prod_q * gen_hot))
-        load_inj = np.concatenate((obs.load_p * load_hot, obs.load_q * load_hot))
-        node_features[sub_id, :] = np.concatenate((gen_inj, load_inj))
-
+    # Data-types
     global_features = global_features.astype(np.float)
     node_features = node_features.astype(np.float)
     edge_features = edge_features.astype(np.float)
+    senders = senders.astype(np.int)
+    receivers = receivers.astype(np.int)
 
     graph_dict = {
         "globals": global_features,
@@ -249,51 +288,49 @@ def obs_to_graph_dict_by_grid(obs, grid):
     return graph_dict
 
 
-def obses_to_graphs_dict_list(obses, dones, case, max_length=-1):
+def obses_to_graphs_dict_list(obses, dones, case, n_window=1, max_length=-1):
     grid = GridDCOPF(case, base_unit_v=case.base_unit_v, base_unit_p=case.base_unit_p)
 
-    graphs_dict_list = []
-
+    single_graphs_dict_list = []
     grid.update(obses[0], reset=True)
     for i, (obs, done) in enumerate(zip(obses, dones)):
         grid.update(obs, reset=done)
 
         graph_dict = obs_to_graph_dict_by_grid(obs, grid)
-        graphs_dict_list.append(graph_dict)
+        single_graphs_dict_list.append(graph_dict)
 
         if i % 1000 == 0:
             print(f"{i}/{len(obses)}")
 
         if 0 < max_length == (i + 1):
             break
+
+    graph_dict_padding = [obs_to_graph_dict_by_grid(None, grid)] * n_window
+    graph_dict_queue = deque(graph_dict_padding)
+
+    graphs_dict_list = []
+    for single_graph_dict in single_graphs_dict_list:
+        graph_dict_queue.popleft()
+        graph_dict_queue.append(single_graph_dict)
+
+        graph_dict = dict()
+        graph_dict["senders"] = graph_dict_queue[-1]["senders"]
+        graph_dict["receivers"] = graph_dict_queue[-1]["receivers"]
+
+        graph_dict["globals"] = np.hstack([g_d["globals"] for g_d in graph_dict_queue])
+        graph_dict["nodes"] = np.hstack([g_d["nodes"] for g_d in graph_dict_queue])
+        graph_dict["edges"] = np.hstack([g_d["edges"] for g_d in graph_dict_queue])
+
+        graphs_dict_list.append(graph_dict)
 
     return graphs_dict_list
 
 
-def obses_to_combined_graphs_dict_list(obses, dones, case, max_length=-1):
-    grid = GridDCOPF(case, base_unit_v=case.base_unit_v, base_unit_p=case.base_unit_p)
-
-    combined_graphs_dict_list = {
-        "globals": [],
-        "nodes": [],
-        "edges": [],
-        "senders": [],
-        "receivers": [],
-    }
-
-    grid.update(obses[0], reset=True)
-    for i, (obs, done) in enumerate(zip(obses, dones)):
-        grid.update(obs, reset=done)
-
-        graph_dict = obs_to_graph_dict_by_grid(obs, grid)
-        for key in graph_dict:
-            combined_graphs_dict_list[key].append(graph_dict[key])
-
-        if i % 1000 == 0:
-            print(f"{i}/{len(obses)}")
-
-        if 0 < max_length == (i + 1):
-            break
+def obses_to_combined_graphs_dict_list(obses, dones, case, n_window=1, max_length=-1):
+    graphs_dict_list = obses_to_graphs_dict_list(
+        obses, dones, case, n_window=n_window, max_length=max_length
+    )
+    combined_graphs_dict_list = dict_list_to_combined_dict(graphs_dict_list)
 
     return combined_graphs_dict_list
 

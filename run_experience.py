@@ -12,7 +12,7 @@ from lib.visualizer import Visualizer
 
 visualizer = Visualizer()
 
-save_dir = make_dir(os.path.join(Const.EXPERIENCE_DIR, "data"))
+save_dir = make_dir(os.path.join(Const.EXPERIENCE_DIR, "data-s"))
 
 env_dc = True
 verbose = False
@@ -41,22 +41,19 @@ for case_name in ["rte_case5_example", "l2rpn_2019", "l2rpn_wcci_2020"]:
         "agent-mip",
         # "agent-multistep-mip",
     ]:
+        np.random.seed(1)
         if case_name == "rte_case5_example":
             kwargs["obj_lambda_action"] = 0.004
             do_chronics = [13, 14, 15, 16, 17, 16, 18, 19]
         elif case_name == "l2rpn_2019":
             kwargs["obj_lambda_action"] = 0.07
-            do_chronics = [
-                0,
-                10,
-                100,
-                200,
-                196,
-                *np.random.randint(200, 500, 4).tolist(),
-            ]
+            do_chronics = [0, 10, 100, 196, 200, 201, 206, 226, 259, 375, 384, 491]
+            do_chronics.extend(np.random.randint(0, 1000, 200).tolist())
         else:
             kwargs["obj_lambda_action"] = 0.05
             do_chronics = [*np.arange(0, 2880, 240), *(np.arange(0, 2880, 240) + 1)]
+
+        do_chronics = np.unique(do_chronics)
 
         """
             Initialize agent.
@@ -67,4 +64,6 @@ for case_name in ["rte_case5_example", "l2rpn_2019", "l2rpn_wcci_2020"]:
             Collect experience.
         """
         collector = ExperienceCollector(save_dir=case_save_dir)
-        collector.collect(env, agent, do_chronics=do_chronics, n_chronics=4, n_steps=-1)
+        collector.collect(
+            env, agent, do_chronics=do_chronics, n_chronics=100, n_steps=200
+        )

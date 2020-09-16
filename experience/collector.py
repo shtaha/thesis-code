@@ -13,6 +13,7 @@ class ExperienceCollector(object):
 
         self.chronic_files = []
         self.chronic_ids = []
+        self.chronic_lengths = []
 
         self.data = None
 
@@ -20,13 +21,37 @@ class ExperienceCollector(object):
         self.actions = None
         self.rewards = None
         self.dones = None
+
+        self.distances = None
+        self.distances_line = None
+        self.distances_sub = None
+        self.total_return = None
+        self.duration = None
+        self.chronic_len = None
+        self.chronic_name = None
+
         self.reset()
+
+    def full_reset(self):
+        self.chronic_files = []
+        self.chronic_ids = []
+        self.chronic_lengths = []
+        self.data = None
 
     def reset(self):
         self.obses = []
         self.actions = []
         self.rewards = []
         self.dones = []
+
+        self.distances = []
+        self.distances_line = []
+        self.distances_sub = []
+
+        self.total_return = 0.0
+        self.duration = 0
+        self.chronic_len = 0
+        self.chronic_name = ""
 
     @staticmethod
     def print_collector(phase):
@@ -35,7 +60,7 @@ class ExperienceCollector(object):
         print("-" * 80)
 
     def collect(
-        self, env, agent, do_chronics=(), n_chronics=10, n_steps=-1, verbose=False
+        self, env, agent, do_chronics=(), n_chronics=-1, n_steps=-1, verbose=False
     ):
         self.print_collector("Collecting")
         agent.print_agent(default=verbose)
@@ -46,9 +71,21 @@ class ExperienceCollector(object):
         chronics_dir, chronics, chronics_sorted = get_sorted_chronics(env=env)
         pprint("Chronics:", chronics_dir)
 
+        if len(self.chronic_ids):
+            pprint(
+                "    - Done chronics:",
+                ", ".join(map(lambda x: str(x), sorted(self.chronic_ids))),
+            )
+
+        if len(do_chronics):
+            pprint(
+                "    - To do chronics:",
+                ", ".join(map(lambda x: str(x), sorted(do_chronics))),
+            )
+
         done_chronic_ids = []
         for chronic_idx, chronic_name in enumerate(chronics_sorted):
-            if len(done_chronic_ids) >= n_chronics:
+            if len(done_chronic_ids) >= n_chronics > 0:
                 break
 
             # If chronic already done
@@ -92,7 +129,7 @@ class ExperienceCollector(object):
 
                 t = env.chronics_handler.real_data.data.current_index
 
-                if t % 200 == 0:
+                if t % 50 == 0:
                     pprint("        - Step:", t)
 
                 if done:
@@ -103,7 +140,7 @@ class ExperienceCollector(object):
             self.obses.append(obs.to_vect())
             done_chronic_ids.append(chronic_idx)
 
-            self._save_chronic(agent, chronic_idx, verbose)
+            self._save_chronic(agent_name, chronic_idx, verbose)
             self.reset()
 
     def _add(self, obs, action, reward, done):
@@ -112,13 +149,27 @@ class ExperienceCollector(object):
         self.rewards.append(reward)
         self.dones.append(done)
 
-    def _save_chronic(self, agent, chronic_idx, verbose=False):
+    def _add_plus(self, distance, distance_line, distance_sub):
+        self.distances.append(distance)
+        self.distances_line.append(distance_line)
+        self.distances_sub.append(distance_sub)
+
+    def _save_chronic(self, agent_name, chronic_idx, verbose=False):
         obses = np.array(self.obses)
         actions = np.array(self.actions)
         rewards = np.array(self.rewards)
         dones = np.array(self.dones)
 
-        agent_name = agent.name.replace(" ", "-").lower()
+        distances = np.array(self.distances)
+        distances_line = np.array(self.distances_line)
+        distances_sub = np.array(self.distances_sub)
+
+        total_return = np.array(self.total_return)
+        duration = np.array(self.duration)
+        chronic_len = np.array(self.chronic_len)
+        chronic_name = self.chronic_name
+
+        agent_name = agent_name.replace(" ", "-").lower()
         chronic_file = "{}-chronic-{:05}.npz".format(agent_name, chronic_idx)
         pprint("        - Experience saved to:", chronic_file)
 
@@ -127,13 +178,25 @@ class ExperienceCollector(object):
             pprint("        - Actions:", actions.shape)
             pprint("        - Rewards:", rewards.shape)
             pprint("        - Dones:", dones.shape)
+            pprint("        - Distances:", distances.shape)
+            pprint("            - Line:", distances_line.shape)
+            pprint("            - Substation:", distances_sub.shape)
+            pprint("        - Return:", total_return)
+            pprint("        - Duration:", duration)
+            pprint("        - Length:", chronic_len)
         else:
             pprint(
-                "        - O A R D:",
+                "        - O A R D Dist TR Dur L:",
                 obses.shape,
                 actions.shape,
                 rewards.shape,
                 dones.shape,
+                distances.shape,
+                distances_line.shape,
+                distances_sub.shape,
+                total_return,
+                duration,
+                chronic_len,
             )
 
         np.savez_compressed(
@@ -142,6 +205,13 @@ class ExperienceCollector(object):
             actions=actions,
             rewards=rewards,
             dones=dones,
+            distances=distances,
+            distances_line=distances_line,
+            distances_sub=distances_sub,
+            total_return=total_return,
+            duration=duration,
+            chronic_len=chronic_len,
+            chronic_name=chronic_name,
         )
 
         self.chronic_files.append(chronic_file)
@@ -149,20 +219,18 @@ class ExperienceCollector(object):
 
     def _load_chronics(self, agent_name):
         for chronic_file in os.listdir(self.save_dir):
-            if "chronic-" in chronic_file and agent_name in chronic_file:
+            if (
+                "chronic-" in chronic_file
+                and agent_name in chronic_file
+                and ".npz" in chronic_file
+            ):
                 chronic_idx = int(os.path.splitext(chronic_file)[0].split("-")[-1])
                 self.chronic_files.append(chronic_file)
                 self.chronic_ids.append(chronic_idx)
 
-        if self.chronic_ids:
-            pprint(
-                "    - Done chronics:",
-                ", ".join(map(lambda x: str(x), self.chronic_ids)),
-            )
-
     def load_data(self, agent_name, env):
+        self.full_reset()
         self.print_collector("Loading")
-
         self._load_chronics(agent_name=agent_name)
 
         chronic_data = dict()
@@ -172,6 +240,8 @@ class ExperienceCollector(object):
             npz_file = np.load(os.path.join(self.save_dir, chronic_file))
             for key in npz_file.keys():
                 chronic_data[chronic_idx][key] = npz_file[key]
+
+            self.chronic_lengths.append(len(npz_file["rewards"]))
 
         self.data = chronic_data
         self.transform_data(env=env)

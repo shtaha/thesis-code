@@ -34,7 +34,7 @@ class ExperimentBase:
                 print(e)
 
     @staticmethod
-    def _load_done_chronics(file_name, save_dir=None):
+    def _load_done_chronics_from_pickle(file_name, save_dir=None):
         if save_dir and file_name + ".pkl" in os.listdir(save_dir):
             chronic_data = pd.read_pickle(os.path.join(save_dir, file_name + ".pkl"))
             done_chronic_indices = chronic_data.index
