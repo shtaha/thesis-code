@@ -40,7 +40,7 @@ for case_name in ["rte_case5_example", "l2rpn_2019", "l2rpn_wcci_2020"]:
     )
 
     for agent_name in [
-        # "agent-mip",
+        "agent-mip",
         "agent-multistep-mip",
     ]:
         if case_name == "rte_case5_example":
@@ -109,10 +109,6 @@ for case_name in ["rte_case5_example", "l2rpn_2019", "l2rpn_wcci_2020"]:
                 ({"con_requirement_balance": False}, "RI"),
                 ({"con_requirement_at_least_two": False}, "RII"),
                 ({"con_switching_limits": False}, "Switching limits"),
-                (
-                    {"con_cooldown": False, "con_maintenance": False},
-                    "Cooldown and Maintenance",
-                ),
                 ({"con_unitary_action": True}, "Unitary action"),
             ],
             n_timings=n_timings,

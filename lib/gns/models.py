@@ -7,16 +7,52 @@ from tensorflow.keras import layers
 from lib.data_utils import is_nonetype
 
 
+class OutputModel(snt.Module):
+    def __init__(self, n_edge_features, n_node_features, n_edges, n_nodes):
+        super(OutputModel, self).__init__(name="output_model")
+
+        self.n_edge_features = n_edge_features
+        self.n_node_features = n_node_features
+        self.n_edges = n_edges
+        self.n_nodes = n_nodes
+
+        self.layer_concat = tf.keras.layers.Concatenate(
+            axis=-1, name="layer_concat", dtype=tf.float64
+        )
+
+        self.layer_linear = snt.Linear(
+            output_size=1, with_bias=True, name="layer_linear"
+        )
+
+    def __call__(self, input_graphs):
+        edges = tf.reshape(
+            input_graphs.edges, shape=[-1, 2 * self.n_edges, self.n_edge_features]
+        )
+        edges = tf.math.reduce_max(edges, axis=1)
+
+        nodes = tf.reshape(
+            input_graphs.nodes, shape=[-1, self.n_nodes, self.n_node_features]
+        )
+        nodes = tf.math.reduce_max(nodes, axis=1)
+
+        x = self.layer_concat([nodes, edges])
+        x = self.layer_linear(x)
+        x = tf.reshape(x, shape=[-1])
+        return x
+
+
 class GraphNetworkSwitching(snt.Module):
     def __init__(
         self,
         n_global_features,
         n_node_features,
         n_edge_features,
+        n_edges,
+        n_nodes,
         n_hidden=(16, 16),
         n_message_passes=3,
         pos_class_weight=1.0,
-        learning_rate=None,
+        learning_rate=0.001,
         graphs_signature=None,
         labels_signature=None,
     ):
@@ -26,19 +62,27 @@ class GraphNetworkSwitching(snt.Module):
         self.n_global_features = n_global_features
         self.n_node_features = n_node_features
         self.n_edge_features = n_edge_features
+        self.n_nodes = n_nodes
+        self.n_edges = n_edges
 
         # Graph network
         self.n_message_passes = n_message_passes
         self.n_hidden = n_hidden
         self.graph_network = self._build_graph_network()
+        self.output_layer = self._build_output_fn()
 
-        self.pos_class_weight = pos_class_weight
+        self.pos_class_weight = tf.constant(pos_class_weight, dtype=tf.float64)
 
         self.learning_rate = learning_rate
         self.optimizer = snt.optimizers.Adam(self.learning_rate)
 
-        self.loss_fn = tf.keras.losses.BinaryCrossentropy(
-            name="weighted_binary_crossentropy"
+        self.loss_fn = lambda labels, logits: tf.reduce_mean(
+            tf.nn.weighted_cross_entropy_with_logits(
+                labels,
+                logits,
+                pos_weight=self.pos_class_weight,
+                name="weighted_binary_crossentropy",
+            )
         )
 
         # Compiling tf function
@@ -57,22 +101,36 @@ class GraphNetworkSwitching(snt.Module):
     def _build_global_model_fn(self):
         return lambda: snt.nets.MLP(
             output_sizes=[*self.n_hidden, self.n_global_features],
+            activation=tf.nn.relu,
             activate_final=False,
             name="global_model",
         )
 
     def _build_node_model_fn(self):
         return lambda: snt.nets.MLP(
-            output_sizes=[*self.n_hidden, self.n_node_features], name="node_model"
+            output_sizes=[*self.n_hidden, self.n_node_features],
+            activation=tf.nn.relu,
+            name="node_model",
         )
 
     def _build_edge_model_fn(self):
         return lambda: snt.nets.MLP(
-            output_sizes=[*self.n_hidden, self.n_edge_features], name="edge_model"
+            output_sizes=[*self.n_hidden, self.n_edge_features],
+            activation=tf.nn.relu,
+            name="edge_model",
         )
 
+    def _build_output_fn(self):
+        model = OutputModel(
+            n_edge_features=self.n_edge_features,
+            n_node_features=self.n_node_features,
+            n_edges=self.n_edges,
+            n_nodes=self.n_nodes,
+        )
+        return lambda: model
+
     def graph_forward_pass(self, input_graphs):
-        for _ in range(self.n_passes):
+        for _ in range(self.n_message_passes):
             input_graphs = self.graph_network(input_graphs)
         return input_graphs
 
@@ -83,10 +141,10 @@ class GraphNetworkSwitching(snt.Module):
     def train_step(self, input_graphs, labels):
         with tf.GradientTape() as gt:
             output_graphs = self.__call__(input_graphs)
+
             logits = output_graphs.globals[:, 0]
             probabilities = tf.math.sigmoid(logits, name="probabilities")
-
-            loss = self.loss_fn(labels, probabilities)
+            loss = self.loss_fn(labels, logits)
 
         predicted_labels = tf.math.greater_equal(probabilities, 0.5)
         predicted_labels = tf.cast(

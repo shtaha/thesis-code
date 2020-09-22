@@ -1,22 +1,12 @@
-import argparse
-
 from lib.action_space import ActionSpaceGenerator
 from lib.dc_opf import load_case
-
-
-def parse_arguments():
-    parser = argparse.ArgumentParser()
-    parser.add_argument(
-        "--env_name", default="l2rpn_2019", type=str, help="Environment name."
-    )
-    return parser.parse_args()
-
+from lib.visualizer import pprint
 
 if __name__ == "__main__":
+    case_name = "l2rpn_2019"
     verbose = True
-    args = parse_arguments()
 
-    case = load_case(args.env_name, verbose=verbose)
+    case = load_case(case_name, verbose=verbose)
     env = case.env
     action_space = env.action_space
 
@@ -51,13 +41,13 @@ if __name__ == "__main__":
         actions_line_set_info,
     ) = action_generator.get_all_unitary_line_status_set(verbose=verbose)
 
-    print("actions: 1 do-nothing action")
+    pprint("actions: 1 do-nothing action")
 
-    print("Topology set actions:")
-    print("{:<20}\t{}".format("grid2op", len(grid2op_actions_topology_set)))
-    print("{:<20}\t{}".format("custom", len(actions_topology_set)))
-    print("{:<20}\t{}".format("custom filtered", len(actions_topology_set_filtered)))
+    pprint("Topology set actions:")
+    pprint("grid2op", len(grid2op_actions_topology_set))
+    pprint("custom", len(actions_topology_set))
+    pprint("custom filtered", len(actions_topology_set_filtered))
 
-    print("Line set actions:")
-    print("{:<20}\t{}".format("grid2op", len(grid2op_actions_line_set)))
-    print("{:<20}\t{}".format("custom", len(actions_line_set)))
+    pprint("Line set actions:")
+    pprint("grid2op", len(grid2op_actions_line_set))
+    pprint("custom", len(actions_line_set))

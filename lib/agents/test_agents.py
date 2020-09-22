@@ -4,7 +4,8 @@ import numpy as np
 import pandas as pd
 import pyomo.environ as pyo
 
-from lib.dc_opf import (
+from ..constants import Constants as Const
+from ..dc_opf import (
     GridDCOPF,
     TopologyOptimizationDCOPF,
     MultistepTopologyDCOPF,
@@ -12,13 +13,23 @@ from lib.dc_opf import (
     MultistepTopologyParameters,
     Forecasts,
 )
-from lib.rewards import RewardL2RPN2019
-from lib.visualizer import pprint
+from ..rewards import RewardL2RPN2019
+from ..visualizer import pprint
 
 
 def make_test_agent(
-    agent_name, case, action_set, delta_max_p_pu=0.10, horizon=2, **kwargs
+    agent_name,
+    case,
+    save_dir=None,
+    verbose=False,
+    delta_max_p_pu=0.10,
+    horizon=2,
+    **kwargs,
 ):
+    action_set = case.generate_unitary_action_set(
+        case, case_save_dir=save_dir, verbose=verbose
+    )
+
     if agent_name == "agent-multistep-mip":
         agent = AgentMultistepMIPTest(
             case=case, action_set=action_set, horizon=horizon, **kwargs
@@ -43,6 +54,20 @@ def make_test_agent(
         raise ValueError(f"Agent name {agent_name} is invalid.")
 
     return agent
+
+
+def get_agent_color(agent_name):
+    colors = Const.COLORS
+    agent_names = ["do-nothing-agent", "agent-mip", "agent-multistep-mip"]
+
+    if agent_name in agent_names:
+        color_id = agent_names.index(agent_name)
+    else:
+        color_id = len(colors) - 1
+
+    color_id = color_id % len(colors)
+    color = colors[color_id]
+    return color
 
 
 class BaseAgentTest:

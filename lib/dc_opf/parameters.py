@@ -17,7 +17,7 @@ class CaseParameters(Parameters):
 
     @staticmethod
     def _get_param_dict(case_name):
-        if case_name in ["rte_case5", "rte_case5_example"]:
+        if "rte_case5" in case_name:
             param_dict = {
                 "NO_OVERFLOW_DISCONNECTION": False,
                 "IGNORE_MIN_UP_DOWN_TIME": True,
@@ -32,7 +32,7 @@ class CaseParameters(Parameters):
                 "NB_TIMESTEP_COOLDOWN_LINE": 0,
                 "NB_TIMESTEP_COOLDOWN_SUB": 0,
             }
-        elif case_name in ["l2rpn2019", "l2rpn_2019"]:
+        elif "l2rpn_2019" in case_name:
             param_dict = {
                 "NO_OVERFLOW_DISCONNECTION": False,
                 "IGNORE_MIN_UP_DOWN_TIME": True,
@@ -47,7 +47,7 @@ class CaseParameters(Parameters):
                 "NB_TIMESTEP_COOLDOWN_LINE": 0,
                 "NB_TIMESTEP_COOLDOWN_SUB": 0,
             }
-        elif case_name in ["l2rpn2020", "l2rpn_wcci_2020", "l2rpn_2020"]:
+        elif "l2rpn_wcci_2020" in case_name:
             param_dict = {
                 "NO_OVERFLOW_DISCONNECTION": False,
                 "IGNORE_MIN_UP_DOWN_TIME": True,

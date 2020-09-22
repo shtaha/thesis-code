@@ -54,61 +54,91 @@ def equal_graphs(graphs_a, graphs_b, verbose=True):
     return cond
 
 
-def stack_graph_field(field_unstacked):
-    field_stacked = None
-    if not isinstance(field_unstacked, type(None)):
-        field_stacked = tf.concat(tf.unstack(field_unstacked), axis=0)
-    return field_stacked
-
-
-def reenumerate_graph_edges(node_ids, n_edge, n_node):
-    if len(n_edge.shape) > 0:
-        result = node_ids + tf.repeat(
-            tf.multiply(tf.range(n_edge.shape[0]), n_node), repeats=n_edge
-        )
-    else:
-        result = node_ids
-    return result
-
-
 def graph_dict_to_graph(graph_dict):
     return utils_tf.data_dicts_to_graphs_tuple([graph_dict])
 
 
-def stack_graphs(graphs):
-    graphs = graphs.map(stack_graph_field, fields=("globals", "nodes", "edges"))
-    graphs = graphs.map(stack_graph_field, fields=("receivers", "senders"))
+def stack_batch(graph_batch, n_global_features, n_node_features, n_edge_features):
+    globals_features = tf.reshape(graph_batch.globals, shape=[-1, n_global_features])
+    nodes_features = tf.reshape(graph_batch.nodes, shape=[-1, n_node_features])
+    edges_features = tf.reshape(graph_batch.edges, shape=[-1, n_edge_features])
 
-    if utils_tf.get_num_graphs(graphs) > 1:
-        graphs = graphs.map(lambda x: tf.squeeze(x), fields=("n_node", "n_edge"))
-    else:
-        graphs = graphs.map(lambda x: tf.reshape(x, (1,)), fields=("n_node", "n_edge"))
+    receivers = tf.reshape(graph_batch.receivers, shape=[-1])
+    senders = tf.reshape(graph_batch.senders, shape=[-1])
 
-    graphs_stacked = gn.graphs.GraphsTuple(
-        nodes=graphs.nodes,
-        edges=graphs.edges,
-        globals=graphs.globals,
-        receivers=reenumerate_graph_edges(
-            graphs.receivers, graphs.n_edge, graphs.n_node
-        ),
-        senders=reenumerate_graph_edges(graphs.senders, graphs.n_edge, graphs.n_node),
-        n_node=graphs.n_node,
-        n_edge=graphs.n_edge,
+    n_node = tf.reshape(graph_batch.n_node, shape=[-1])
+    n_edge = tf.reshape(graph_batch.n_edge, shape=[-1])
+
+    mask = tf.repeat(
+        tf.multiply(tf.range(utils_tf.get_num_graphs(graph_batch)), n_node),
+        repeats=n_edge,
+    )
+    receivers = receivers + mask
+    senders = senders + mask
+
+    graph_batch = gn.graphs.GraphsTuple(
+        nodes=nodes_features,
+        edges=edges_features,
+        globals=globals_features,
+        receivers=receivers,
+        senders=senders,
+        n_node=n_node,
+        n_edge=n_edge,
     )
 
-    return graphs_stacked
+    return graph_batch
 
 
-def tf_graph_dataset(combined_graphs_dict_list):
-    graph_dataset = tf.data.Dataset.from_tensor_slices(combined_graphs_dict_list)
+def tf_graph_dataset(cgraphs):
+    graph_dataset = tf.data.Dataset.from_tensor_slices(cgraphs)
     graph_dataset = graph_dataset.map(graph_dict_to_graph)
     return graph_dataset
 
 
-def get_graph_feature_dimensions(graph):
-    dimensions = dict(
-        n_global_features=graph.globals.shape[-1],
-        n_node_features=graph.nodes.shape[-1],
-        n_edge_features=graph.edges.shape[-1],
-    )
+def tf_batched_graph_dataset(
+    cgraphs,
+    n_global_features,
+    n_node_features,
+    n_edge_features,
+    n_batch=1,
+    stack_fn=stack_batch,
+):
+    graph_dataset = tf_graph_dataset(cgraphs)
+
+    if n_batch == 1:
+        return graph_dataset
+    else:
+
+        def stack_fn_params(graph_batch):
+            return stack_fn(
+                graph_batch, n_global_features, n_node_features, n_edge_features
+            )
+
+        graph_dataset = graph_dataset.batch(n_batch)
+        return graph_dataset.map(stack_fn_params)
+
+
+def get_graph_feature_dimensions(tgraphs=None, lgraphs=None, cgraphs=None):
+    dimensions = dict()
+    if tgraphs:
+        dimensions = dict(
+            n_global_features=tgraphs.globals.shape[-1],
+            n_node_features=tgraphs.nodes.shape[-1],
+            n_edge_features=tgraphs.edges.shape[-1],
+        )
+
+    if lgraphs:
+        dimensions = dict(
+            n_global_features=lgraphs[0]["globals"].shape[-1],
+            n_node_features=lgraphs[0]["nodes"].shape[-1],
+            n_edge_features=lgraphs[0]["edges"].shape[-1],
+        )
+
+    if cgraphs:
+        dimensions = dict(
+            n_global_features=cgraphs["globals"][0].shape[-1],
+            n_node_features=cgraphs["nodes"][0].shape[-1],
+            n_edge_features=cgraphs["edges"][0].shape[-1],
+        )
+
     return dimensions

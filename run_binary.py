@@ -1,139 +1,161 @@
 import os
+import time
 
-import numpy as np
 import tensorflow as tf
 from graph_nets import utils_tf
 
-from experience import ExperienceCollector
+from experience import load_experience
+from lib.action_space import is_do_nothing_action
 from lib.constants import Constants as Const
 from lib.data_utils import make_dir, env_pf
-from lib.dc_opf import load_case, CaseParameters
 from lib.gns import (
-    obses_to_combined_graphs_dict_list,
-    tf_graph_dataset,
+    obses_to_cgraphs,
+    tf_batched_graph_dataset,
     get_graph_feature_dimensions,
-    stack_graphs,
     GraphNetworkSwitching,
 )
 from lib.run_utils import create_logger
 from lib.visualizer import Visualizer, pprint
 
-visualizer = Visualizer()
+Visualizer()
 
-experience_data_dir = make_dir(os.path.join(Const.EXPERIENCE_DIR, "data"))
-results_dir = make_dir(os.path.join(Const.RESULTS_DIR, "binary-classification"))
+experience_dir = make_dir(os.path.join(Const.EXPERIENCE_DIR, "data-aug"))
+results_dir = make_dir(os.path.join(Const.RESULTS_DIR, "binary-linear"))
 
 agent_name = "agent-mip"
-# case_name = "rte_case5_example"
-case_name = "l2rpn_2019"
-
+case_name = "l2rpn_2019_art"
 env_dc = True
 verbose = False
 
-case_experience_data_dir = make_dir(
-    os.path.join(experience_data_dir, f"{case_name}-{env_pf(env_dc)}")
-)
 case_results_dir = make_dir(os.path.join(results_dir, f"{case_name}-{env_pf(env_dc)}"))
 create_logger(logger_name=f"{case_name}-{env_pf(env_dc)}", save_dir=case_results_dir)
 
-parameters = CaseParameters(case_name=case_name, env_dc=env_dc)
-case = load_case(case_name, env_parameters=parameters)
-env = case.env
+case, collector = load_experience(case_name, agent_name, experience_dir, env_dc=env_dc)
+obses, actions, rewards, dones = collector.aggregate_data()
 
 """
-    Load dataset
+    Parameters
+"""
+n_window = 2
+n_batch = 32
+n_epochs = 20
+
+"""
+    Datasets
+"""
+max_length = 100
+cgraphs = obses_to_cgraphs(obses, dones, case, n_window=n_window)
+labels = is_do_nothing_action(actions, case.env)
+
+graph_dims = get_graph_feature_dimensions(cgraphs=cgraphs)
+graph_dataset = tf_batched_graph_dataset(cgraphs, n_batch=n_batch, **graph_dims)
+label_dataset = tf.data.Dataset.from_tensor_slices(labels).batch(n_batch)
+dataset = tf.data.Dataset.zip((graph_dataset, label_dataset))
+
+"""
+    Signatures
 """
 
-collector = ExperienceCollector(save_dir=case_experience_data_dir)
-collector.load_data(agent_name=agent_name, env=env)
-
-observations, actions, rewards, dones = collector.aggregate_data()
-labels = np.array(
-    [action != env.action_space({}) for action in actions], dtype=np.float
+graphs_sig = utils_tf.specs_from_graphs_tuple(
+    next(iter(graph_dataset)), dynamic_num_graphs=True
 )
-
-combined_graphs_dict_list = obses_to_combined_graphs_dict_list(
-    observations, dones, case
-)
+labels_sig = tf.TensorSpec(shape=[None], dtype=tf.dtypes.float64)
 
 """
-    Construct TF dataset
+    Model
 """
-
-label_dataset = tf.data.Dataset.from_tensor_slices(labels)
-graph_dataset = tf_graph_dataset(combined_graphs_dict_list)
-
-sample_graph = next(iter(graph_dataset))
-graphs_signature = utils_tf.specs_from_graphs_tuple(
-    sample_graph, dynamic_num_graphs=True
-)
-labels_signature = tf.TensorSpec(shape=[None], dtype=tf.dtypes.float64)
-
+tf.random.set_seed(0)
 model = GraphNetworkSwitching(
     pos_class_weight=1 / labels.mean(),
-    n_hidden=(32, 32, 32, 32),
-    graphs_signature=graphs_signature,
-    labels_signature=labels_signature,
-    **get_graph_feature_dimensions(sample_graph),
+    n_hidden=(128, 128, 128, 128),
+    graphs_signature=graphs_sig,
+    labels_signature=labels_sig,
+    n_nodes=case.env.n_sub,
+    n_edges=2 * case.env.n_line,
+    **graph_dims,
 )
+
+model_dir = os.path.join(case_results_dir, "model-05")
+checkpoint_path = os.path.join(model_dir, "ckpts")
+
+ckpt = tf.train.Checkpoint(model=model, optimizer=model.optimizer)
+ckpt_manager = tf.train.CheckpointManager(ckpt, checkpoint_path, max_to_keep=2)
+
+if ckpt_manager.latest_checkpoint:
+    ckpt.restore(ckpt_manager.latest_checkpoint)
+    pprint(f"Restoring checkpoint from:", ckpt_manager.latest_checkpoint)
 
 """
     Training
 """
-n_epochs = 20
-n_batch = 32
 
-tf.random.set_seed(0)
-dataset = tf.data.Dataset.zip((graph_dataset, label_dataset))
+# Epoch Metrics
+metric_recall_e = tf.keras.metrics.Recall()
+metric_precision_e = tf.keras.metrics.Precision()
+metric_accuracy_e = tf.keras.metrics.Accuracy()
+metric_bce_e = tf.keras.metrics.BinaryCrossentropy(from_logits=False)
+recall_e = []
+precision_e = []
+accuracy_e = []
+bce_e = []
 
-dataset = dataset.prefetch(tf.data.experimental.AUTOTUNE)
-dataset = dataset.shuffle(len(labels))
-dataset = dataset.repeat(n_epochs)
-dataset = dataset.batch(n_batch)
-
-# Epoch
-recall_fn = tf.keras.metrics.Recall()
-false_net_fn = tf.keras.metrics.FalseNegatives()
-true_pos_fn = tf.keras.metrics.TruePositives()
-
-# Batch
-accuracy_fn = tf.metrics.binary_accuracy
-bce_fn = tf.metrics.binary_crossentropy
-
+# Batch Metrics
+metric_accuracy_b = tf.metrics.binary_accuracy
+metric_bce_b = tf.metrics.binary_crossentropy
 losses = []
-cross_entropies = []
-accuracies = []
-recalls = []
-false_negs = []
-true_poss = []
+accuracy = []
 
-for batch_idx, (graph_batch, label_batch) in enumerate(dataset):
-    graph_batch = stack_graphs(graph_batch)
-    output_graphs, loss, probabilities, predicted_labels, gradients = model.train_step(
-        graph_batch, label_batch
-    )
+for epoch in range(n_epochs):
+    start = time.time()
 
-    bce = bce_fn(label_batch, probabilities)
-    acc = accuracy_fn(label_batch, tf.cast(predicted_labels, dtype=tf.float64))
-    rec = recall_fn(label_batch, predicted_labels)
-    fns = false_net_fn(label_batch, predicted_labels)
-    true_pos = true_pos_fn(label_batch, predicted_labels)
+    # Reset epoch metrics
+    metric_recall_e.reset_states()
+    metric_precision_e.reset_states()
+    metric_accuracy_e.reset_states()
+    metric_bce_e.reset_states()
 
-    losses.append(loss)
-    cross_entropies.append(bce)
-    accuracies.append(acc)
-    recalls.append(rec)
-    false_negs.append(fns)
-    true_poss.append(true_pos)
+    for batch, (graph_batch, label_batch) in enumerate(dataset):
+        (
+            output_graphs,
+            loss,
+            probabilities,
+            predicted_labels,
+            gradients,
+        ) = model.train_step(graph_batch, label_batch)
 
-    if batch_idx % 200 == 0:
-        pprint(
-            "Batch:",
-            batch_idx,
-            "loss = {:.4f}".format(loss.numpy()),
-            "bce = {:.4f}".format(bce.numpy()),
-            "acc = {:.4f}".format(acc.numpy()),
+        # Batch Metric
+        bce = metric_bce_b(label_batch, probabilities)  # Control
+        acc = metric_accuracy_b(
+            label_batch, tf.cast(predicted_labels, dtype=tf.float64)
         )
-        if acc.numpy() < 0.1 or (0.9 < acc.numpy() < 1.0):
-            pprint("Labels:", label_batch.numpy().astype(int))
-            pprint("Predictions:", predicted_labels.numpy().astype(int))
+
+        # Epoch Metrics
+        metric_recall_e(label_batch, predicted_labels)
+        metric_precision_e(label_batch, predicted_labels)
+        metric_accuracy_e(label_batch, predicted_labels)
+        metric_bce_e(label_batch, probabilities)
+
+        losses.append(loss.numpy())
+        accuracy.append(acc.numpy())
+
+        if batch % 100 == 0:
+            pprint(
+                "        - Batch/Epoch:",
+                f"{batch}/{epoch}",
+                "loss = {:.4f}".format(loss.numpy()),
+                "bce = {:.4f}".format(bce.numpy()),
+                "acc = {} %".format(int(100 * acc.numpy())),
+            )
+
+    recall_e.append(metric_recall_e.result().numpy())
+    precision_e.append(metric_precision_e.result().numpy())
+    accuracy_e.append(metric_accuracy_e.result().numpy())
+    bce_e.append(metric_bce_e.result().numpy())
+
+    if (epoch + 1) % 10 == 0:
+        ckpt_save_path = ckpt_manager.save()
+        pprint(f"            - Saving checkpoint to:", ckpt_save_path)
+        pprint(f"            - Time taken for epoch:", f"{time.time() - start} secs")
+
+ckpt_save_path = ckpt_manager.save()
+pprint(f"    - Saving checkpoint to:", ckpt_save_path)

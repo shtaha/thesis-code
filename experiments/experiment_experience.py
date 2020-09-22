@@ -1,14 +1,17 @@
-import matplotlib.pyplot as plt
-import seaborn as sns
-import pandas as pd
 import os
+
+import matplotlib.pyplot as plt
 import numpy as np
+import pandas as pd
+import seaborn as sns
 
-from lib.constants import Constants as Const
 from lib.action_space import get_actions_effects
+from lib.constants import Constants as Const
+from lib.visualizer import pprint
 
 
-def analyse_actions(actions, env, agent_name, save_dir=None):
+def analyse_actions(actions, case, agent_name, save_dir=None):
+    env = case.env
     (
         action_do_nothing,
         action_unitary,
@@ -59,9 +62,12 @@ def analyse_actions(actions, env, agent_name, save_dir=None):
     )
     ax.set_xticks([0, 1])
     ax.set_xticklabels(["Switch", "Do-nothing"])
-    ax.set_xlabel("Do-nothing or switch action")
+    ax.set_title("Do-nothing or switch action")
+    ax.set_xlabel(None)
+    fig.suptitle(f"{case.name} - {agent_name}")
     if save_dir:
         fig.savefig(os.path.join(save_dir, agent_name + "-do-nothing"))
+    plt.close(fig)
 
     fig, ax = plt.subplots(figsize=Const.FIG_SIZE)
     sns.histplot(
@@ -75,9 +81,12 @@ def analyse_actions(actions, env, agent_name, save_dir=None):
     )
     ax.set_xticks([0, 1])
     ax.set_xticklabels([False, True])
-    ax.set_xlabel("Unitary action")
+    ax.set_title("Unitary action")
+    ax.set_xlabel(None)
+    fig.suptitle(f"{case.name} - {agent_name}")
     if save_dir:
         fig.savefig(os.path.join(save_dir, agent_name + "-unitary"))
+    plt.close(fig)
 
     """
         Line status 
@@ -94,11 +103,14 @@ def analyse_actions(actions, env, agent_name, save_dir=None):
         multiple="dodge",
         alpha=1.0,
     )
-    ax.set_xticks([0, np.max(data_dn["n_set_line_status"])])
-    ax.set_xlabel("Lines switched in a (non-)unitary action")
     ax.legend([True, False], title="Unitary")
+    ax.set_xticks([0, np.max(data_dn["n_set_line_status"])])
+    ax.set_title("Lines switched in a (non-)unitary action")
+    ax.set_xlabel(None)
+    fig.suptitle(f"{case.name} - {agent_name}")
     if save_dir:
         fig.savefig(os.path.join(save_dir, agent_name + "-n-lines"))
+    plt.close(fig)
 
     fig, ax = plt.subplots(figsize=Const.FIG_SIZE)
     sns.histplot(
@@ -114,10 +126,13 @@ def analyse_actions(actions, env, agent_name, save_dir=None):
     )
     ax.set_xticks(np.arange(0, env.n_line))
     ax.set_xlim(left=-1, right=env.n_line)
-    ax.set_xlabel("Line status set")
     ax.legend([True, False], title="Reconnection")
+    ax.set_title("Line status set")
+    ax.set_xlabel(None)
+    fig.suptitle(f"{case.name} - {agent_name}")
     if save_dir:
         fig.savefig(os.path.join(save_dir, agent_name + "-set-status-per-line"))
+    plt.close(fig)
 
     """
         Substation topology
@@ -136,10 +151,13 @@ def analyse_actions(actions, env, agent_name, save_dir=None):
         alpha=1.0,
     )
     ax.set_xticks([0, np.max(data_dn["n_set_bus"])])
-    ax.set_xlabel("Substations switched in a (non-)unitary action")
     ax.legend([True, False], title="Unitary")
+    ax.set_title("Substations switched in a (non-)unitary action")
+    ax.set_xlabel(None)
+    fig.suptitle(f"{case.name} - {agent_name}")
     if save_dir:
         fig.savefig(os.path.join(save_dir, agent_name + "-n-subs"))
+    plt.close(fig)
 
     # Set bus action per substation
     fig, ax = plt.subplots(figsize=Const.FIG_SIZE)
@@ -155,9 +173,12 @@ def analyse_actions(actions, env, agent_name, save_dir=None):
     )
     ax.set_xticks(np.arange(0, len(env.sub_info)))
     ax.set_xlim(left=-1, right=len(env.sub_info))
-    ax.set_xlabel("Substation set bus")
+    ax.set_title("Substation set bus")
+    ax.set_xlabel(None)
+    fig.suptitle(f"{case.name} - {agent_name}")
     if save_dir:
         fig.savefig(os.path.join(save_dir, agent_name + "-set-bus-per-sub"))
+    plt.close(fig)
 
     # Substation topologies
     for sub_id in range(len(env.sub_info)):
@@ -168,6 +189,7 @@ def analyse_actions(actions, env, agent_name, save_dir=None):
             if len(counts.index) > 1:
                 fig, ax = plt.subplots(figsize=Const.FIG_SIZE)
                 ax.set_title(f"Substation {sub_id} topologies")
+                fig.suptitle(f"{case.name} - {agent_name}")
                 for c, count in enumerate(counts):
                     if all([sub_bus == "1" for sub_bus in counts.index[c].split("-")]):
                         color = "tab:red"
@@ -194,3 +216,65 @@ def analyse_actions(actions, env, agent_name, save_dir=None):
                     fig.savefig(
                         os.path.join(save_dir, agent_name + f"-set-sub-{sub_id}-topo")
                     )
+                plt.close(fig)
+
+
+def analyse_loading(obses, case, agent_name, save_dir=None):
+    env = case.env
+
+    rhos = np.vstack([obs.rho for obs in obses])
+
+    critical_rho = 0.85
+    means = rhos.mean(axis=0)
+    stds = rhos.std(axis=0)
+    criticals = np.greater(rhos, critical_rho).sum(axis=0)
+    overloads = np.greater(rhos, 1.0).sum(axis=0)
+
+    n_critical_all = criticals.sum()
+    n_overloaded_all = overloads.sum()
+
+    max_ids = np.argsort(criticals)
+
+    for line_id in reversed(max_ids[-3:]):
+        sub_or = env.line_or_to_subid[line_id]
+        sub_ex = env.line_ex_to_subid[line_id]
+
+        critical = np.greater(rhos[:, line_id], critical_rho)
+        overloaded = np.greater(rhos[:, line_id], 1.0)
+
+        n_critical = critical.sum()
+        n_overloaded = overloaded.sum()
+
+        if n_critical > 0:
+            pprint(
+                f"    - Line {line_id}",
+                sub_or,
+                sub_ex,
+                "{:.3f} + {:.3f}".format(means[line_id], stds[line_id]),
+            )
+            pprint(
+                "        - Critical:",
+                n_critical,
+                "{:.3f} % / {:.3f} %".format(
+                    100 * critical.mean(), 100 * n_critical / n_critical_all
+                ),
+            )
+            pprint(
+                "        - Overloaded:",
+                n_overloaded,
+                "{:.3f} % / {:.3f} %".format(
+                    100 * overloaded.mean(), 100 * n_overloaded / n_overloaded_all
+                ),
+            )
+
+        fig, ax = plt.subplots(figsize=Const.FIG_SIZE)
+        sns.histplot(data=rhos[:, line_id], ax=ax)
+        ax.set_xlabel(r"$\rho$")
+        ax.set_ylabel(r"Count")
+        ax.set_xlim(left=0.0, right=1.5)
+        ax.set_title(f"Line {line_id}")
+        fig.suptitle(f"{case.name} - {agent_name}")
+
+        if save_dir:
+            fig.savefig(os.path.join(save_dir, agent_name + f"-line-{line_id}-loading"))
+        plt.close(fig)

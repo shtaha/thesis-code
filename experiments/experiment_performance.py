@@ -1,14 +1,18 @@
 import copy
+import json
 import os
 
 import matplotlib.pyplot as plt
 import numpy as np
+import seaborn as sns
+import pandas as pd
 from PyPDF2 import PdfFileMerger
 
 from experience import ExperienceCollector
 from lib.chronics import get_sorted_chronics
 from lib.constants import Constants as Const
 from lib.rl_utils import compute_returns
+from lib.agents import get_agent_color
 from lib.visualizer import pprint
 from .experiment_base import ExperimentBase
 
@@ -55,7 +59,8 @@ class ExperimentPerformance(ExperimentBase):
         for chronic_idx in chronic_indices_all:
             self._plot_rewards(chronic_data, case_name, chronic_idx, save_dir)
 
-            self._plot_relative_flow(chronic_data, case_name, chronic_idx, save_dir)
+            self._plot_max_rho(chronic_data, case_name, chronic_idx, save_dir)
+            self._plot_line_loading(chronic_data, case_name, chronic_idx, save_dir)
 
             for dist, ylabel in [
                 ("distances", "Unitary action distance to reference topology"),
@@ -69,6 +74,8 @@ class ExperimentPerformance(ExperimentBase):
         self._plot_durations(chronic_data, chronic_indices_all, case_name, save_dir)
 
         self._plot_returns(chronic_data, chronic_indices_all, case_name, save_dir)
+
+        self._plot_loading_distribution(chronic_data, case_name, save_dir)
 
         self.aggregate_by_chronics(save_dir, delete_file=delete_file)
 
@@ -111,7 +118,7 @@ class ExperimentPerformance(ExperimentBase):
             ]
         )
         for agent_name in agent_names:
-            for plot_name in ["generators"]:
+            for plot_name in ["line-loading", "dist-loading"]:
                 merger = PdfFileMerger()
                 chronic_files = []
                 for file in os.listdir(save_dir):
@@ -152,12 +159,11 @@ class ExperimentPerformance(ExperimentBase):
                 rewards = agent_data[chronic_idx]["rewards"]
                 t = np.arange(len(rewards))
 
-                ax.plot(
-                    t, rewards, linewidth=1, label=agent_name,
-                )
+                color = get_agent_color(agent_name)
+                ax.plot(t, rewards, linewidth=1, label=agent_name, color=color)
 
-            if agent_data[chronic_idx]["chronic_name"]:
-                chronic_name = agent_data[chronic_idx]["chronic_name"]
+                if agent_data[chronic_idx]["chronic_name"]:
+                    chronic_name = agent_data[chronic_idx]["chronic_name"]
 
         ax.set_xlabel("Time step t")
         ax.set_ylabel("Reward")
@@ -170,7 +176,7 @@ class ExperimentPerformance(ExperimentBase):
         plt.close(fig)
 
     @staticmethod
-    def _plot_relative_flow(chronic_data, case_name, chronic_idx, save_dir=None):
+    def _plot_max_rho(chronic_data, case_name, chronic_idx, save_dir=None):
         fig, ax = plt.subplots(figsize=Const.FIG_SIZE)
 
         chronic_name = str(chronic_idx)
@@ -182,12 +188,11 @@ class ExperimentPerformance(ExperimentBase):
                 rho = [np.max(obs.rho) for obs in obses]
                 t = np.arange(len(obses))
 
-                ax.plot(
-                    t, rho, linewidth=1, label=agent_name,
-                )
+                color = get_agent_color(agent_name)
+                ax.plot(t, rho, linewidth=1, label=agent_name, color=color)
 
-            if agent_data[chronic_idx]["chronic_name"]:
-                chronic_name = agent_data[chronic_idx]["chronic_name"]
+                if agent_data[chronic_idx]["chronic_name"]:
+                    chronic_name = agent_data[chronic_idx]["chronic_name"]
 
         ax.set_xlabel("Time step t")
         ax.set_ylabel(r"Relative flow $\rho$")
@@ -201,12 +206,44 @@ class ExperimentPerformance(ExperimentBase):
         plt.close(fig)
 
     @staticmethod
+    def _plot_line_loading(chronic_data, case_name, chronic_idx, save_dir=None):
+
+        for agent_name in chronic_data:
+            agent_data = chronic_data[agent_name]
+
+            if chronic_idx in agent_data:
+                fig, ax = plt.subplots(figsize=Const.FIG_SIZE)
+
+                obses = agent_data[chronic_idx]["obses"][:-1]
+                rhos = np.vstack([obs.rho for obs in obses])
+                t = np.arange(len(obses))
+
+                for line_id in range(rhos.shape[1]):
+                    rho = rhos[:, line_id]
+                    ax.plot(t, rho, linewidth=0.5)
+
+                chronic_name = agent_data[chronic_idx]["chronic_name"]
+
+                ax.set_xlabel("Time step t")
+                ax.set_ylabel(r"Relative flow $\rho$")
+                ax.set_ylim(bottom=0)
+                fig.suptitle(f"{case_name} - Chronic {chronic_name}")
+
+                if save_dir:
+                    file_name = (
+                        f"{agent_name}-chronic-" + "{:05}".format(chronic_idx) + "-"
+                    )
+                    fig.savefig(os.path.join(save_dir, file_name + "line-loading"))
+                plt.close(fig)
+
+    @staticmethod
     def _plot_distances(
         chronic_data, dist, ylabel, case_name, chronic_idx, save_dir=None
     ):
         plot = False
         for agent_name in chronic_data:
-            plot = plot and bool(len(chronic_data[agent_name][chronic_idx][dist]))
+            if chronic_idx in chronic_data[agent_name]:
+                plot = plot or bool(len(chronic_data[agent_name][chronic_idx][dist]))
 
         if plot:
             fig, ax = plt.subplots(figsize=Const.FIG_SIZE)
@@ -219,11 +256,11 @@ class ExperimentPerformance(ExperimentBase):
                     distances = agent_data[chronic_idx][dist]
                     t = np.arange(len(distances))
 
-                    ax.plot(
-                        t, distances, linewidth=0.5, label=agent_name,
-                    )
+                    color = get_agent_color(agent_name)
+                    ax.plot(t, distances, linewidth=0.5, label=agent_name, color=color)
 
-                    chronic_name = agent_data[chronic_idx]["chronic_name"]
+                    if agent_data[chronic_idx]["chronic_name"]:
+                        chronic_name = agent_data[chronic_idx]["chronic_name"]
 
             ax.set_xlabel("Time step t")
             ax.set_ylabel(ylabel)
@@ -263,7 +300,16 @@ class ExperimentPerformance(ExperimentBase):
             x = np.array(x)
 
             y = [agent_data[chronic_idx]["duration"] for chronic_idx in agent_data]
-            ax.barh(x + agent_id * width, y, width, left=0.001, label=agent_name)
+
+            color = get_agent_color(agent_name)
+            ax.barh(
+                x + agent_id * width,
+                y,
+                width,
+                left=0.001,
+                label=agent_name,
+                color=color,
+            )
 
         ax.scatter(chronic_lengths_all, x_all, marker="|", c="black")
         ax.set_yticks(x_all)
@@ -305,7 +351,16 @@ class ExperimentPerformance(ExperimentBase):
             x = np.array(x)
 
             y = [agent_data[chronic_idx]["total_return"] for chronic_idx in agent_data]
-            ax.barh(x + agent_id * width, y, width, left=0.001, label=agent_name)
+
+            color = get_agent_color(agent_name)
+            ax.barh(
+                x + agent_id * width,
+                y,
+                width,
+                left=0.001,
+                label=agent_name,
+                color=color,
+            )
 
         ax.set_yticks(x_all)
         ax.set_yticklabels(chronic_names_all)
@@ -319,6 +374,62 @@ class ExperimentPerformance(ExperimentBase):
         if save_dir:
             file_name = f"_agents-chronics-"
             fig.savefig(os.path.join(save_dir, file_name + "returns"))
+        plt.close(fig)
+
+    def _plot_loading_distribution(self, chronic_data, case_name, save_dir=None):
+
+        for agent_name in chronic_data:
+            agent_data = chronic_data[agent_name]
+
+            rhos = []
+            for chronic_idx in agent_data:
+                obses_chronic = agent_data[chronic_idx]["obses"][:-1]
+                rhos_chronic = np.vstack([obs.rho for obs in obses_chronic])
+                rhos.extend(rhos_chronic)
+
+                means_chronic = rhos_chronic.mean(axis=0)
+                max_ids_chronic = np.sort(np.argsort(means_chronic)[-4:])
+                rhos_chronic_max = pd.DataFrame(
+                    rhos_chronic[:, max_ids_chronic],
+                    columns=max_ids_chronic.astype(str),
+                )
+
+                self.__plot_loading_distribution(
+                    rhos_chronic_max, case_name, agent_name, chronic_idx, save_dir
+                )
+
+            rhos = np.vstack(rhos)
+            means = rhos.mean(axis=0)
+            max_ids = np.sort(np.argsort(means)[-4:])
+            rhos = pd.DataFrame(rhos[:, max_ids], columns=max_ids.astype(str))
+
+            fig, ax = plt.subplots(figsize=Const.FIG_SIZE)
+            sns.histplot(data=rhos, ax=ax)
+            ax.set_xlabel(r"$\rho$")
+            ax.set_ylabel(r"Density")
+            ax.set_xlim([0.0, 2.0])
+            fig.suptitle(f"{case_name} - {agent_name}")
+
+            if save_dir:
+                file_name = f"_{agent_name}-chronics-"
+                fig.savefig(os.path.join(save_dir, file_name + "dist-all-loading"))
+            plt.close(fig)
+
+    @staticmethod
+    def __plot_loading_distribution(
+        rhos, case_name, agent_name, chronic_idx, save_dir=None
+    ):
+        fig, ax = plt.subplots(figsize=Const.FIG_SIZE)
+        sns.histplot(data=rhos, ax=ax)
+        ax.set_xlabel(r"$\rho$")
+        ax.set_ylabel(r"Counts")
+        ax.set_xlim([0.0, 2.0])
+        ax.set_title(f"Chronic {chronic_idx}")
+        fig.suptitle(f"{case_name} - {agent_name}")
+
+        if save_dir:
+            file_name = f"{agent_name}-chronic-" + "{:05}".format(chronic_idx) + "-"
+            fig.savefig(os.path.join(save_dir, file_name + "dist-loading"))
         plt.close(fig)
 
     def _runner(
@@ -347,7 +458,7 @@ class ExperimentPerformance(ExperimentBase):
 
         done_chronic_ids = []
         for chronic_idx, chronic_name in enumerate(chronics_sorted):
-            if len(done_chronic_ids) >= n_chronics > 0:
+            if len(done_chronic_ids) >= n_chronics >= 0:
                 break
 
             # If chronic already done
@@ -355,13 +466,13 @@ class ExperimentPerformance(ExperimentBase):
                 continue
 
             # Environment specific filtering
-            if env.name == "rte_case5_example":
+            if "rte_case5" in env.name:
                 if chronic_idx not in do_chronics:
                     continue
-            elif env.name == "l2rpn_2019":
+            elif "l2rpn_2019" in env.name:
                 if chronic_idx not in do_chronics:
                     continue
-            elif env.name == "l2rpn_wcci_2020":
+            elif "l2rpn_wcci_2020" in env.name:
                 if chronic_idx not in do_chronics:
                     continue
 
@@ -375,7 +486,28 @@ class ExperimentPerformance(ExperimentBase):
             chronic_path_name = "/".join(
                 os.path.normpath(env.chronics_handler.get_id()).split(os.sep)[-3:]
             )
+
+            augmentation_info = os.path.join(
+                env.chronics_handler.get_id(), "augmentation.json"
+            )
+            if os.path.isfile(augmentation_info):
+                with open(augmentation_info, "r") as f:
+                    ps = json.load(f)
+
             pprint("    - Chronic:", chronic_path_name)
+            if ps:
+                p = ps["p"]
+                min_p = ps["min_p"]
+                max_p = ps["max_p"]
+                targets = ps["targets"]
+
+                pprint("        - Augmentation:", ps["augmentation"])
+                pprint(
+                    "            - Rate:",
+                    "p = {:.2f} ~ [{:.2f}, {:.2f}]".format(p, min_p, max_p),
+                )
+                if targets:
+                    pprint("            - Targets:", str(targets))
 
             t = 0
             done = False

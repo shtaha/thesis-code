@@ -3,11 +3,10 @@ import os
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-import seaborn as sns
 from PyPDF2 import PdfFileMerger
 
 from lib.constants import Constants as Const
-from lib.visualizer import print_action, pprint
+from lib.visualizer import pprint
 from .experiment_base import ExperimentBase
 
 
@@ -33,7 +32,6 @@ class ExperimentBehaviour(ExperimentBase):
                         "e",
                         "reward",
                         "reward-est",
-                        "action-id",
                         "rho",
                         "env-rho",
                         "env-gens-p",
@@ -45,7 +43,6 @@ class ExperimentBehaviour(ExperimentBase):
         self._plot_and_save(
             measurements,
             env=env,
-            agent=agent,
             title=f"{case_name} - {agent.name}",
             save_dir=save_dir,
             prefix=agent.name.replace(" ", "-").lower(),
@@ -71,7 +68,6 @@ class ExperimentBehaviour(ExperimentBase):
             "power-flows",
             "rhos",
             "production-demand",
-            "action-ids",
         ]:
             file = agent_name + "-" + plot_name + ".pdf"
             if file in os.listdir(save_dir):
@@ -158,25 +154,6 @@ class ExperimentBehaviour(ExperimentBase):
                 obs_next.topo_vect, obs_next.line_status
             )
 
-            action_id = [
-                idx
-                for idx, agent_action in enumerate(agent.actions)
-                if action == agent_action
-            ]
-
-            if "unitary_action" in agent.model_kwargs:
-                if not agent.model_kwargs["unitary_action"] and len(action_id) != 1:
-                    print_action(action)
-                    action_id = np.nan
-                else:
-                    assert (
-                        len(action_id) == 1
-                    )  # Exactly one action should be equivalent
-                    action_id = int(action_id[0])
-            else:
-                assert len(action_id) == 1  # Exactly one action should be equivalent
-                action_id = int(action_id[0])
-
             measurement = dict()
             measurement["t"] = t
             measurement["e"] = e
@@ -185,7 +162,6 @@ class ExperimentBehaviour(ExperimentBase):
             measurement["dist"] = dist
             measurement["dist_status"] = dist_status
             measurement["dist_sub"] = dist_sub
-            measurement["action-id"] = action_id
             measurement["rho"] = res_line["rho"].max()
             measurement["env-rho"] = res_line["env_rho"].max()
             measurement["env-gens-p"] = obs.prod_p.sum()
@@ -222,7 +198,7 @@ class ExperimentBehaviour(ExperimentBase):
 
     @staticmethod
     def _plot_and_save(
-        measurements, env, agent, title=None, save_dir=None, prefix=None,
+        measurements, env, title=None, save_dir=None, prefix=None,
     ):
         colors = Const.COLORS
         t = measurements["t"]
@@ -453,27 +429,6 @@ class ExperimentBehaviour(ExperimentBase):
 
         if save_dir:
             file_name = "production-demand"
-            if prefix:
-                file_name = prefix + "-" + file_name
-
-            fig.savefig(os.path.join(save_dir, file_name))
-        plt.close(fig)
-
-        fig, ax = plt.subplots(figsize=Const.FIG_SIZE)
-        sns.distplot(
-            measurements["action-id"],
-            ax=ax,
-            bins=len(agent.actions),
-            hist=True,
-            kde=False,
-        )
-        ax.set_xlabel("Action Id")
-        ax.set_ylabel("Count")
-        ax.set_xlim([0, len(agent.actions)])
-        fig.suptitle(title)
-
-        if save_dir:
-            file_name = "action-ids"
             if prefix:
                 file_name = prefix + "-" + file_name
 

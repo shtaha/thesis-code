@@ -10,7 +10,7 @@ from lib.visualizer import Visualizer
 
 visualizer = Visualizer()
 
-save_dir = make_dir(os.path.join(Const.RESULTS_DIR, "behaviour-test"))
+save_dir = make_dir(os.path.join(Const.RESULTS_DIR, "behaviour"))
 
 env_dc = True
 verbose = False
@@ -18,14 +18,22 @@ verbose = False
 experiment_behaviour = ExperimentBehaviour()
 kwargs = dict()
 
-for case_name in ["rte_case5_example", "l2rpn_2019", "l2rpn_wcci_2020"]:
-    if case_name == "l2rpn_wcci_2020":
-        n_steps = 50
-    elif case_name == "l2rpn_2019":
+for case_name in [
+    "rte_case5_example",
+    "rte_case5_example_art",
+    "l2rpn_2019",
+    "l2rpn_2019_art",
+    "l2rpn_wcci_2020",
+]:
+    if "l2rpn_wcci_2020" in case_name:
+        continue
+
+    if "l2rpn_wcci_2020" in case_name:
         n_steps = 100
+    elif "l2rpn_2019" in case_name:
+        n_steps = 500
     else:
         n_steps = 500
-    n_steps = 10
 
     case_save_dir = make_dir(os.path.join(save_dir, f"{case_name}-{env_pf(env_dc)}"))
     create_logger(logger_name=f"logger", save_dir=case_save_dir)
@@ -35,19 +43,14 @@ for case_name in ["rte_case5_example", "l2rpn_2019", "l2rpn_wcci_2020"]:
     """
     parameters = CaseParameters(case_name=case_name, env_dc=env_dc)
     case = load_case(case_name, env_parameters=parameters)
-    env = case.env
-    action_set = case.generate_unitary_action_set(
-        case, case_save_dir=case_save_dir, verbose=verbose
-    )
 
     for agent_name in [
-        # "do-nothing-agent",
-        # "agent-mip",
-        "agent-multistep-mip",
+        "agent-mip",
+        # "agent-multistep-mip",
     ]:
-        if case_name == "rte_case5_example":
+        if "rte_case5" in case_name:
             kwargs["obj_lambda_action"] = 0.004
-        elif case_name == "l2rpn_2019":
+        elif "l2rpn_2019" in case_name:
             kwargs["obj_lambda_action"] = 0.07
         else:
             kwargs["obj_lambda_action"] = 0.05
@@ -55,7 +58,7 @@ for case_name in ["rte_case5_example", "l2rpn_2019", "l2rpn_wcci_2020"]:
         """
             Initialize agent.
         """
-        agent = make_test_agent(agent_name, case, action_set, **kwargs)
+        agent = make_test_agent(agent_name, case, **kwargs)
 
         """
             Experiments.

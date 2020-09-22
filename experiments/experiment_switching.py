@@ -13,7 +13,9 @@ from .experiment_base import ExperimentBase, ExperimentMixin
 
 
 class ExperimentSwitching(ExperimentBase, ExperimentMixin):
-    def analyse(self, case, agent, save_dir=None, verbose=False):
+    def analyse(
+        self, case, agent, n_chronics=2, n_steps=500, save_dir=None, verbose=False
+    ):
         env = case.env
 
         self.print_experiment("Switching")
@@ -25,7 +27,12 @@ class ExperimentSwitching(ExperimentBase, ExperimentMixin):
         )
 
         new_chronic_data = self._runner(
-            case=case, env=env, agent=agent, done_chronic_indices=done_chronic_indices
+            case=case,
+            env=env,
+            agent=agent,
+            n_chronics=n_chronics,
+            n_steps=n_steps,
+            done_chronic_indices=done_chronic_indices,
         )
         chronic_data = chronic_data.append(new_chronic_data)
 
@@ -372,7 +379,7 @@ class ExperimentSwitching(ExperimentBase, ExperimentMixin):
             plt.close(fig_frac)
 
     @staticmethod
-    def _runner(case, env, agent, done_chronic_indices=()):
+    def _runner(case, env, agent, n_chronics=2, n_steps=500, done_chronic_indices=()):
         chronics_dir, chronics, chronics_sorted = get_sorted_chronics(env=env)
         pprint("Chronics:", chronics_dir)
 
@@ -381,22 +388,11 @@ class ExperimentSwitching(ExperimentBase, ExperimentMixin):
 
         chronic_data = []
         for chronic_idx, chronic in enumerate(chronics_sorted):
+            if len(chronic_data) >= n_chronics > 0:
+                break
+
             if chronic_idx in done_chronic_indices:
                 continue
-
-            n_steps = 100
-            if case.name == "Case RTE 5":
-                n_steps = 250
-                if chronic_idx > 4:
-                    continue
-            elif case.name == "Case L2RPN 2019":
-                n_steps = 500
-                if chronic_idx > 2:
-                    continue
-            elif case.name == "Case L2RPN 2020 WCCI":
-                n_steps = 100
-                if chronic_idx > 1:
-                    continue
 
             chronic_org_idx = chronics.index(chronic)
             env.chronics_handler.tell_id(chronic_org_idx - 1)  # Set chronic id
@@ -440,7 +436,7 @@ class ExperimentSwitching(ExperimentBase, ExperimentMixin):
                 if t % 50 == 0:
                     pprint("Step:", t)
 
-                if t > n_steps:
+                if t >= n_steps > 0:
                     done = True
 
                 if done:

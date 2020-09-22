@@ -28,7 +28,7 @@ def create_results_dir(results_dir_path, model_name=None):
 
 
 def indices_to_hot(
-        hot_indices: np.ndarray, length: np.int, dtype=np.bool
+    hot_indices: np.ndarray, length: np.int, dtype=np.bool
 ) -> np.ndarray:
     """
     Only works for 1D-vector.
@@ -66,11 +66,11 @@ def is_nonetype(obj):
     return isinstance(obj, type(None))
 
 
-def extract_target_windows(targets, n_window=0):
+def extract_target_windows(targets, mask, n_window=0):
     window = np.zeros_like(targets)
     for i in range(len(targets)):
         start = np.maximum(i - n_window, 0)
         end = i + n_window + 1
         window[i] = targets[start:end].any()
 
-    return window.astype(np.bool)
+    return np.logical_and(window.astype(np.bool), mask)

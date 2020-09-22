@@ -48,9 +48,9 @@ class TestGNs(unittest.TestCase):
         graphs_dict_list = obses_to_graphs_dict_list(
             observations, dones, case, max_length=max_length
         )
-        combined_graphs_dict_list = dict_list_to_combined_dict(graphs_dict_list)
+        cgraphs = dict_list_to_combined_dict(graphs_dict_list)
 
-        graph_dataset = tf_graph_dataset(combined_graphs_dict_list)
+        graph_dataset = tf_graph_dataset(cgraphs)
         label_dataset = tf.data.Dataset.from_tensor_slices(labels[:max_length])
         dataset = tf.data.Dataset.zip((graph_dataset, label_dataset))
 

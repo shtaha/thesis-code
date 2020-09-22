@@ -12,15 +12,21 @@ from lib.visualizer import Visualizer
 
 visualizer = Visualizer()
 
-save_dir = make_dir(os.path.join(Const.RESULTS_DIR, "performance-sn"))
+save_dir = make_dir(os.path.join(Const.RESULTS_DIR, "performance-aug"))
 
 env_dc = True
 verbose = False
 
-kwargs = dict()
+kwargs = dict(horizon=2)
 
-for case_name in ["rte_case5_example", "l2rpn_2019", "l2rpn_wcci_2020"]:
-    if case_name != "l2rpn_2019":
+for case_name in [
+    "rte_case5_example",
+    "rte_case5_example_art",
+    "l2rpn_2019",
+    "l2rpn_2019_art",
+    "l2rpn_wcci_2020",
+]:
+    if "l2rpn_2019_art" not in case_name:
         continue
 
     case_save_dir = make_dir(os.path.join(save_dir, f"{case_name}-{env_pf(env_dc)}"))
@@ -30,26 +36,29 @@ for case_name in ["rte_case5_example", "l2rpn_2019", "l2rpn_wcci_2020"]:
         Initialize environment.
     """
     parameters = CaseParameters(case_name=case_name, env_dc=env_dc)
-    case = load_case(case_name, env_parameters=parameters)
-    env = case.env
-    action_set = case.generate_unitary_action_set(
-        case, case_save_dir=case_save_dir, verbose=verbose
-    )
+    case = load_case(case_name, env_parameters=parameters, verbose=verbose)
 
     experiment_performance = ExperimentPerformance(save_dir=case_save_dir)
     for agent_name in [
-        "do-nothing-agent",
+        # "do-nothing-agent",
         "agent-mip",
         # "agent-multistep-mip",
     ]:
         np.random.seed(0)
-        if case_name == "rte_case5_example":
-            kwargs["obj_lambda_action"] = 0.004
-            do_chronics = [13, 14, 15, 16, 17, 16, 18, 19]
-        elif case_name == "l2rpn_2019":
+        if "rte_case5" in case_name:
+            kwargs["obj_lambda_action"] = 0.006
+            do_chronics = np.arange(20)
+        elif "l2rpn_2019" in case_name:
             kwargs["obj_lambda_action"] = 0.07
-            do_chronics = [0, 10, 100, 196, 200, 201, 206, 226, 259, 375, 384, 491]
-            do_chronics.extend(np.random.randint(0, 1000, 100).tolist())
+
+            if "_art" not in case_name:
+                do_chronics = [0, 10, 100, 196, 200, 201, 206, 226, 259, 375, 384, 491]
+                do_chronics.extend(np.random.randint(0, 1000, 500).tolist())
+            else:
+                # do_chronics = np.arange(11, 41).tolist()
+                # do_chronics = [0, 1, 3, 4, 7, 10]
+
+                do_chronics = np.arange(41, 50)
         else:
             kwargs["obj_lambda_action"] = 0.05
             do_chronics = [*np.arange(0, 2880, 240), *(np.arange(0, 2880, 240) + 1)]
@@ -57,7 +66,7 @@ for case_name in ["rte_case5_example", "l2rpn_2019", "l2rpn_wcci_2020"]:
         """
             Initialize agent.
         """
-        agent = make_test_agent(agent_name, case, action_set, **kwargs)
+        agent = make_test_agent(agent_name, case, **kwargs)
 
         """
             Experiments.
@@ -66,8 +75,8 @@ for case_name in ["rte_case5_example", "l2rpn_2019", "l2rpn_wcci_2020"]:
             case=case,
             agent=agent,
             do_chronics=do_chronics,
-            n_chronics=-1,
-            n_steps=250,
+            n_chronics=1,
+            n_steps=-1,
             verbose=verbose,
         )
 

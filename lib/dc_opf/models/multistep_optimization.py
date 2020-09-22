@@ -942,13 +942,12 @@ class MultistepTopologyDCOPF(StandardDCOPF):
 
     def _build_constraint_onesided_line_reconnection(self):
         self.model.constraint_onesided_line_reconnection = pyo.ConstraintList()
-        for t in range(self.params.horizon):  # t' = 0, 1, ..., H-1
-            if t == 0:
-                # t' = 0
-                for sub_id in self.model.sub_set:
-                    lines_or = self.model.sub_ids_to_line_or_ids[sub_id]
-                    lines_ex = self.model.sub_ids_to_line_ex_ids[sub_id]
+        for t in range(self.params.horizon):  # t = 0, 1, ..., H-1
+            for sub_id in self.model.sub_set:
+                lines_or = self.model.sub_ids_to_line_or_ids[sub_id]
+                lines_ex = self.model.sub_ids_to_line_ex_ids[sub_id]
 
+                if t == 0:
                     lines_or_disconnected = [
                         not self.model.line_status[line_id] for line_id in lines_or
                     ]
@@ -960,11 +959,7 @@ class MultistepTopologyDCOPF(StandardDCOPF):
                         self.model.x_substation_topology_switch[t, sub_id].fix(0)
                         self.model.x_substation_topology_switch[t, sub_id].setlb(0)
                         self.model.x_substation_topology_switch[t, sub_id].setub(0)
-            else:
-                for sub_id in self.model.sub_set:
-                    lines_or = self.model.sub_ids_to_line_or_ids[sub_id]
-                    lines_ex = self.model.sub_ids_to_line_ex_ids[sub_id]
-
+                else:
                     for line_id in lines_or + lines_ex:
                         x_line_status = (
                             self.model.x_line_or_1[t - 1, line_id]
@@ -979,11 +974,11 @@ class MultistepTopologyDCOPF(StandardDCOPF):
                         )
 
     def _build_constraint_symmetry(self):
-        for t in self.forecasts.time_steps:
-            for sub_id in self.grid.fixed_elements.index:
-                line_or = self.grid.fixed_elements.line_or[sub_id]
-                line_ex = self.grid.fixed_elements.line_ex[sub_id]
+        for sub_id in self.grid.fixed_elements.index:
+            line_or = self.grid.fixed_elements.line_or[sub_id]
+            line_ex = self.grid.fixed_elements.line_ex[sub_id]
 
+            for t in self.forecasts.time_steps:
                 if len(line_or):
                     line_id = line_or[0]
                     self.model.x_line_or_2[t, line_id].fix(0)
@@ -1671,12 +1666,14 @@ class MultistepTopologyDCOPF(StandardDCOPF):
 
     def _build_constraint_do_nothing_action(self):
         def _constraint_do_nothing_action(model):
+            t = model.time_set[0]
+
             line_switch = sum(
-                [model.x_line_status_switch[0, line_id] for line_id in model.line_set]
+                [model.x_line_status_switch[t, line_id] for line_id in model.line_set]
             )
             sub_switch = sum(
                 [
-                    model.x_substation_topology_switch[0, sub_id]
+                    model.x_substation_topology_switch[t, sub_id]
                     for sub_id in model.sub_set
                 ]
             )

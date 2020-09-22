@@ -300,6 +300,11 @@ def describe_environment(environment):
         pprint("Line OR to sub_id:", line_or_to_subid)
         pprint("Line EX to sub_id:", line_ex_to_subid, "\n")
 
+        pprint(
+            "Generators p_max:",
+            " ".join(["{:<3.1f}".format(p_max) for p_max in environment.gen_pmax]),
+        )
+
         if environment.parameters:
             print_parameters(environment)
 

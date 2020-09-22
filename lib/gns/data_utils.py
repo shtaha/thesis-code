@@ -326,13 +326,13 @@ def obses_to_graphs_dict_list(obses, dones, case, n_window=1, max_length=-1):
     return graphs_dict_list
 
 
-def obses_to_combined_graphs_dict_list(obses, dones, case, n_window=1, max_length=-1):
+def obses_to_cgraphs(obses, dones, case, n_window=1, max_length=-1):
     graphs_dict_list = obses_to_graphs_dict_list(
         obses, dones, case, n_window=n_window, max_length=max_length
     )
-    combined_graphs_dict_list = dict_list_to_combined_dict(graphs_dict_list)
+    cgraphs = dict_list_to_combined_dict(graphs_dict_list)
 
-    return combined_graphs_dict_list
+    return cgraphs
 
 
 def combined_dict_to_dict_list(combined_dict):

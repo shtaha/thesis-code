@@ -583,3 +583,7 @@ def get_actions_effects(actions, env):
         action_set_line_status.append(set_line_status)
 
     return action_do_nothing, action_unitary, action_set_bus, action_set_line_status
+
+
+def is_do_nothing_action(actions, env, dtype=np.float):
+    return np.array([action != env.action_space({}) for action in actions], dtype=dtype)

@@ -1,5 +1,5 @@
-from .experiment_actions import analyse_actions
 from .experiment_behaviour import ExperimentBehaviour
+from .experiment_experience import analyse_actions, analyse_loading
 from .experiment_performance import ExperimentPerformance
 from .experiment_switching import ExperimentSwitching
 from .experiment_timing import ExperimentDCOPFTiming

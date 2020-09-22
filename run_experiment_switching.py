@@ -17,9 +17,19 @@ verbose = False
 
 experiment_switching = ExperimentSwitching()
 
-kwargs = dict()
+kwargs = dict(obj_lambda_action=0.0)
+for case_name in [
+    "rte_case5_example",
+    "rte_case5_example_art",
+    "l2rpn_2019",
+    "l2rpn_2019_art",
+    # "l2rpn_wcci_2020",
+]:
+    if "l2rpn_wcci_2020" in case_name:
+        n_steps = 100
+    else:
+        n_steps = 500
 
-for case_name in ["rte_case5_example", "l2rpn_2019", "l2rpn_wcci_2020"]:
     case_save_dir = make_dir(os.path.join(save_dir, f"{case_name}-{env_pf(env_dc)}"))
     create_logger(logger_name=f"logger", save_dir=case_save_dir)
 
@@ -28,26 +38,25 @@ for case_name in ["rte_case5_example", "l2rpn_2019", "l2rpn_wcci_2020"]:
     """
     parameters = CaseParameters(case_name=case_name, env_dc=env_dc)
     case = load_case(case_name, env_parameters=parameters)
-    env = case.env
-    action_set = case.generate_unitary_action_set(
-        case, case_save_dir=case_save_dir, verbose=verbose
-    )
 
     for agent_name in [
         "agent-mip",
-        "agent-multistep-mip",
-        "do-nothing-agent",
+        # "agent-multistep-mip",
     ]:
         """
             Initialize agent.
         """
-        agent = make_test_agent(agent_name, case, action_set, **kwargs)
+        agent = make_test_agent(agent_name, case, **kwargs)
 
         """
             Experiments.
         """
         experiment_switching.analyse(
-            case=case, agent=agent, save_dir=case_save_dir, verbose=verbose,
+            case=case,
+            agent=agent,
+            n_steps=n_steps,
+            save_dir=case_save_dir,
+            verbose=verbose,
         )
 
     experiment_switching.compare_agents(case, save_dir=case_save_dir)

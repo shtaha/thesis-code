@@ -93,13 +93,13 @@ class ExperienceCollector(object):
                 continue
 
             # Environment specific filtering
-            if env.name == "rte_case5_example":
+            if "rte_case5" in env.name:
                 if chronic_idx not in do_chronics:
                     continue
-            elif env.name == "l2rpn_2019":
+            elif "l2rpn_2019" in env.name:
                 if chronic_idx not in do_chronics:
                     continue
-            elif env.name == "l2rpn_wcci_2020":
+            elif "l2rpn_wcci_2020" in env.name:
                 if chronic_idx not in do_chronics:
                     continue
 
@@ -218,6 +218,10 @@ class ExperienceCollector(object):
         self.chronic_ids.append(chronic_idx)
 
     def _load_chronics(self, agent_name):
+        pprint(
+            "    - Loading chronics:",
+            self.save_dir.replace("\\", "/") + f"/{agent_name}-chronic-****",
+        )
         for chronic_file in os.listdir(self.save_dir):
             if (
                 "chronic-" in chronic_file
