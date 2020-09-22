@@ -54,6 +54,7 @@
     sudo add-apt-repository ppa:rafaeldtinoco/lp1871129
     sudo apt update
     sudo apt install libc6=2.31-0ubuntu8+lp1871129~1 libc6-dev=2.31-0ubuntu8+lp1871129~1 libc-dev-bin=2.31-0ubuntu8+lp1871129~1 -y --allow-downgrades
+    sudo apt-get install liblzma-dev
     sudo apt-mark hold libc6
     
     # Ubuntu
@@ -65,7 +66,7 @@
     cp -R l2rpn_2019 ~/data_grid2op/l2rpn_2019
    
     cd /mnt/c/Users/chrosik
-    cp -R -v data_grid2op ~/data_grid2op
+    cp -R -v data_grid2op ~/
    
 # ETH Computing Resources
 

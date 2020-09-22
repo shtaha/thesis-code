@@ -288,7 +288,7 @@ def obs_to_graph_dict_by_grid(obs, grid):
     return graph_dict
 
 
-def obses_to_graphs_dict_list(obses, dones, case, n_window=1, max_length=-1):
+def obses_to_lgraphs(obses, dones, case, n_window=1, max_length=-1):
     grid = GridDCOPF(case, base_unit_v=case.base_unit_v, base_unit_p=case.base_unit_p)
 
     single_graphs_dict_list = []
@@ -327,10 +327,10 @@ def obses_to_graphs_dict_list(obses, dones, case, n_window=1, max_length=-1):
 
 
 def obses_to_cgraphs(obses, dones, case, n_window=1, max_length=-1):
-    graphs_dict_list = obses_to_graphs_dict_list(
+    graphs_dict_list = obses_to_lgraphs(
         obses, dones, case, n_window=n_window, max_length=max_length
     )
-    cgraphs = dict_list_to_combined_dict(graphs_dict_list)
+    cgraphs = lgraphs_to_cgraphs(graphs_dict_list)
 
     return cgraphs
 
@@ -356,7 +356,7 @@ def combined_dict_to_dict_list(combined_dict):
     return dict_list
 
 
-def dict_list_to_combined_dict(dict_list):
+def lgraphs_to_cgraphs(dict_list):
     combined_dict = {
         "globals": [],
         "edges": [],

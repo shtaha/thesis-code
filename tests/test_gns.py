@@ -1,68 +1,59 @@
 import os
+import sys
 import unittest
 
-import numpy as np
 import tensorflow as tf
 from graph_nets import utils_tf
 
-from experience import ExperienceCollector
-from lib.data_utils import make_dir, env_pf
-from lib.dc_opf import load_case, CaseParameters
+from experience import load_experience
+from lib.action_space import is_do_nothing_action
+from lib.gns import equal_graphs
 from lib.gns import (
-    obses_to_graphs_dict_list,
-    dict_list_to_combined_dict,
-    tf_graph_dataset,
+    obses_to_lgraphs,
+    lgraphs_to_cgraphs,
+    get_graph_feature_dimensions,
+    tf_batched_graph_dataset,
 )
-from lib.gns import stack_batch, equal_graphs
 from lib.visualizer import pprint, print_matrix
 
 
 class TestGNs(unittest.TestCase):
     def test_gns_dataset(self):
-        save_dir = os.path.join("../experience", "data")
+        if sys.platform != "win32":
+            self.assertTrue(True)
+            return
+
+        experience_dir = os.path.join("../experience", "data")
 
         case_name = "rte_case5_example"
         agent_name = "agent-mip"
 
         env_dc = True
-        case_save_dir = make_dir(
-            os.path.join(save_dir, f"{case_name}-{env_pf(env_dc)}")
+
+        case, collector = load_experience(
+            case_name, agent_name, experience_dir, env_dc=env_dc
         )
+        obses, actions, rewards, dones = collector.aggregate_data()
 
-        parameters = CaseParameters(case_name=case_name, env_dc=env_dc)
-        case = load_case(case_name, env_parameters=parameters)
-        env = case.env
+        n_batch = 16
+        max_length = 10 * n_batch + 1
+        n_window = 2
 
-        collector = ExperienceCollector(save_dir=case_save_dir)
-        collector.load_data(agent_name=agent_name, env=env)
-        observations, actions, rewards, dones = collector.aggregate_data()
-
-        labels = np.array(
-            list(map(lambda action: int(action != env.action_space({})), actions)),
-            dtype=np.int,
+        graphs_dict_list = obses_to_lgraphs(
+            obses, dones, case, max_length=max_length, n_window=n_window
         )
+        cgraphs = lgraphs_to_cgraphs(graphs_dict_list)
+        labels = is_do_nothing_action(actions, case.env)
 
-        batch_size = 16
-        max_length = 10 * batch_size + 1
-
-        graphs_dict_list = obses_to_graphs_dict_list(
-            observations, dones, case, max_length=max_length
-        )
-        cgraphs = dict_list_to_combined_dict(graphs_dict_list)
-
-        graph_dataset = tf_graph_dataset(cgraphs)
-        label_dataset = tf.data.Dataset.from_tensor_slices(labels[:max_length])
+        graph_dims = get_graph_feature_dimensions(cgraphs=cgraphs)
+        graph_dataset = tf_batched_graph_dataset(cgraphs, n_batch=n_batch, **graph_dims)
+        label_dataset = tf.data.Dataset.from_tensor_slices(labels).batch(n_batch)
         dataset = tf.data.Dataset.zip((graph_dataset, label_dataset))
-
         dataset = dataset.repeat(1)
-        dataset = dataset.batch(batch_size)
 
         for batch_idx, (graph_batch, label_batch) in enumerate(dataset):
-            graph_batch = stack_batch(graph_batch)
             graph_batch_from_list = utils_tf.data_dicts_to_graphs_tuple(
-                graphs_dict_list[
-                    (batch_size * batch_idx) : (batch_size * (batch_idx + 1))
-                ]
+                graphs_dict_list[(n_batch * batch_idx): (n_batch * (batch_idx + 1))]
             )
 
             check = tf.squeeze(equal_graphs(graph_batch, graph_batch_from_list)).numpy()
