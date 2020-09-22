@@ -13,7 +13,7 @@ from lib.gns import (
     dict_list_to_combined_dict,
     tf_graph_dataset,
 )
-from lib.gns import stack_graphs, equal_graphs
+from lib.gns import stack_batch, equal_graphs
 from lib.visualizer import pprint, print_matrix
 
 
@@ -58,7 +58,7 @@ class TestGNs(unittest.TestCase):
         dataset = dataset.batch(batch_size)
 
         for batch_idx, (graph_batch, label_batch) in enumerate(dataset):
-            graph_batch = stack_graphs(graph_batch)
+            graph_batch = stack_batch(graph_batch)
             graph_batch_from_list = utils_tf.data_dicts_to_graphs_tuple(
                 graphs_dict_list[
                     (batch_size * batch_idx) : (batch_size * (batch_idx + 1))

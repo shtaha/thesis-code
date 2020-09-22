@@ -160,7 +160,7 @@ class TestStandardDCOPF(unittest.TestCase):
         )
 
     def test_rte_case5(self):
-        case = load_case("rte_case5")
+        case = load_case("rte_case5_example")
         grid = GridDCOPF(
             case, base_unit_v=case.base_unit_v, base_unit_p=case.base_unit_p
         )
@@ -178,7 +178,7 @@ class TestStandardDCOPF(unittest.TestCase):
         self.runner_opf(model, verbose=False)
 
     def test_l2rpn2019(self):
-        case = load_case("l2rpn2019")
+        case = load_case("l2rpn_2019")
         grid = GridDCOPF(
             case, base_unit_v=case.base_unit_v, base_unit_p=case.base_unit_p
         )
@@ -201,7 +201,7 @@ class TestStandardDCOPF(unittest.TestCase):
             self.assertTrue(True)
             return
 
-        case = load_case("l2rpn2020")
+        case = load_case("l2rpn_wcci_2020")
         grid = GridDCOPF(
             case, base_unit_v=case.base_unit_v, base_unit_p=case.base_unit_p
         )
@@ -409,7 +409,7 @@ class TestLineSwitchingDCOPF(unittest.TestCase):
         self.runner_opf_line_switching(model, grid, verbose=False)
 
     def test_rte_case5_line_switching(self):
-        case = load_case("rte_case5")
+        case = load_case("rte_case5_example")
         grid = GridDCOPF(
             case, base_unit_v=case.base_unit_v, base_unit_p=case.base_unit_p
         )
@@ -427,7 +427,7 @@ class TestLineSwitchingDCOPF(unittest.TestCase):
         self.runner_opf_line_switching(model, grid, verbose=False)
 
     def test_l2rpn2019_line_switching(self):
-        case = load_case("l2rpn2019")
+        case = load_case("l2rpn_2019")
         grid = GridDCOPF(
             case, base_unit_v=case.base_unit_v, base_unit_p=case.base_unit_p
         )
@@ -450,7 +450,7 @@ class TestLineSwitchingDCOPF(unittest.TestCase):
             self.assertTrue(True)
             return
 
-        case = load_case("l2rpn2020")
+        case = load_case("l2rpn_wcci_2020")
         grid = GridDCOPF(
             case, base_unit_v=case.base_unit_v, base_unit_p=case.base_unit_p
         )
