@@ -48,12 +48,8 @@ for agent_name in [
         fig.savefig(os.path.join(case_save_dir, "_sample-grid"))
 
         if agent_name != "do-nothing-agent":
-            results_dir = make_dir(
-                os.path.join(case_save_dir, "analysis-actions")
-            )
+            results_dir = make_dir(os.path.join(case_save_dir, "analysis-actions"))
             analyse_actions(actions, case, agent_name, save_dir=results_dir)
 
-        results_dir = make_dir(
-            os.path.join(case_save_dir, "analysis-loading")
-        )
+        results_dir = make_dir(os.path.join(case_save_dir, "analysis-loading"))
         analyse_loading(obses, case, agent_name, save_dir=results_dir)
