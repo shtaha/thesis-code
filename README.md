@@ -4,6 +4,8 @@
 
 ## Install
     
+    python -m pip install --upgrade pip
+    
     pip install numpy numba matplotlib pandas seaborn PyPDF2 # Basics     
     pip install grid2op
 
@@ -44,6 +46,7 @@
     # Unzip and copy to C:\glpk-X.Y
     # Add C:\glpk-X.Y\w64 to System PATH
     glpsol --help  # Check
+   
     
 ### Linux WSL
     
@@ -56,6 +59,13 @@
     # Ubuntu
     sudo apt-get install glpk-utils
     glpsol --version  # Check
+   
+    cd /mnt/c/Users/chrosik/data_grid2op
+    cp -R rte_case5_example ~/data_grid2op/rte_case5_example
+    cp -R l2rpn_2019 ~/data_grid2op/l2rpn_2019
+   
+    cd /mnt/c/Users/chrosik
+    cp -R -v data_grid2op ~/data_grid2op
    
 # ETH Computing Resources
 

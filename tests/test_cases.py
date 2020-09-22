@@ -150,7 +150,7 @@ class TestCasesDCOPF(unittest.TestCase):
         self.runner(model, verbose=False)
 
     def test_rte_case5(self):
-        case = load_case("rte_case5")
+        case = load_case("rte_case5_example")
         grid = GridDCOPF(
             case, base_unit_v=case.base_unit_v, base_unit_p=case.base_unit_p
         )
@@ -166,7 +166,7 @@ class TestCasesDCOPF(unittest.TestCase):
         self.runner(model, eps=1e-5, verbose=True)
 
     def test_l2rpn2019(self):
-        case = load_case("l2rpn2019")
+        case = load_case("l2rpn_2019")
         grid = GridDCOPF(
             case, base_unit_v=case.base_unit_v, base_unit_p=case.base_unit_p
         )
@@ -187,7 +187,7 @@ class TestCasesDCOPF(unittest.TestCase):
             self.assertTrue(True)
             return
 
-        case = load_case("l2rpn2020")
+        case = load_case("l2rpn_wcci_2020")
         grid = GridDCOPF(
             case, base_unit_v=case.base_unit_v, base_unit_p=case.base_unit_p
         )
