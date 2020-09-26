@@ -40,7 +40,7 @@ for case_name in [
 
     experiment_performance = ExperimentPerformance(save_dir=case_save_dir)
     for agent_name in [
-        # "do-nothing-agent",
+        "do-nothing-agent",
         "agent-mip",
         # "agent-multistep-mip",
     ]:
@@ -55,10 +55,7 @@ for case_name in [
                 do_chronics = [0, 10, 100, 196, 200, 201, 206, 226, 259, 375, 384, 491]
                 do_chronics.extend(np.random.randint(0, 1000, 500).tolist())
             else:
-                # do_chronics = np.arange(11, 41).tolist()
-                # do_chronics = [0, 1, 3, 4, 7, 10]
-
-                do_chronics = np.arange(41, 50)
+                do_chronics = np.arange(11, 71).tolist()
         else:
             kwargs["obj_lambda_action"] = 0.05
             do_chronics = [*np.arange(0, 2880, 240), *(np.arange(0, 2880, 240) + 1)]
@@ -71,13 +68,13 @@ for case_name in [
         """
             Experiments.
         """
-        experiment_performance.analyse(
-            case=case,
-            agent=agent,
-            do_chronics=do_chronics,
-            n_chronics=1,
-            n_steps=-1,
-            verbose=verbose,
-        )
+        # experiment_performance.analyse(
+        #     case=case,
+        #     agent=agent,
+        #     do_chronics=do_chronics,
+        #     n_chronics=5,
+        #     n_steps=-1,
+        #     verbose=verbose,
+        # )
 
     experiment_performance.compare_agents(case, save_dir=case_save_dir)

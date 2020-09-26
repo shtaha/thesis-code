@@ -53,7 +53,7 @@ class TestGNs(unittest.TestCase):
 
         for batch_idx, (graph_batch, label_batch) in enumerate(dataset):
             graph_batch_from_list = utils_tf.data_dicts_to_graphs_tuple(
-                graphs_dict_list[(n_batch * batch_idx): (n_batch * (batch_idx + 1))]
+                graphs_dict_list[(n_batch * batch_idx) : (n_batch * (batch_idx + 1))]
             )
 
             check = tf.squeeze(equal_graphs(graph_batch, graph_batch_from_list)).numpy()

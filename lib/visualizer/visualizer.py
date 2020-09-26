@@ -27,17 +27,7 @@ class Visualizer:
         mpl.rcParams["savefig.format"] = Const.OUT_FORMAT
 
 
-def print_matrix(matrix, name=None, spacing=None, decimals=4):
-    if type(matrix) == np.ndarray:
-        shape = matrix.shape
-    else:
-        shape = len(matrix)
-
-    if name:
-        print(name, "=", str(shape), str(type(matrix)))
-    else:
-        print(str(shape), str(type(matrix)))
-
+def format_matrix(matrix, spacing=None, decimals=4):
     lines = []
     matrix = np.squeeze(matrix)
     matrix = np.atleast_2d(matrix)
@@ -66,6 +56,21 @@ def print_matrix(matrix, name=None, spacing=None, decimals=4):
                 line = line + pattern.format(cell)
 
         lines.append(line)
+    return lines
+
+
+def print_matrix(matrix, name=None, spacing=None, decimals=4):
+    if type(matrix) == np.ndarray:
+        shape = matrix.shape
+    else:
+        shape = len(matrix)
+
+    if name:
+        print(name, "=", str(shape), str(type(matrix)))
+    else:
+        print(str(shape), str(type(matrix)))
+
+    lines = format_matrix(matrix, spacing=spacing, decimals=decimals)
     print("\n".join(lines))
     print("\n")
 

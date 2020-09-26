@@ -1,6 +1,7 @@
 import bz2
 import datetime
 import os
+from collections import deque
 from io import StringIO
 
 import numpy as np
@@ -66,11 +67,64 @@ def is_nonetype(obj):
     return isinstance(obj, type(None))
 
 
-def extract_target_windows(targets, mask, n_window=0):
+def extract_target_windows(targets, mask=None, n_window=0):
     window = np.zeros_like(targets)
     for i in range(len(targets)):
         start = np.maximum(i - n_window, 0)
         end = i + n_window + 1
         window[i] = targets[start:end].any()
 
-    return np.logical_and(window.astype(np.bool), mask)
+    window = window.astype(np.bool)
+    if not is_nonetype(mask):
+        window = np.logical_and(window, mask)
+
+    return window
+
+
+def extract_history_windows(targets, n_window=0):
+    window = np.zeros_like(targets)
+    for i in range(len(targets)):
+        start = i
+        end = i + n_window + 1
+
+        window[i] = targets[start:end].any()
+
+    return window.astype(np.bool)
+
+
+def moving_window(
+    items, mask_targets=None, n_window=0, process_fn=None, combine_fn=None, padding=None
+):
+
+    if is_nonetype(mask_targets):
+        mask_targets = np.ones_like(items, dtype=np.bool)
+
+    mask_history = extract_history_windows(mask_targets, n_window=n_window)
+
+    if is_nonetype(process_fn):
+
+        def process_fn(x):
+            return x
+
+    if is_nonetype(combine_fn):
+
+        def combine_fn(x):
+            return x[-1]
+
+    padding_window = [padding] * (n_window + 1)
+    queue = deque(padding_window)
+
+    history = []
+    for i, item in enumerate(items):
+        if mask_history[i]:
+            queue.popleft()
+
+            pitem = process_fn(item)
+            queue.append(pitem)
+
+            if mask_targets[i]:
+                assert len(queue) == n_window + 1
+                history.append(combine_fn(list(queue)))
+
+    assert len(history) == mask_targets.sum()
+    return history

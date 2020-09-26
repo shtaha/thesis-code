@@ -103,7 +103,7 @@ for chronic_idx, chronic in enumerate(os.listdir(art_case_chronics)):
 
     max_ps = np.maximum(max_ps, max_p)
 
-    if chronic_idx == 50:
+    if chronic_idx == 70:
         break
 
 prods_charac = pd.read_csv(os.path.join(case_path, "prods_charac.csv"))

@@ -311,9 +311,10 @@ class ExperimentPerformance(ExperimentBase):
                 color=color,
             )
 
-        ax.scatter(chronic_lengths_all, x_all, marker="|", c="black")
-        ax.set_yticks(x_all)
-        ax.set_yticklabels(chronic_names_all)
+        if len(chronic_indices_all) < 25:
+            ax.scatter(chronic_lengths_all, x_all, marker="|", c="black")
+            ax.set_yticks(x_all)
+            ax.set_yticklabels(chronic_names_all)
         ax.invert_yaxis()
         ax.legend()
 

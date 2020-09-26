@@ -1,10 +1,4 @@
-import numpy as np
 import tensorflow as tf
-
-
-def print_variables(variables):
-    for var in variables:
-        print(var.name, var.shape, np.linalg.norm(var.numpy()))
 
 
 def tf_train_test_split(dataset: tf.data.Dataset, dataset_size=None, test_frac=0.2):

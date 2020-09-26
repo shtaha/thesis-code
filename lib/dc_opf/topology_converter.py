@@ -28,6 +28,12 @@ class TopologyConverter:
         self.line_or_sub_pos = self.env.line_or_to_sub_pos
         self.line_ex_sub_pos = self.env.line_ex_to_sub_pos
 
+        # Grid element positions in substation topology vector
+        self.gen_to_sub_id = self.env.gen_to_subid
+        self.load_to_sub_id = self.env.load_to_subid
+        self.line_or_to_sub_id = self.env.line_or_to_subid
+        self.line_ex_to_sub_id = self.env.line_ex_to_subid
+
         # Substation topology mask
         self.substation_topology_mask = self._get_substation_topology_mask()
 
@@ -243,3 +249,23 @@ class TopologyConverter:
         action = self.env.action_space(action_dict)
 
         return topo_vect, line_status, action
+
+    def lines_or_to_sub_bus(self, obs):
+        topo_pos = self.line_or_topo_pos
+        return obs.topo_vect[topo_pos]
+
+    def lines_ex_to_sub_bus(self, obs):
+        topo_pos = self.line_ex_topo_pos
+        return obs.topo_vect[topo_pos]
+
+    def gens_to_sub_bus(self, obs):
+        topo_pos = self.gen_topo_pos
+        return obs.topo_vect[topo_pos]
+
+    def loads_to_sub_bus(self, obs):
+        topo_pos = self.load_topo_pos
+        return obs.topo_vect[topo_pos]
+
+    @staticmethod
+    def sub_bus_mask(topo_vect, sub_bus, dtype=np.bool):
+        return np.equal(topo_vect, sub_bus, dtype=dtype)

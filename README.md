@@ -13,6 +13,7 @@
     pip install glpk mosek gurobi # Solvers
     
     pip jupyter pygame
+    pip install tensorflow-addons
     pip install graph_nets "tensorflow>=2.1.0-rc1" "dm-sonnet>=2.0.0b0" tensorflow_probability --use-feature=2020-resolver
     
     pip install l2rpn-baselines
@@ -90,4 +91,8 @@
     pip check  # Check dependecy conflicts
     
     pip install <package> --use-feature=2020-resolver
+    
+# TensorBoard
+
+    tensorboard --logdir=/full_path_to_your_logs
     
