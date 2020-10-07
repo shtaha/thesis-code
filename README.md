@@ -96,3 +96,11 @@
 
     tensorboard --logdir=/full_path_to_your_logs
     
+# GPU
+    High scale NNs
+    Look ahead multiple steps ahead
+    
+    15 minutes-generator schedules
+    
+    # S
+    

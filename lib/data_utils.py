@@ -1,11 +1,21 @@
 import bz2
 import datetime
+import importlib.util
+import json
+import math
 import os
 from collections import deque
 from io import StringIO
 
 import numpy as np
 import pandas as pd
+
+
+def load_python_module(path, name="."):
+    spec = importlib.util.spec_from_file_location(name, path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
 
 
 def make_dir(directory):
@@ -59,6 +69,11 @@ def read_bz2_to_dataframe(file_path, sep=";"):
     return pd.read_csv(StringIO(data_csv), sep=sep)
 
 
+def save_dict_to_file(dictionary, file_dir):
+    with open(file_dir, "w") as f:
+        json.dump(dictionary, f, indent=2)
+
+
 def env_pf(env_dc):
     return "dc" if env_dc else "ac"
 
@@ -81,6 +96,12 @@ def extract_target_windows(targets, mask=None, n_window=0):
     return window
 
 
+def extract_target_excluded_windows(targets, n_window=0):
+    targets = targets.astype(np.bool)
+    mask_targets = extract_target_windows(targets, n_window=n_window)
+    return np.logical_and(mask_targets, ~targets)
+
+
 def extract_history_windows(targets, n_window=0):
     window = np.zeros_like(targets)
     for i in range(len(targets)):
@@ -95,7 +116,6 @@ def extract_history_windows(targets, n_window=0):
 def moving_window(
     items, mask_targets=None, n_window=0, process_fn=None, combine_fn=None, padding=None
 ):
-
     if is_nonetype(mask_targets):
         mask_targets = np.ones_like(items, dtype=np.bool)
 
@@ -123,8 +143,47 @@ def moving_window(
             queue.append(pitem)
 
             if mask_targets[i]:
-                assert len(queue) == n_window + 1
+                assert len(queue) == (n_window + 1)
                 history.append(combine_fn(list(queue)))
 
     assert len(history) == mask_targets.sum()
     return history
+
+
+def batched_iterator(items, n_batch=1):
+    start = 0
+    end = n_batch
+
+    n_batches = math.ceil(len(items) / n_batch)
+
+    batched_items = []
+    for i in range(n_batches):
+        items_batch = items[start:end]
+        start = end
+        end = end + n_batch
+
+        batched_items.append(items_batch)
+
+    return batched_items
+
+
+def backshift_and_hstack(x, max_shift=None, shifts=None, fill_value="last"):
+    if is_nonetype(shifts):
+        shifts = []
+
+    if not is_nonetype(max_shift):
+        shifts = -np.arange(1, max_shift + 1)
+
+    y = [x]
+    for shift in shifts:
+        z = np.roll(x, shift=shift, axis=0)
+
+        if fill_value == "last":
+            last_row = x[-1, :]
+            z[shift:, :] = last_row
+        else:
+            z[shift:, :] = fill_value
+        y.append(z)
+
+    y = np.hstack(y)
+    return y

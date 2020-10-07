@@ -1,4 +1,5 @@
 import graph_nets as gn
+import numpy as np
 import tensorflow as tf
 from graph_nets import utils_tf
 
@@ -54,8 +55,34 @@ def equal_graphs(graphs_a, graphs_b, verbose=True):
     return cond
 
 
-def graph_dict_to_graph(graph_dict):
-    return utils_tf.data_dicts_to_graphs_tuple([graph_dict])
+def check_lgraphs(lgraphs):
+    fields = set()
+    dims = dict()
+    for dgraph in lgraphs:
+        f = sorted(list(dgraph.keys()))
+        fields.update(f)
+
+    for field in fields:
+        dims[field] = []
+
+    for dgraph in lgraphs:
+        f = sorted(list(dgraph.keys()))
+        assert len(f) == len(fields)
+        for field in fields:
+            assert field in f
+            d = dgraph[field].shape
+            dims[field].append(str(d))
+
+    for field in fields:
+        assert len(np.unique(dims[field])) == 1
+
+
+def dgraph_to_graph(dgraph):
+    return utils_tf.data_dicts_to_graphs_tuple([dgraph])
+
+
+def dgraphs_to_graphs(dgraphs):
+    return utils_tf.data_dicts_to_graphs_tuple(dgraphs)
 
 
 def stack_batch(graph_batch, n_global_features, n_node_features, n_edge_features):
@@ -91,7 +118,7 @@ def stack_batch(graph_batch, n_global_features, n_node_features, n_edge_features
 
 def tf_graph_dataset(cgraphs):
     graph_dataset = tf.data.Dataset.from_tensor_slices(cgraphs)
-    graph_dataset = graph_dataset.map(graph_dict_to_graph)
+    graph_dataset = graph_dataset.map(dgraph_to_graph)
     return graph_dataset
 
 

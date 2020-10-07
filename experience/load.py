@@ -3,6 +3,7 @@ import os
 from experience import ExperienceCollector
 from lib.data_utils import make_dir, env_pf
 from lib.dc_opf import load_case, CaseParameters
+from lib.visualizer import pprint
 
 
 def load_experience(case_name, agent_name, experience_dir, env_dc=True):
@@ -16,5 +17,7 @@ def load_experience(case_name, agent_name, experience_dir, env_dc=True):
 
     collector = ExperienceCollector(save_dir=case_experience_dir)
     collector.load_data(agent_name=agent_name, env=env)
+
+    pprint("    - Number of loaded chronics:", len(collector.chronic_ids))
 
     return case, collector

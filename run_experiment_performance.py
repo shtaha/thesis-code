@@ -40,9 +40,9 @@ for case_name in [
 
     experiment_performance = ExperimentPerformance(save_dir=case_save_dir)
     for agent_name in [
-        "do-nothing-agent",
-        "agent-mip",
-        # "agent-multistep-mip",
+        # "do-nothing-agent",
+        # "agent-mip",
+        "agent-multistep-mip",
     ]:
         np.random.seed(0)
         if "rte_case5" in case_name:
@@ -50,12 +50,14 @@ for case_name in [
             do_chronics = np.arange(20)
         elif "l2rpn_2019" in case_name:
             kwargs["obj_lambda_action"] = 0.07
+            # kwargs["con_unitary_action"] = True
 
             if "_art" not in case_name:
                 do_chronics = [0, 10, 100, 196, 200, 201, 206, 226, 259, 375, 384, 491]
                 do_chronics.extend(np.random.randint(0, 1000, 500).tolist())
             else:
-                do_chronics = np.arange(11, 71).tolist()
+                # do_chronics = np.arange(60, 121).tolist()
+                do_chronics = [10, 11, 14, 16, 17]
         else:
             kwargs["obj_lambda_action"] = 0.05
             do_chronics = [*np.arange(0, 2880, 240), *(np.arange(0, 2880, 240) + 1)]
@@ -68,13 +70,13 @@ for case_name in [
         """
             Experiments.
         """
-        # experiment_performance.analyse(
-        #     case=case,
-        #     agent=agent,
-        #     do_chronics=do_chronics,
-        #     n_chronics=5,
-        #     n_steps=-1,
-        #     verbose=verbose,
-        # )
+        experiment_performance.analyse(
+            case=case,
+            agent=agent,
+            do_chronics=do_chronics,
+            n_chronics=-1,
+            n_steps=-1,
+            verbose=verbose,
+        )
 
     experiment_performance.compare_agents(case, save_dir=case_save_dir)

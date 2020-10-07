@@ -46,11 +46,11 @@ def obs_to_dgraph(obs, tc):
         edges_or.append(obs.rho)
 
         # Add status, cooldown, maintenance, overflow
-        edges_or.append(obs.line_status.astype(np.float))
-        edges_or.append(obs.timestep_overflow)
-        edges_or.append(obs.time_next_maintenance)
-        edges_or.append(obs.duration_next_maintenance)
-        edges_or.append(obs.time_before_cooldown_line)
+        # edges_or.append(obs.line_status.astype(np.float))
+        # edges_or.append(obs.timestep_overflow)
+        # edges_or.append(obs.time_next_maintenance)
+        # edges_or.append(obs.duration_next_maintenance)
+        # edges_or.append(obs.time_before_cooldown_line)
 
         edges_or = np.vstack(edges_or).T
         edges_ex = edges_or.copy()
@@ -85,12 +85,15 @@ def obs_to_dgraph(obs, tc):
 
         # Add cooldown
         node_features = np.vstack(nodes)
-        node_features = np.append(
-            node_features, np.atleast_2d(obs.time_before_cooldown_sub).T, axis=1
-        )
+        # node_features = np.append(
+        #     node_features, np.atleast_2d(obs.time_before_cooldown_sub).T, axis=1
+        # )
     else:
-        node_features = np.zeros((tc.n_sub, 2 * (tc.n_gen + tc.n_load) + 1))
-        edge_features = np.zeros((2 * tc.n_line, 4 + 6))
+        # node_features = np.zeros((tc.n_sub, 2 * (tc.n_gen + tc.n_load) + 1))
+        # edge_features = np.zeros((2 * tc.n_line, 4 + 6))
+
+        node_features = np.zeros((tc.n_sub, 2 * (tc.n_gen + tc.n_load)))
+        edge_features = np.zeros((2 * tc.n_line, 4 + 1))
 
     senders_or = tc.line_or_to_sub_id
     receivers_or = tc.line_ex_to_sub_id
@@ -103,7 +106,17 @@ def obs_to_dgraph(obs, tc):
 
     edge_features = edge_features.astype(np.float)
     node_features = node_features.astype(np.float)
-    global_features = np.zeros((tc.n_line,), dtype=np.float)
+
+    from bclassification.utils_fc import obs_to_vect
+
+    if not is_nonetype(obs):
+        global_features = obs_to_vect(obs, tc)
+    else:
+        global_features = np.zeros(
+            (2 * (tc.n_gen + tc.n_load) + tc.n_sub + 10 * tc.n_line,), dtype=np.float
+        )
+
+    global_features = global_features.astype(np.float)
 
     return {
         "globals": global_features,
@@ -127,7 +140,7 @@ def obses_to_lgraphs(obses, tc, mask_targets=None, n_window=0):
     return lgraphs
 
 
-def obses_to_cgraphs(obses, tc, mask_targets=None, n_window=10):
+def obses_to_cgraphs(obses, tc, mask_targets=None, n_window=0):
     lgraphs = obses_to_lgraphs(obses, tc, mask_targets=mask_targets, n_window=n_window)
     cgraphs = lgraphs_to_cgraphs(lgraphs)
     return cgraphs

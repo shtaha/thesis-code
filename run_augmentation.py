@@ -1,4 +1,3 @@
-import importlib.util
 import json
 import os
 from distutils.dir_util import copy_tree
@@ -13,7 +12,7 @@ from lib.chronics import (
     save_dataframe_to_bz2,
     augment_chronic,
 )
-from lib.data_utils import make_dir
+from lib.data_utils import make_dir, load_python_module, save_dict_to_file
 from lib.visualizer import pprint
 
 case_name = "l2rpn_2019"
@@ -30,11 +29,8 @@ if not len(os.listdir(art_case_path)):
 """
     Load config file
 """
-spec = importlib.util.spec_from_file_location(
-    ".", os.path.join(art_case_path, "config.py")
-)
-module = importlib.util.module_from_spec(spec)
-spec.loader.exec_module(module)
+
+module = load_python_module(os.path.join(art_case_path, "config.py"), name=".")
 config = module.config
 
 case_chronics = os.path.join(case_path, "chronics")
@@ -85,25 +81,19 @@ for chronic_idx, chronic in enumerate(os.listdir(art_case_chronics)):
         targets=targets,
     )
 
-    with open(os.path.join(art_chronic_dir, "augmentation.json"), "w") as f:
-        json.dump(
-            dict(
-                p=p,
-                max_p=max_p,
-                min_p=min_p,
-                augmentation=augmentation,
-                targets=targets,
-            ),
-            f,
-            indent=2,
-        )
+    save_dict_to_file(
+        dict(
+            p=p, max_p=max_p, min_p=min_p, augmentation=augmentation, targets=targets,
+        ),
+        os.path.join(art_chronic_dir, "augmentation.json"),
+    )
 
     save_dataframe_to_bz2(prods, art_chronic_dir, prods_file[0], sep=";")
     save_dataframe_to_bz2(loads, art_chronic_dir, loads_file[0], sep=";")
 
     max_ps = np.maximum(max_ps, max_p)
 
-    if chronic_idx == 70:
+    if chronic_idx == 120:
         break
 
 prods_charac = pd.read_csv(os.path.join(case_path, "prods_charac.csv"))

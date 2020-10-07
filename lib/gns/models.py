@@ -5,17 +5,17 @@ import tensorflow as tf
 
 class GraphNetwork(snt.Module):
     def __init__(
-            self,
-            n_global_features,
-            n_node_features,
-            n_edge_features,
-            n_edges,
-            n_nodes,
-            n_hidden_global,
-            n_hidden_node,
-            n_hidden_edge,
-            dropout_rate=0.1,
-            n_message_passes=3,
+        self,
+        n_global_features,
+        n_node_features,
+        n_edge_features,
+        n_edges,
+        n_nodes,
+        n_hidden_global,
+        n_hidden_node,
+        n_hidden_edge,
+        dropout_rate=0.1,
+        n_message_passes=3,
     ):
         super(GraphNetwork, self).__init__()
 

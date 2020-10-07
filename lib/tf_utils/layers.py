@@ -2,11 +2,11 @@ import tensorflow as tf
 
 
 class ResidulaFCBlock(tf.keras.layers.Layer):
-    def __init__(self, n_hidden, activation="relu", name=None):
+    def __init__(self, n_hidden, activation="relu", name=None, **kwargs):
         super(ResidulaFCBlock, self).__init__(name=name)
 
-        self.dense_1 = tf.keras.layers.Dense(n_hidden, activation=None)
-        self.dense_2 = tf.keras.layers.Dense(n_hidden, activation=None)
+        self.dense_1 = tf.keras.layers.Dense(n_hidden, activation=None, **kwargs)
+        self.dense_2 = tf.keras.layers.Dense(n_hidden, activation=None, **kwargs)
 
         self.activation = tf.keras.layers.Activation(activation)
 

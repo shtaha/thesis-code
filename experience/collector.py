@@ -3,13 +3,16 @@ import os
 import numpy as np
 from grid2op.Converter import ToVect
 
-from lib.chronics import get_sorted_chronics
+from lib.chronics import get_sorted_chronics, is_loads_file, is_prods_file
+from lib.data_utils import read_bz2_to_dataframe, load_python_module
 from lib.visualizer import pprint
 
 
 class ExperienceCollector(object):
     def __init__(self, save_dir):
         self.save_dir = save_dir
+
+        self.config = None
 
         self.chronic_files = []
         self.chronic_ids = []
@@ -296,3 +299,39 @@ class ExperienceCollector(object):
             dones.extend(dones_chronic.tolist())
 
         return observations, actions, np.array(rewards), np.array(dones)
+
+    def load_forecasts(self, env, chronic_idx):
+        datasets_path = os.path.join(os.path.expanduser("~"), "data_grid2op")
+        case_path = os.path.join(datasets_path, env.name)
+
+        chronics_dir, chronics, chronics_sorted = get_sorted_chronics(env=env)
+
+        case_chronics = env.chronics_handler.path
+        chronic_name = chronics_sorted[chronic_idx]
+        chronic_dir = os.path.join(case_chronics, chronic_name)
+
+        prods_file = [file for file in os.listdir(chronic_dir) if is_prods_file(file)]
+        loads_file = [file for file in os.listdir(chronic_dir) if is_loads_file(file)]
+        assert len(prods_file) == 1 and len(loads_file) == 1
+
+        prods = read_bz2_to_dataframe(os.path.join(chronic_dir, prods_file[0]), sep=";")
+        loads = read_bz2_to_dataframe(os.path.join(chronic_dir, loads_file[0]), sep=";")
+
+        if not self.config:
+            module = load_python_module(os.path.join(case_path, "config.py"), name=".")
+            self.config = module.config
+
+        gen_org_to_grid_name = self.config["names_chronics_to_grid"]["prods"]
+        load_org_to_grid_name = self.config["names_chronics_to_grid"]["loads"]
+
+        prods = prods.rename(columns=gen_org_to_grid_name)
+        prods = prods.reindex(
+            sorted(prods.columns, key=lambda x: x.split("_")[-1]), axis=1
+        )
+
+        loads = loads.rename(columns=load_org_to_grid_name)
+        loads = loads.reindex(
+            sorted(loads.columns, key=lambda x: x.split("_")[-1]), axis=1
+        )
+
+        return prods.values, loads.values
