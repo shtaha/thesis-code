@@ -68,11 +68,7 @@
    
     cd /mnt/c/Users/chrosik
     cp -R -v data_grid2op ~/
-   
-# ETH Computing Resources
 
-    rsikonja@supermodularity.inf.ethz.ch
-    mail password
     
 # Deep Mind Graph Networks
 

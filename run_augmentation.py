@@ -1,4 +1,6 @@
-import json
+import os
+from distutils.dir_util import copy_tree
+
 import os
 from distutils.dir_util import copy_tree
 
@@ -12,13 +14,14 @@ from lib.chronics import (
     save_dataframe_to_bz2,
     augment_chronic,
 )
+from lib.constants import Constants as Const
 from lib.data_utils import make_dir, load_python_module, save_dict_to_file
 from lib.visualizer import pprint
 
 case_name = "l2rpn_2019"
 art_case_name = case_name + "_art"
 
-datasets_path = os.path.join(os.path.expanduser("~"), "data_grid2op")
+datasets_path = Const.DATASET_DIR
 
 case_path = os.path.join(datasets_path, case_name)
 art_case_path = make_dir(os.path.join(datasets_path, art_case_name))

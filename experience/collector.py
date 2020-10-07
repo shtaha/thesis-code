@@ -4,6 +4,7 @@ import numpy as np
 from grid2op.Converter import ToVect
 
 from lib.chronics import get_sorted_chronics, is_loads_file, is_prods_file
+from lib.constants import Constants as Const
 from lib.data_utils import read_bz2_to_dataframe, load_python_module
 from lib.visualizer import pprint
 
@@ -63,7 +64,7 @@ class ExperienceCollector(object):
         print("-" * 80)
 
     def collect(
-        self, env, agent, do_chronics=(), n_chronics=-1, n_steps=-1, verbose=False
+            self, env, agent, do_chronics=(), n_chronics=-1, n_steps=-1, verbose=False
     ):
         self.print_collector("Collecting")
         agent.print_agent(default=verbose)
@@ -227,9 +228,9 @@ class ExperienceCollector(object):
         )
         for chronic_file in os.listdir(self.save_dir):
             if (
-                "chronic-" in chronic_file
-                and agent_name in chronic_file
-                and ".npz" in chronic_file
+                    "chronic-" in chronic_file
+                    and agent_name in chronic_file
+                    and ".npz" in chronic_file
             ):
                 chronic_idx = int(os.path.splitext(chronic_file)[0].split("-")[-1])
                 self.chronic_files.append(chronic_file)
@@ -301,7 +302,7 @@ class ExperienceCollector(object):
         return observations, actions, np.array(rewards), np.array(dones)
 
     def load_forecasts(self, env, chronic_idx):
-        datasets_path = os.path.join(os.path.expanduser("~"), "data_grid2op")
+        datasets_path = Const.DATASET_DIR
         case_path = os.path.join(datasets_path, env.name)
 
         chronics_dir, chronics, chronics_sorted = get_sorted_chronics(env=env)
