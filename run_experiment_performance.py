@@ -57,7 +57,7 @@ for case_name in [
                 do_chronics.extend(np.random.randint(0, 1000, 500).tolist())
             else:
                 # do_chronics = np.arange(60, 121).tolist()
-                do_chronics = [10, 11, 14, 16, 17]
+                do_chronics = [18, 19, 20, 21, 22]
         else:
             kwargs["obj_lambda_action"] = 0.05
             do_chronics = [*np.arange(0, 2880, 240), *(np.arange(0, 2880, 240) + 1)]
@@ -70,13 +70,13 @@ for case_name in [
         """
             Experiments.
         """
-        experiment_performance.analyse(
-            case=case,
-            agent=agent,
-            do_chronics=do_chronics,
-            n_chronics=-1,
-            n_steps=-1,
-            verbose=verbose,
-        )
+        # experiment_performance.analyse(
+        #     case=case,
+        #     agent=agent,
+        #     do_chronics=do_chronics,
+        #     n_chronics=-1,
+        #     n_steps=-1,
+        #     verbose=verbose,
+        # )
 
     experiment_performance.compare_agents(case, save_dir=case_save_dir)
