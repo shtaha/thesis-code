@@ -12,7 +12,7 @@ from lib.visualizer import Visualizer
 
 visualizer = Visualizer()
 
-save_dir = make_dir(os.path.join(Const.RESULTS_DIR, "performance-aug"))
+save_dir = make_dir(os.path.join(Const.RESULTS_DIR, "performance-aug-np"))
 
 env_dc = True
 verbose = False
@@ -49,7 +49,8 @@ for case_name in [
             kwargs["obj_lambda_action"] = 0.006
             do_chronics = np.arange(20)
         elif "l2rpn_2019" in case_name:
-            kwargs["obj_lambda_action"] = 0.07
+            kwargs["obj_lambda_action"] = 0.0
+            # kwargs["obj_lambda_action"] = 0.07
             # kwargs["con_unitary_action"] = True
 
             if "_art" not in case_name:
@@ -57,7 +58,9 @@ for case_name in [
                 do_chronics.extend(np.random.randint(0, 1000, 500).tolist())
             else:
                 # do_chronics = np.arange(60, 121).tolist()
-                do_chronics = [18, 19, 20, 21, 22]
+                # do_chronics = [18, 19, 20, 21, 22]
+
+                do_chronics = np.arange(10, 35).tolist()
         else:
             kwargs["obj_lambda_action"] = 0.05
             do_chronics = [*np.arange(0, 2880, 240), *(np.arange(0, 2880, 240) + 1)]

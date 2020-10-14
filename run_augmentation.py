@@ -1,9 +1,6 @@
 import os
 from distutils.dir_util import copy_tree
 
-import os
-from distutils.dir_util import copy_tree
-
 import numpy as np
 import pandas as pd
 
@@ -96,7 +93,7 @@ for chronic_idx, chronic in enumerate(os.listdir(art_case_chronics)):
 
     max_ps = np.maximum(max_ps, max_p)
 
-    if chronic_idx == 120:
+    if chronic_idx == 150:
         break
 
 prods_charac = pd.read_csv(os.path.join(case_path, "prods_charac.csv"))

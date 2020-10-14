@@ -4,6 +4,8 @@ from lib.visualizer import pprint
 
 if __name__ == "__main__":
     case_name = "l2rpn_2019"
+    # case_name = "rte_case5_example"
+    # case_name = "l2rpn_wcci_2020"
     verbose = True
 
     case = load_case(case_name, verbose=verbose)
@@ -41,13 +43,55 @@ if __name__ == "__main__":
         actions_line_set_info,
     ) = action_generator.get_all_unitary_line_status_set(verbose=verbose)
 
-    pprint("actions: 1 do-nothing action")
+    pprint("actions:", "1 do-nothing action")
 
-    pprint("Topology set actions:")
+    pprint("Topology set actions:", "")
     pprint("grid2op", len(grid2op_actions_topology_set))
     pprint("custom", len(actions_topology_set))
     pprint("custom filtered", len(actions_topology_set_filtered))
 
-    pprint("Line set actions:")
+    pprint("Line set actions:", "")
     pprint("grid2op", len(grid2op_actions_line_set))
     pprint("custom", len(actions_line_set))
+
+
+if __name__ == "__main__":
+    # case_name = "l2rpn_2019"
+    case_name = "rte_case5_example"
+    verbose = True
+
+    case = load_case(case_name, verbose=verbose)
+    env = case.env
+    action_space = env.action_space
+
+    # Generator
+    action_generator = ActionSpaceGenerator(env)
+    (
+        actions_topology_set,
+        actions_topology_set_info,
+    ) = action_generator.get_all_unitary_topologies_set(
+        verbose=False, filter_one_line_disconnections=True
+    )
+
+    grid2op_actions_topology_set = (
+        action_generator.grid2op_get_all_unitary_topologies_set()
+    )
+
+if __name__ == "__main__":
+    # case_name = "rte_case5_example"
+    case_name = "l2rpn_wcci_2020"
+    verbose = True
+
+    case = load_case(case_name, verbose=verbose)
+    env = case.env
+    action_space = env.action_space
+
+    pprint("GRID2OP", "Change")
+    pprint(
+        "All", len(env.action_space.get_all_unitary_topologies_change(env.action_space))
+    )
+
+    pprint("GRID2OP", "Set")
+    pprint(
+        "All", len(env.action_space.get_all_unitary_topologies_set(env.action_space))
+    )

@@ -64,7 +64,7 @@ class ExperienceCollector(object):
         print("-" * 80)
 
     def collect(
-            self, env, agent, do_chronics=(), n_chronics=-1, n_steps=-1, verbose=False
+        self, env, agent, do_chronics=(), n_chronics=-1, n_steps=-1, verbose=False
     ):
         self.print_collector("Collecting")
         agent.print_agent(default=verbose)
@@ -228,9 +228,9 @@ class ExperienceCollector(object):
         )
         for chronic_file in os.listdir(self.save_dir):
             if (
-                    "chronic-" in chronic_file
-                    and agent_name in chronic_file
-                    and ".npz" in chronic_file
+                "chronic-" in chronic_file
+                and agent_name in chronic_file
+                and ".npz" in chronic_file
             ):
                 chronic_idx = int(os.path.splitext(chronic_file)[0].split("-")[-1])
                 self.chronic_files.append(chronic_file)

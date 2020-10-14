@@ -226,17 +226,17 @@ class ExperimentSwitching(ExperimentBase, ExperimentMixin):
         ax_obj.set_ylabel("Objective value")
         ax_obj.legend()
         ax_obj.set_ylim(bottom=0.0)
-        fig_obj.suptitle(f"{case_name} - Chronic {chronic_name}")
+        # fig_obj.suptitle(f"{case_name} - Chronic {chronic_name}")
 
         ax_gain.set_xlabel("Time step t")
         ax_gain.set_ylabel("Gain of selected action vs. do-nothing action")
         ax_gain.legend()
-        fig_gain.suptitle(f"{case_name} - Chronic {chronic_name}")
+        # fig_gain.suptitle(f"{case_name} - Chronic {chronic_name}")
 
         ax_rel.set_xlabel("Relative objective value")
         ax_rel.set_ylabel("Count")
         ax_rel.legend()
-        fig_rel.suptitle(f"{case_name} - Chronic {chronic_name}")
+        # fig_rel.suptitle(f"{case_name} - Chronic {chronic_name}")
 
         if save_dir:
             file_name = f"agents-chronic-" + "{:05}".format(chronic_idx) + "-"
@@ -356,7 +356,7 @@ class ExperimentSwitching(ExperimentBase, ExperimentMixin):
             ax_mu.set_xticks(x)
             ax_mu.set_xticklabels(t)
             ax_mu.legend()
-            fig_mu.suptitle(f"{case_name} - Chronic {chronic_name}")
+            # fig_mu.suptitle(f"{case_name} - Chronic {chronic_name}")
 
             ax_frac.set_xlabel("Time step t")
             ax_frac.set_ylabel(r"Objective value fraction by terms [\\%]")
@@ -365,7 +365,7 @@ class ExperimentSwitching(ExperimentBase, ExperimentMixin):
             ax_frac.set_yticks(np.arange(0, 111, 10))
             ax_frac.set_yticklabels([f"{tick} \\%" for tick in np.arange(0, 111, 10)])
             ax_frac.legend()
-            fig_frac.suptitle(f"{case_name} - Chronic {chronic_name}")
+            # fig_frac.suptitle(f"{case_name} - Chronic {chronic_name}")
 
             if save_dir:
                 agent_name_ = agent_name.replace(" ", "-").lower()

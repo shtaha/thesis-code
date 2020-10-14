@@ -25,6 +25,7 @@ class ExperimentBase:
 
     @staticmethod
     def close_files(files, save_dir, delete_file=True):
+        delete_file = False
         for file, f in files:
             f.close()
             try:
@@ -120,11 +121,11 @@ class ExperimentMixin:
                     t, distances, linewidth=0.5, label=agent_name,
                 )
 
-                for i in range(len(t)):
-                    if isinstance(actions[i], int):
-                        action_id = actions[i]
-                        if action_id != 0:
-                            ax.text(t[i], distances[i], str(action_id), fontsize=2)
+                # for i in range(len(t)):
+                #     if isinstance(actions[i], int):
+                #         action_id = actions[i]
+                #         if action_id != 0:
+                #             ax.text(t[i], distances[i], str(action_id), fontsize=2)
 
         ax.set_xlabel("Time step t")
         ax.set_ylabel(ylabel)

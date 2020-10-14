@@ -72,9 +72,7 @@ class OPFCaseMixin:
     def make_environment(case_name, parameters):
         if parameters:
             env: Environment = grid2op.make_from_dataset_path(
-                dataset_path=os.path.join(
-                    Const.DATASET_DIR, case_name
-                ),
+                dataset_path=os.path.join(Const.DATASET_DIR, case_name),
                 backend=grid2op.Backend.PandaPowerBackend(),
                 action_class=grid2op.Action.TopologyAction,
                 observation_class=grid2op.Observation.CompleteObservation,
@@ -726,7 +724,7 @@ class OPFL2RPN2020(OPFAbstractCase, UnitConverter, OPFCaseMixin):
 
         # Manually set
         trafo_params = {
-            "id": {"0": 0, "1": 1, "2": 2, "3": 3, },
+            "id": {"0": 0, "1": 1, "2": 2, "3": 3,},
             "b_pu": {
                 "0": 2852.04991087,
                 "1": 2698.61830743,
