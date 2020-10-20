@@ -68,7 +68,7 @@ class ActionSpaceGenerator(object):
     """
 
     def get_all_unitary_topologies_set(
-        self, n_bus=2, filter_one_line_disconnections=True, verbose=False,
+            self, n_bus=2, filter_one_line_disconnections=True, verbose=False,
     ) -> Tuple[List[TopologyAction], List[Dict]]:
         """
         Returns a list of valid topology substation splitting actions. Currently, it returns
@@ -110,7 +110,7 @@ class ActionSpaceGenerator(object):
         return actions, actions_info
 
     def get_all_unitary_topologies_set_sub_id(
-        self, sub_id, n_bus=2, verbose=False
+            self, sub_id, n_bus=2, verbose=False
     ) -> Tuple[List[TopologyAction], List[Dict]]:
         """
         Tested only for n_bus = 2.
@@ -126,19 +126,19 @@ class ActionSpaceGenerator(object):
         # Get line positions within a substation
         lines_or_pos = self.action_space.line_or_to_sub_pos[
             self.action_space.line_or_to_subid == sub_id
-        ]
+            ]
         lines_ex_pos = self.action_space.line_ex_to_sub_pos[
             self.action_space.line_ex_to_subid == sub_id
-        ]
+            ]
         lines_pos = np.concatenate((lines_or_pos, lines_ex_pos))
 
         # Get load and generator positions within a substation
         gen_pos = self.action_space.gen_to_sub_pos[
             self.action_space.gen_to_subid == sub_id
-        ]
+            ]
         load_pos = self.action_space.load_to_sub_pos[
             self.action_space.load_to_subid == sub_id
-        ]
+            ]
         not_lines_pos = np.concatenate((gen_pos, load_pos))
 
         # Get binary positions
@@ -160,7 +160,7 @@ class ActionSpaceGenerator(object):
             )
 
         for topology_id, topology in enumerate(
-            itertools.product(bus_set, repeat=n_elements - 1)
+                itertools.product(bus_set, repeat=n_elements - 1)
         ):
             # Fix the first element on bus 1 -> [1, _, _, _] to break the symmetry.
             topology = np.concatenate(
@@ -186,7 +186,7 @@ class ActionSpaceGenerator(object):
                 check_one_line = self._check_one_line_on_bus(topology, n_bus)
                 if check_one_line:
                     count_disconnection = (
-                        count_disconnection + 1
+                            count_disconnection + 1
                     )  # Add 1 to one line disconnection count.
 
                     if verbose:
@@ -295,7 +295,7 @@ class ActionSpaceGenerator(object):
     """
 
     def get_all_unitary_line_status_set(
-        self, n_bus=2, verbose=False
+            self, n_bus=2, verbose=False
     ) -> Tuple[List[TopologyAction], List[Dict]]:
         """
         Not customized.
@@ -343,7 +343,7 @@ class ActionSpaceGenerator(object):
         return actions, actions_info
 
     def get_all_unitary_line_status_change(
-        self, verbose=False
+            self, verbose=False
     ) -> Tuple[List[TopologyAction], List[Dict]]:
         actions = list()
         actions_info = list()
@@ -382,10 +382,10 @@ class ActionSpaceGenerator(object):
     """
 
     def filter_one_line_disconnections(
-        self,
-        actions: List[TopologyAndDispatchAction],
-        actions_info: List[Dict],
-        verbose=False,
+            self,
+            actions: List[TopologyAndDispatchAction],
+            actions_info: List[Dict],
+            verbose=False,
     ) -> Tuple[List[TopologyAndDispatchAction], List[Dict]]:
 
         filtered_actions = list()
@@ -405,9 +405,9 @@ class ActionSpaceGenerator(object):
 
     @staticmethod
     def filter_single_actions(
-        actions: List[TopologyAndDispatchAction],
-        actions_info: List[Dict],
-        verbose=False,
+            actions: List[TopologyAndDispatchAction],
+            actions_info: List[Dict],
+            verbose=False,
     ) -> Tuple[List[TopologyAndDispatchAction], List[Dict]]:
 
         substation_actions = collections.defaultdict(list)
@@ -440,7 +440,7 @@ class ActionSpaceGenerator(object):
     """
 
     def _get_substation_info(
-        self, sub_id
+            self, sub_id
     ) -> Tuple[Tuple[int, int, int], Tuple[List, List, List]]:
         lines_or = [
             line
@@ -482,7 +482,7 @@ class ActionSpaceGenerator(object):
 
     @staticmethod
     def _get_number_topologies_set(
-        n_lines, n_gens, n_loads, n_bus=2
+            n_lines, n_gens, n_loads, n_bus=2
     ) -> Tuple[int, int, int]:
         """
         Works only with n_bus = 2.
@@ -624,9 +624,9 @@ def get_action_effect(action, env):
 
             # Change line status is not allowed
             assert not (
-                effect["change_bus_or"]
-                or effect["change_bus_ex"]
-                or effect["change_line_status"]
+                    effect["change_bus_or"]
+                    or effect["change_bus_ex"]
+                    or effect["change_line_status"]
             )
             if effect["set_line_status"] == 1 or effect["set_line_status"] == -1:
                 set_line_status[line_id] = effect["set_line_status"]
@@ -662,3 +662,19 @@ def get_actions_effects(actions, env):
 
 def is_do_nothing_action(actions, env, dtype=np.float):
     return np.array([action != env.action_space({}) for action in actions], dtype=dtype)
+
+
+def is_sub_set_action(actions, sub_id, env, dtype=np.bool):
+    labels = []
+    for action in actions:
+        do_nothing, unitary, set_bus, set_line_status = get_action_effect(action, env)
+
+        if sub_id in set_bus:
+            label = True
+        else:
+            label = False
+
+        labels.append(label)
+
+    labels = np.array(labels)
+    return labels.astype(dtype)

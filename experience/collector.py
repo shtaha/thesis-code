@@ -273,7 +273,7 @@ class ExperienceCollector(object):
             self.data[chronic_idx]["obses"] = obses
             self.data[chronic_idx]["actions"] = actions
 
-    def aggregate_data(self):
+    def aggregate_data(self, verbose=False):
         observations = []
         actions = []
         rewards = []
@@ -285,14 +285,15 @@ class ExperienceCollector(object):
             rewards_chronic = data_chronic["rewards"]
             dones_chronic = data_chronic["dones"]
 
-            pprint("Chronic:", chronic_idx)
-            pprint(
-                "        - O A R D:",
-                len(obses_chronic),
-                len(actions_chronic),
-                rewards_chronic.shape,
-                dones_chronic.shape,
-            )
+            if verbose:
+                pprint("Chronic:", chronic_idx)
+                pprint(
+                    "        - O A R D:",
+                    len(obses_chronic),
+                    len(actions_chronic),
+                    rewards_chronic.shape,
+                    dones_chronic.shape,
+                )
 
             observations.extend(obses_chronic[:-1])
             actions.extend(actions_chronic)

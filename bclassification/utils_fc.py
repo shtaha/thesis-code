@@ -1,12 +1,6 @@
-import os
-
-import matplotlib.pyplot as plt
 import numpy as np
-import seaborn as sns
-from sklearn.metrics import confusion_matrix, roc_curve
 
 from lib.action_space import is_do_nothing_action
-from lib.constants import Constants as Const
 from lib.data_utils import (
     moving_window,
     extract_history_windows,
@@ -33,6 +27,7 @@ def obs_to_vects(obs, tc):
 
     sub_vect = obs.time_before_cooldown_sub
     inj_vect = np.concatenate((prod_vect, load_vect, sub_vect))
+    inj_vect = np.nan_to_num(inj_vect)
 
     p_ors = []
     for sub_bus_or in [1, 2]:
@@ -53,6 +48,7 @@ def obs_to_vects(obs, tc):
     p_ors.append(obs.time_before_cooldown_line)
 
     line_vect = np.concatenate(p_ors)
+    line_vect = np.nan_to_num(line_vect)
 
     return line_vect.astype(np.float), inj_vect.astype(np.float)
 
@@ -81,75 +77,16 @@ def action_vects_to_vect(action_vects):
     return np.concatenate(action_vects)
 
 
-def plot_cm(labels, predictions, name, p=0.5, save_dir=None):
-    cm = confusion_matrix(labels, predictions > p)
-
-    fig, ax = plt.subplots(figsize=Const.FIG_SIZE)
-    sns.heatmap(cm, annot=True, fmt="d", ax=ax)
-    fig.suptitle("Confusion matrix: Threshold at p = {:.2f}".format(p))
-    ax.set_title(name)
-    ax.set_ylabel("Actual label")
-    ax.set_xlabel("Predicted label")
-
-    if save_dir:
-        fig.savefig(os.path.join(save_dir, f"{name.lower()}-cm"))
-
-
-def describe_results(metrics, results, y, name=None):
-    pprint("\n    - Dataset", name)
-
-    for metric, value in zip(metrics, results):
-        if metric in ["tp", "fn", "tn", "fp"]:
-            if metric in ["tp", "fn"]:
-                c = 1
-            else:
-                c = 0
-
-            n = np.sum(np.equal(y, c))
-            rate = 100.0 * value / n
-
-            ratio_str = "{}/{}".format(int(value), int(n))
-            pprint(
-                f"        - {metric.upper()}:",
-                "{:<15}{:>8.2f} %".format(ratio_str, rate),
-            )
-        elif metric == "mcc":
-            mcc_tf = float(value)
-            pprint(f"        - {metric.capitalize()}:", "{:.4f}".format(mcc_tf))
-        else:
-            pprint(f"        - {metric.capitalize()}:", "{:.4f}".format(value))
-
-
-def plot_roc(triplets, save_dir=None):
-    fig, ax = plt.subplots(figsize=(16, 5))
-    for label, Y, Y_pred in triplets:
-        fp, tp, _ = roc_curve(Y, Y_pred)
-        ax.plot(fp, tp, label=label, lw=2)
-
-    ax.set_xlabel("False positives")
-    ax.set_ylabel("True positives")
-    ax.grid(True)
-    ax.legend(loc="lower right")
-
-    if save_dir:
-        fig.savefig(os.path.join(save_dir, "roc"))
-
-
-def print_dataset(x, y, name):
-    pprint(f"    - {name}:", "X, Y", "{:>20}, {}".format(str(x.shape), str(y.shape)))
-    pprint("        - Positive labels:", "{:.2f} %".format(100 * y.mean()))
-    pprint("        - Negative labels:", "{:.2f} %".format(100 * (1 - y).mean()))
-
-
 def create_datasets(
-        case,
-        collector,
-        n_window_targets=0,
-        n_window_history=0,
-        n_window_forecasts=0,
-        use_actions=True,
-        use_forecasts=True,
-        downsampling_rate=1.0,
+    case,
+    collector,
+    n_window_targets=0,
+    n_window_history=0,
+    n_window_forecasts=0,
+    use_actions=True,
+    use_forecasts=True,
+    feature_scaling=True,
+    downsampling_rate=1.0,
 ):
     mask_targets = []
     Y_all = []
@@ -200,7 +137,7 @@ def create_datasets(
         if use_forecasts:
             prods, loads = collector.load_forecasts(case.env, chronic_idx)
             chronic_X_forecasts = np.concatenate(
-                (prods[1: chronic_len + 1], loads[1: chronic_len + 1]), axis=1
+                (prods[1 : chronic_len + 1], loads[1 : chronic_len + 1]), axis=1
             )
 
             chronic_X_forecasts = backshift_and_hstack(
@@ -215,6 +152,15 @@ def create_datasets(
     mask_targets = np.array(mask_targets)
     X_all = np.vstack(X_all)
     Y_all = np.array(Y_all)
+
+    X_std = X_all.std(axis=0)
+    mask_zero = np.equal(X_std, 0.0)
+    X_all = X_all[:, ~mask_zero]
+
+    pprint("    - Removed columns:", mask_zero.sum())
+
+    if feature_scaling:
+        X_all = X_all / X_std[~mask_zero]
 
     X = X_all[mask_targets, :]
     Y = Y_all[mask_targets]

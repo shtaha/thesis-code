@@ -10,21 +10,22 @@ from lib.visualizer import Visualizer
 
 visualizer = Visualizer()
 
-save_dir = make_dir(os.path.join(Const.RESULTS_DIR, "timing-n"))
+save_dir = make_dir(os.path.join(Const.RESULTS_DIR, "final"))
+save_dir = make_dir(os.path.join(save_dir, "timing"))
 
 env_dc = True
 verbose = False
 
 experiment_timing = ExperimentDCOPFTiming()
-kwargs = dict(time_limit=30)
+kwargs = dict(time_limit=40)
 
 for case_name in ["rte_case5_example", "l2rpn_2019", "l2rpn_wcci_2020"]:
     if case_name == "l2rpn_wcci_2020":
-        n_timings = 25
+        n_timings = 50
     elif case_name == "l2rpn_2019":
-        n_timings = 25
+        n_timings = 200
     else:
-        n_timings = 25
+        n_timings = 200
 
     case_save_dir = make_dir(os.path.join(save_dir, f"{case_name}-{env_pf(env_dc)}"))
     create_logger(logger_name=f"logger", save_dir=case_save_dir)
@@ -34,10 +35,6 @@ for case_name in ["rte_case5_example", "l2rpn_2019", "l2rpn_wcci_2020"]:
     """
     parameters = CaseParameters(case_name=case_name, env_dc=env_dc)
     case = load_case(case_name, env_parameters=parameters)
-    env = case.env
-    action_set = case.generate_unitary_action_set(
-        case, case_save_dir=case_save_dir, verbose=verbose
-    )
 
     for agent_name in [
         "agent-mip",
@@ -53,7 +50,7 @@ for case_name in ["rte_case5_example", "l2rpn_2019", "l2rpn_wcci_2020"]:
         """
             Initialize agent.
         """
-        agent = make_test_agent(agent_name, case, action_set, **kwargs)
+        agent = make_test_agent(agent_name, case, **kwargs)
 
         """
             Experiments.
@@ -100,14 +97,7 @@ for case_name in ["rte_case5_example", "l2rpn_2019", "l2rpn_wcci_2020"]:
             save_dir=case_save_dir,
             constraint_activations=[
                 ({}, "Default"),
-                (
-                    {"con_allow_onesided_disconnection": False},
-                    "One-sided disconnection",
-                ),
-                ({"con_allow_onesided_reconnection": False}, "One-sided reconnection",),
                 ({"con_symmetry": False}, "Symmetry"),
-                ({"con_requirement_balance": False}, "RI"),
-                ({"con_requirement_at_least_two": False}, "RII"),
                 ({"con_switching_limits": False}, "Switching limits"),
                 ({"con_unitary_action": True}, "Unitary action"),
             ],
