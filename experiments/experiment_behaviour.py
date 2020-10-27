@@ -210,7 +210,7 @@ class ExperimentBehaviour(ExperimentBase):
         ax.set_ylabel("Reward")
         ax.legend()
         fig.suptitle(title)
-
+        fig.tight_layout()
         if save_dir:
             file_name = "rewards"
             if prefix:
@@ -227,7 +227,7 @@ class ExperimentBehaviour(ExperimentBase):
         ax.set_ylabel("Unitary action distance to reference topology")
         ax.legend()
         fig.suptitle(title)
-
+        fig.tight_layout()
         if save_dir:
             file_name = "distance"
             if prefix:
@@ -247,7 +247,7 @@ class ExperimentBehaviour(ExperimentBase):
         ax.set_ylim((0.0, 2.0))
         ax.legend()
         fig.suptitle(title)
-
+        fig.tight_layout()
         if save_dir:
             file_name = "rho"
             if prefix:
@@ -281,7 +281,7 @@ class ExperimentBehaviour(ExperimentBase):
         fig.suptitle(title)
         if env.n_gen < 3:
             ax.legend()
-
+        fig.tight_layout()
         if save_dir:
             file_name = "generators_p"
             if prefix:
@@ -307,7 +307,7 @@ class ExperimentBehaviour(ExperimentBase):
         fig.suptitle(title)
         if env.n_gen < 3:
             ax.legend()
-
+        fig.tight_layout()
         if save_dir:
             file_name = "generators_q"
             if prefix:
@@ -333,7 +333,7 @@ class ExperimentBehaviour(ExperimentBase):
         fig.suptitle(title)
         if env.n_gen < 3:
             ax.legend()
-
+        fig.tight_layout()
         if save_dir:
             file_name = "generators_q-p"
             if prefix:
@@ -365,7 +365,7 @@ class ExperimentBehaviour(ExperimentBase):
         ax.set_xlabel("Time step t")
         ax.set_ylabel("P [p.u.]")
         fig.suptitle(title)
-
+        fig.tight_layout()
         if save_dir:
             file_name = "power-flows"
             if prefix:
@@ -373,7 +373,7 @@ class ExperimentBehaviour(ExperimentBase):
 
             fig.savefig(os.path.join(save_dir, file_name))
         plt.close(fig)
-
+        fig.tight_layout()
         fig, ax = plt.subplots(figsize=Const.FIG_SIZE)
         for line_id in range(env.n_line):
             color = colors[line_id % len(colors)]
@@ -397,7 +397,7 @@ class ExperimentBehaviour(ExperimentBase):
         ax.set_xlabel("Time step t")
         ax.set_ylabel(r"$\rho$ [p.u.]")
         fig.suptitle(title)
-
+        fig.tight_layout()
         if save_dir:
             file_name = "rhos"
             if prefix:
@@ -426,7 +426,7 @@ class ExperimentBehaviour(ExperimentBase):
         ax.set_ylim(bottom=0.0)
         ax.legend()
         fig.suptitle(title)
-
+        fig.tight_layout()
         if save_dir:
             file_name = "production-demand"
             if prefix:

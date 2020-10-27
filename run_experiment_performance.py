@@ -12,12 +12,14 @@ from lib.visualizer import Visualizer
 
 visualizer = Visualizer()
 
-save_dir = make_dir(os.path.join(Const.RESULTS_DIR, "performance-aug-np"))
+save_dir = make_dir(os.path.join(Const.RESULTS_DIR, "performance-aug-nf"))
 
 env_dc = True
 verbose = False
 
-kwargs = dict(horizon=2)
+kwargs = dict(horizon=2, forecasts=False)
+# kwargs = dict(horizon=2, obj_lambda_action=0.0)
+# kwargs = dict(horizon=2, con_unitary_action=True)
 
 for case_name in [
     "rte_case5_example",
@@ -26,9 +28,7 @@ for case_name in [
     "l2rpn_2019_art",
     "l2rpn_wcci_2020",
 ]:
-    # if "l2rpn_2019_art" not in case_name:
-    #     continue
-    if "l2rpn_2019" not in case_name:
+    if "l2rpn_2019_art" not in case_name:
         continue
 
     case_save_dir = make_dir(os.path.join(save_dir, f"{case_name}-{env_pf(env_dc)}"))
@@ -41,33 +41,27 @@ for case_name in [
     case = load_case(case_name, env_parameters=parameters, verbose=verbose)
 
     experiment_performance = ExperimentPerformance(save_dir=case_save_dir)
+
     for agent_name in [
-        "do-nothing-agent",
+        # "do-nothing-agent",
         "agent-mip",
+        # "agent-mip-l2rpn",
+        # "agent-mip-q",
         # "agent-multistep-mip",
     ]:
         np.random.seed(0)
         if "rte_case5" in case_name:
-            kwargs["obj_lambda_action"] = 0.006
             do_chronics = np.arange(20)
         elif "l2rpn_2019" in case_name:
-            # kwargs["obj_lambda_action"] = 0.0
-            # kwargs["con_unitary_action"] = True
-            kwargs["obj_lambda_action"] = 0.07
-
             if "_art" not in case_name:
                 # do_chronics = [0, 10, 100, 196, 200, 201, 206, 226, 259, 375, 384, 491]
                 # do_chronics.extend(np.random.randint(0, 1000, 500).tolist())
-
-                do_chronics = np.random.randint(0, 1000, 500).tolist()
-
+                do_chronics = np.random.randint(0, 1000, 15).tolist()
             else:
                 # do_chronics = np.arange(0, 151).tolist()
                 # do_chronics = [18, 19, 20, 21, 22]
-
-                do_chronics = np.arange(10, 35).tolist()
+                do_chronics = np.arange(0, 35).tolist()
         else:
-            kwargs["obj_lambda_action"] = 0.05
             do_chronics = [*np.arange(0, 2880, 240), *(np.arange(0, 2880, 240) + 1)]
 
         """

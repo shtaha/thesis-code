@@ -1,6 +1,6 @@
 import numpy as np
 
-from lib.action_space import is_do_nothing_action, is_sub_set_action
+from lib.action_space import is_do_nothing_action, is_sub_set_action, is_line_set_action
 from lib.data_utils import (
     moving_window,
     extract_history_windows,
@@ -147,16 +147,16 @@ def action_vects_to_vect(action_vects):
 
 
 def create_dataset(
-        case,
-        collector,
-        input_mode,
-        label_mode="action-dn",
-        n_window_targets=0,
-        n_window_history=0,
-        downsampling_rate=None,
-        n_window_forecasts=1,
-        use_actions=True,
-        feature_scaling=True,
+    case,
+    collector,
+    input_mode,
+    label_mode="action-dn",
+    n_window_targets=0,
+    n_window_history=0,
+    downsampling_rate=None,
+    n_window_forecasts=1,
+    use_actions=True,
+    feature_scaling=True,
 ):
     tc = TopologyConverter(case.env)
     process_fn = lambda obs: obs_to_vect(obs, tc, input_mode)
@@ -167,7 +167,14 @@ def create_dataset(
         label_fn = lambda actions, env, dtype: is_do_nothing_action(actions, env, dtype)
     elif "sub" in label_mode.split("-"):
         sub_id = int(label_mode.split("-")[-1])
-        label_fn = lambda actions, env, dtype: is_sub_set_action(actions, sub_id=sub_id, env=env, dtype=dtype)
+        label_fn = lambda actions, env, dtype: is_sub_set_action(
+            actions, sub_id=sub_id, env=env, dtype=dtype
+        )
+    elif "line" in label_mode.split("-"):
+        line_id = int(label_mode.split("-")[-1])
+        label_fn = lambda actions, env, dtype: is_line_set_action(
+            actions, line_id=line_id, env=env, dtype=dtype
+        )
     else:
         raise ValueError("Invalid label mode.")
 
@@ -234,7 +241,7 @@ def create_dataset(
         if n_window_forecasts > 0:
             prods, loads = collector.load_forecasts(case.env, chronic_idx)
             chronic_X_forecasts = np.concatenate(
-                (prods[1: chronic_len + 1], loads[1: chronic_len + 1]), axis=1
+                (prods[1 : chronic_len + 1], loads[1 : chronic_len + 1]), axis=1
             )
 
             chronic_X_forecasts = backshift_and_hstack(
@@ -266,8 +273,8 @@ def create_dataset(
             std = X_obses[:, :n_features].std()
 
             for h in range(n_window_history + 1):
-                X_obses[:, h * s: (h * s + n_features)] = (
-                        X_obses[:, h * s: (h * s + n_features)] / std
+                X_obses[:, h * s : (h * s + n_features)] = (
+                    X_obses[:, h * s : (h * s + n_features)] / std
                 )
 
             if n_window_forecasts > 0:
@@ -278,8 +285,8 @@ def create_dataset(
             std = X_obses[:, :n_features].std()
 
             for h in range(n_window_history + 1):
-                X_obses[:, h * s: (h * s + n_features)] = (
-                        X_obses[:, h * s: (h * s + n_features)] / std
+                X_obses[:, h * s : (h * s + n_features)] = (
+                    X_obses[:, h * s : (h * s + n_features)] / std
                 )
 
             if n_window_forecasts > 0:
@@ -291,8 +298,8 @@ def create_dataset(
 
             n_features = n_features + 4 * case.env.n_line
             for h in range(n_window_history + 1):
-                X_obses[:, h * s: (h * s + n_features)] = (
-                        X_obses[:, h * s: (h * s + n_features)] / std
+                X_obses[:, h * s : (h * s + n_features)] = (
+                    X_obses[:, h * s : (h * s + n_features)] / std
                 )
 
             if n_window_forecasts > 0:

@@ -1734,20 +1734,16 @@ class MultistepTopologyDCOPF(StandardDCOPF):
                     penalty = penalty + (
                         model.mu[t, line_id] + model.f_line[t, line_id]
                     )
+
             return penalty / len(model.line_set) / len(model.time_set)
 
         # Quadratic
         def _objective_quad_line_margins(model):
             total_cost = 0.0
             for t in model.time_set:
-                cost = sum(
-                    [
-                        model.line_flow[t, line_id] ** 2
-                        / model.line_flow_max[line_id] ** 2
-                        for line_id in model.line_set
-                    ]
-                )
-                total_cost = total_cost + cost
+                for line_id in model.line_set:
+                    total_cost = total_cost + model.f_line[t, line_id]
+                    total_cost = total_cost + (model.line_flow[t, line_id] ** 2 / model.line_flow_max[line_id] ** 2)
 
             return total_cost / len(model.time_set) / len(model.line_set)
 

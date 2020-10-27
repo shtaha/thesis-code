@@ -10,7 +10,7 @@ from lib.visualizer import Visualizer
 
 visualizer = Visualizer()
 
-save_dir = make_dir(os.path.join(Const.RESULTS_DIR, "behaviour"))
+save_dir = make_dir(os.path.join(Const.RESULTS_DIR, "behaviour-rew"))
 
 env_dc = True
 verbose = False
@@ -20,18 +20,15 @@ kwargs = dict()
 
 for case_name in [
     "rte_case5_example",
-    "rte_case5_example_art",
     "l2rpn_2019",
-    "l2rpn_2019_art",
     "l2rpn_wcci_2020",
 ]:
-    if "l2rpn_wcci_2020" in case_name:
-        continue
 
     if "l2rpn_wcci_2020" in case_name:
         n_steps = 100
+        continue
     elif "l2rpn_2019" in case_name:
-        n_steps = 500
+        n_steps = 200
     else:
         n_steps = 500
 
@@ -46,15 +43,10 @@ for case_name in [
 
     for agent_name in [
         "agent-mip",
+        "agent-mip-l2rpn",
+        "agent-mip-q",
         # "agent-multistep-mip",
     ]:
-        if "rte_case5" in case_name:
-            kwargs["obj_lambda_action"] = 0.004
-        elif "l2rpn_2019" in case_name:
-            kwargs["obj_lambda_action"] = 0.07
-        else:
-            kwargs["obj_lambda_action"] = 0.05
-
         """
             Initialize agent.
         """

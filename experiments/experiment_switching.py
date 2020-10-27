@@ -175,22 +175,22 @@ class ExperimentSwitching(ExperimentBase, ExperimentMixin):
         fig_obj, ax_obj = plt.subplots(figsize=Const.FIG_SIZE)
         fig_gain, ax_gain = plt.subplots(figsize=Const.FIG_SIZE)
         fig_rel, ax_rel = plt.subplots(figsize=Const.FIG_SIZE)
-        for agent_id, agent_name in enumerate(chronic_data):
-            if (
-                chronic_idx in chronic_data[agent_name].index
-                and agent_name != "Do nothing agent"
-            ):
+        for agent_id, (agent_name, agent_data) in enumerate(chronic_data.items()):
+            if chronic_idx in agent_data.index and agent_name != "Do nothing agent":
                 color_id = agent_id % len(colors)
                 color = colors[color_id]
 
-                t = chronic_data[agent_name].loc[chronic_idx]["time_steps"]
-                actions = chronic_data[agent_name].loc[chronic_idx]["actions"]
+                if "solution_status" in agent_data.columns:
+                    agent_data = agent_data[
+                        agent_data["solution_status"] != "infeasible"
+                    ]
 
-                obj = np.array(chronic_data[agent_name].loc[chronic_idx]["objectives"])
-                obj_dn = np.array(
-                    chronic_data[agent_name].loc[chronic_idx]["objectives_dn"]
-                )
-                mu_max = np.array(chronic_data[agent_name].loc[chronic_idx]["mu_max"])
+                t = agent_data.loc[chronic_idx]["time_steps"]
+                actions = agent_data.loc[chronic_idx]["actions"]
+
+                obj = np.array(agent_data.loc[chronic_idx]["objectives"])
+                obj_dn = np.array(agent_data.loc[chronic_idx]["objectives_dn"])
+                mu_max = np.array(agent_data.loc[chronic_idx]["mu_max"])
 
                 ax_obj.plot(
                     t, obj, linewidth=0.5, c=color, linestyle="-", label=agent_name

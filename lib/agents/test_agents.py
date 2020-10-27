@@ -30,16 +30,70 @@ def make_test_agent(
         case, case_save_dir=save_dir, verbose=verbose
     )
 
+    case_name = case.env.name
+
     if agent_name == "agent-multistep-mip":
+        if "obj_lambda_action" not in kwargs:
+            if "l2rpn_2019" in case_name:
+                kwargs["obj_lambda_action"] = 0.07
+            elif "rte_case5_example" in case_name:
+                kwargs["obj_lambda_action"] = 0.006
+            else:
+                kwargs["obj_lambda_action"] = 0.05
+
         agent = AgentMultistepMIPTest(
             case=case, action_set=action_set, horizon=horizon, **kwargs
         )
+    elif agent_name == "agent-mip":
+        if "obj_lambda_action" not in kwargs:
+            if "l2rpn_2019" in case_name:
+                kwargs["obj_lambda_action"] = 0.07
+            elif "rte_case5_example" in case_name:
+                kwargs["obj_lambda_action"] = 0.006
+            else:
+                kwargs["obj_lambda_action"] = 0.05
+
+        agent = AgentMIPTest(case=case, action_set=action_set, **kwargs)
+    elif agent_name == "agent-mip-l2rpn":
+        if "obj_lambda_action" not in kwargs:
+            if "l2rpn_2019" in case_name:
+                kwargs["obj_lambda_action"] = 0.07
+            elif "rte_case5_example" in case_name:
+                kwargs["obj_lambda_action"] = 0.006
+            else:
+                kwargs["obj_lambda_action"] = 0.05
+
+        agent = AgentMIPTest(
+            case=case,
+            action_set=action_set,
+            name="Agent MIP L2RPN",
+            obj_reward_lin=True,
+            obj_reward_max=False,
+            **kwargs,
+        )
+    elif agent_name == "agent-mip-q":
+        if "obj_lambda_action" not in kwargs:
+            if "l2rpn_2019" in case_name:
+                kwargs["obj_lambda_action"] = 0.02
+            elif "rte_case5_example" in case_name:
+                kwargs["obj_lambda_action"] = 0.006
+            else:
+                kwargs["obj_lambda_action"] = 0.05
+
+        agent = AgentMIPTest(
+            case=case,
+            action_set=action_set,
+            name="Agent MIP Q",
+            obj_reward_quad=True,
+            obj_reward_max=False,
+            **kwargs,
+        )
+    elif agent_name == "do-nothing-agent":
+        agent = AgentDoNothingTest(case=case, action_set=action_set)
     elif agent_name == "mixed_multi_agent":
         agent = AgentMixedMultistepTest(
             case=case, action_set=action_set, horizon=horizon, **kwargs
         )
-    elif agent_name == "agent-mip":
-        agent = AgentMIPTest(case=case, action_set=action_set, **kwargs)
     elif agent_name == "mixed_agent":
         agent = AgentMixedTest(case=case, action_set=action_set, **kwargs)
     elif agent_name == "augmented_agent":
@@ -48,8 +102,6 @@ def make_test_agent(
         )
     elif agent_name == "greedy_agent":
         agent = AgentGreedy(case=case, action_set=action_set)
-    elif agent_name == "do-nothing-agent":
-        agent = AgentDoNothingTest(case=case, action_set=action_set)
     else:
         raise ValueError(f"Agent name {agent_name} is invalid.")
 
@@ -58,7 +110,13 @@ def make_test_agent(
 
 def get_agent_color(agent_name):
     colors = Const.COLORS
-    agent_names = ["do-nothing-agent", "agent-mip", "agent-multistep-mip"]
+    agent_names = [
+        "do-nothing-agent",
+        "agent-mip",
+        "agent-multistep-mip",
+        "agent-mip-l2rpn",
+        "agent-mip-q",
+    ]
 
     if agent_name in agent_names:
         color_id = agent_names.index(agent_name)
@@ -188,9 +246,14 @@ class AgentMIPTest(BaseAgentTest):
     """
 
     def __init__(
-        self, case, action_set, reward_class=RewardL2RPN2019, **kwargs,
+        self,
+        case,
+        action_set,
+        name="Agent MIP",
+        reward_class=RewardL2RPN2019,
+        **kwargs,
     ):
-        BaseAgentTest.__init__(self, name="Agent MIP", case=case)
+        BaseAgentTest.__init__(self, name=name, case=case)
 
         if "n_max_line_status_changed" not in kwargs:
             kwargs[
@@ -255,6 +318,7 @@ class AgentMIPTest(BaseAgentTest):
         )
 
         self.model.build_model()
+
         self.result = self.model.solve()
         action = self.grid.convert_mip_to_topology_vector(self.result, observation)[-1]
 
@@ -287,6 +351,7 @@ class AgentMIPTest(BaseAgentTest):
             obj_dn=pyo.value(model_dn.objective),
             mu_max_dn=pyo.value(model_dn.mu_max),
             mu_gen_dn=pyo.value(model_dn.mu_gen),
+            solution_status=self.result["solution_status"],
         )
 
         return action, info
@@ -486,9 +551,14 @@ class AgentMultistepMIPTest(BaseAgentTest):
     """
 
     def __init__(
-        self, case, action_set, reward_class=RewardL2RPN2019, **kwargs,
+        self,
+        case,
+        action_set,
+        name="Agent Multistep MIP",
+        reward_class=RewardL2RPN2019,
+        **kwargs,
     ):
-        BaseAgentTest.__init__(self, name="Agent Multistep MIP", case=case)
+        BaseAgentTest.__init__(self, name=name, case=case)
 
         if "n_max_line_status_changed" not in kwargs:
             kwargs[
@@ -584,6 +654,7 @@ class AgentMultistepMIPTest(BaseAgentTest):
             obj_dn=pyo.value(model_dn.objective),
             mu_max_dn=self.model._access_pyomo_variable(model_dn.mu_max),
             mu_gen_dn=self.model._access_pyomo_variable(model_dn.mu_gen),
+            solution_status=self.result["solution_status"],
         )
 
         return action, info

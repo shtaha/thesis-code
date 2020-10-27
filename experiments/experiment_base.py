@@ -25,7 +25,7 @@ class ExperimentBase:
 
     @staticmethod
     def close_files(files, save_dir, delete_file=True):
-        delete_file = False
+        # delete_file = False
         for file, f in files:
             f.close()
             try:
@@ -70,7 +70,7 @@ class ExperimentMixin:
         ax.set_ylabel("Reward")
         ax.legend()
         fig.suptitle(f"{case_name} - Chronic {chronic_name}")
-
+        fig.tight_layout()
         if save_dir:
             file_name = f"agents-chronic-" + "{:05}".format(chronic_idx) + "-"
             fig.savefig(os.path.join(save_dir, file_name + "rewards"))
@@ -100,7 +100,7 @@ class ExperimentMixin:
         ax.legend()
         ax.set_ylim([0.0, 2.0])
         fig.suptitle(f"{case_name} - Chronic {chronic_name}")
-
+        fig.tight_layout()
         if save_dir:
             file_name = f"agents-chronic-" + "{:05}".format(chronic_idx) + "-"
             fig.savefig(os.path.join(save_dir, file_name + "rhos"))
@@ -131,7 +131,7 @@ class ExperimentMixin:
         ax.set_ylabel(ylabel)
         ax.legend()
         fig.suptitle(f"{case_name} - Chronic {chronic_name}")
-
+        fig.tight_layout()
         if save_dir:
             file_name = f"agents-chronic-" + "{:05}".format(chronic_idx) + "-"
             fig.savefig(os.path.join(save_dir, file_name + dist))

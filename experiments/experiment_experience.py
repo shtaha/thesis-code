@@ -197,22 +197,24 @@ def analyse_actions(actions, case, agent_name, save_dir=None):
             if len(counts.index) > 3:
                 fig, ax = plt.subplots(figsize=Const.FIG_SIZE)
                 ax.set_title(
-                    r"Action target topologies at substation $s_{}$".format("{" + str(sub_id + 1) + "}")
+                    r"Action target topologies at substation $s_{}$".format(
+                        "{" + str(sub_id + 1) + "}"
+                    )
                 )
                 for c, count in enumerate(counts):
                     if all(
-                            [
-                                sub_bus == "1"
-                                for sub_bus in counts.index[c].split(sub_sep_str)
-                            ]
+                        [
+                            sub_bus == "1"
+                            for sub_bus in counts.index[c].split(sub_sep_str)
+                        ]
                     ):
                         color = "tab:red"
                         ref_topo = True
                     elif any(
-                            [
-                                sub_bus == "-1"
-                                for sub_bus in counts.index[c].split(sub_sep_str)
-                            ]
+                        [
+                            sub_bus == "-1"
+                            for sub_bus in counts.index[c].split(sub_sep_str)
+                        ]
                     ):
                         color = "tab:green"
                         ref_topo = False
@@ -344,9 +346,7 @@ def analyse_topologies(obses, case, agent_name, save_dir=None):
     plt.xticks(ticks, labels, rotation=90)
     plt.tight_layout()
     if save_dir:
-        fig.savefig(
-            os.path.join(save_dir, agent_name + f"-topo")
-        )
+        fig.savefig(os.path.join(save_dir, agent_name + f"-topo"))
     plt.close(fig)
 
     for sub_id in range(tc.n_sub):
@@ -379,7 +379,5 @@ def analyse_topologies(obses, case, agent_name, save_dir=None):
             plt.xticks(ticks, labels, rotation=75)
             plt.tight_layout()
             if save_dir:
-                fig.savefig(
-                    os.path.join(save_dir, agent_name + f"-sub-{sub_id}-topo")
-                )
+                fig.savefig(os.path.join(save_dir, agent_name + f"-sub-{sub_id}-topo"))
             plt.close(fig)

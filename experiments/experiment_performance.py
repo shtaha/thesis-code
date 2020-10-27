@@ -312,9 +312,10 @@ class ExperimentPerformance(ExperimentBase):
             )
 
         if len(chronic_indices_all) < 25:
-            ax.scatter(chronic_lengths_all, x_all, marker="|", c="black")
+            # ax.scatter(chronic_lengths_all, x_all, marker="|", c="black")
             ax.set_yticks(x_all)
             ax.set_yticklabels(chronic_names_all)
+
         ax.invert_yaxis()
         ax.legend()
 
@@ -491,6 +492,7 @@ class ExperimentPerformance(ExperimentBase):
             augmentation_info = os.path.join(
                 env.chronics_handler.get_id(), "augmentation.json"
             )
+            ps = None
             if os.path.isfile(augmentation_info):
                 with open(augmentation_info, "r") as f:
                     ps = json.load(f)

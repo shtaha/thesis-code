@@ -10,7 +10,7 @@ from lib.visualizer import Visualizer
 
 visualizer = Visualizer()
 
-save_dir = make_dir(os.path.join(Const.RESULTS_DIR, "switching-final"))
+save_dir = make_dir(os.path.join(Const.RESULTS_DIR, "switching-rew"))
 
 env_dc = True
 verbose = False
@@ -18,11 +18,10 @@ verbose = False
 experiment_switching = ExperimentSwitching()
 
 kwargs = dict(obj_lambda_action=0.0)
+
 for case_name in [
     # "rte_case5_example",
-    # "rte_case5_example_art",
     "l2rpn_2019",
-    "l2rpn_2019_art",
     # "l2rpn_wcci_2020",
 ]:
     if "l2rpn_wcci_2020" in case_name:
@@ -40,7 +39,9 @@ for case_name in [
     case = load_case(case_name, env_parameters=parameters)
 
     for agent_name in [
-        "agent-mip",
+        # "agent-mip",
+        "agent-mip-l2rpn",
+        "agent-mip-q",
         # "agent-multistep-mip",
     ]:
         """

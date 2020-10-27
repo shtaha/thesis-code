@@ -8,14 +8,14 @@ from ..parameters import SinglestepTopologyParameters
 
 class TopologyOptimizationDCOPF(StandardDCOPF):
     def __init__(
-        self,
-        name,
-        grid,
-        grid_backend=None,
-        forecasts=None,
-        params=SinglestepTopologyParameters(),
-        verbose=False,
-        **kwargs,
+            self,
+            name,
+            grid,
+            grid_backend=None,
+            forecasts=None,
+            params=SinglestepTopologyParameters(),
+            verbose=False,
+            **kwargs,
     ):
         super().__init__(
             name=name,
@@ -516,7 +516,7 @@ class TopologyOptimizationDCOPF(StandardDCOPF):
 
             big_m = model.line_b[line_id] * 2 * self.params.delta_max
             return model.line_sub_bus_flow[line_id, sub_bus_or, sub_bus_ex] - (
-                model.line_b[line_id] * (model.delta[bus_or] - model.delta[bus_ex])
+                    model.line_b[line_id] * (model.delta[bus_or] - model.delta[bus_ex])
             ) <= big_m * (2 - x_or - x_ex)
 
         def _constraint_line_flow_upper(model, line_id, sub_bus_or, sub_bus_ex):
@@ -555,7 +555,7 @@ class TopologyOptimizationDCOPF(StandardDCOPF):
 
     def __build_constraint_line_sub_bus_flow_bounds(self):
         def _constraint_line_flow_bounds_or_lower(
-            model, line_id, sub_bus_or, sub_bus_ex
+                model, line_id, sub_bus_or, sub_bus_ex
         ):
             if sub_bus_or == 1:
                 x_or = model.x_line_or_1[line_id]
@@ -563,12 +563,12 @@ class TopologyOptimizationDCOPF(StandardDCOPF):
                 x_or = model.x_line_or_2[line_id]
 
             return (
-                -self.grid.max_rho * model.line_flow_max[line_id] * x_or
-                <= model.line_sub_bus_flow[line_id, sub_bus_or, sub_bus_ex]
+                    -self.grid.max_rho * model.line_flow_max[line_id] * x_or
+                    <= model.line_sub_bus_flow[line_id, sub_bus_or, sub_bus_ex]
             )
 
         def _constraint_line_flow_bounds_or_upper(
-            model, line_id, sub_bus_or, sub_bus_ex
+                model, line_id, sub_bus_or, sub_bus_ex
         ):
             if sub_bus_or == 1:
                 x_or = model.x_line_or_1[line_id]
@@ -576,12 +576,12 @@ class TopologyOptimizationDCOPF(StandardDCOPF):
                 x_or = model.x_line_or_2[line_id]
 
             return (
-                model.line_sub_bus_flow[line_id, sub_bus_or, sub_bus_ex]
-                <= self.grid.max_rho * model.line_flow_max[line_id] * x_or
+                    model.line_sub_bus_flow[line_id, sub_bus_or, sub_bus_ex]
+                    <= self.grid.max_rho * model.line_flow_max[line_id] * x_or
             )
 
         def _constraint_line_flow_bounds_ex_lower(
-            model, line_id, sub_bus_or, sub_bus_ex
+                model, line_id, sub_bus_or, sub_bus_ex
         ):
             if sub_bus_ex == 1:
                 x_ex = model.x_line_ex_1[line_id]
@@ -589,12 +589,12 @@ class TopologyOptimizationDCOPF(StandardDCOPF):
                 x_ex = model.x_line_ex_2[line_id]
 
             return (
-                -self.grid.max_rho * model.line_flow_max[line_id] * x_ex
-                <= model.line_sub_bus_flow[line_id, sub_bus_or, sub_bus_ex]
+                    -self.grid.max_rho * model.line_flow_max[line_id] * x_ex
+                    <= model.line_sub_bus_flow[line_id, sub_bus_or, sub_bus_ex]
             )
 
         def _constraint_line_flow_bounds_ex_upper(
-            model, line_id, sub_bus_or, sub_bus_ex
+                model, line_id, sub_bus_or, sub_bus_ex
         ):
             if sub_bus_ex == 1:
                 x_ex = model.x_line_ex_1[line_id]
@@ -602,8 +602,8 @@ class TopologyOptimizationDCOPF(StandardDCOPF):
                 x_ex = model.x_line_ex_2[line_id]
 
             return (
-                model.line_sub_bus_flow[line_id, sub_bus_or, sub_bus_ex]
-                <= self.grid.max_rho * model.line_flow_max[line_id] * x_ex
+                    model.line_sub_bus_flow[line_id, sub_bus_or, sub_bus_ex]
+                    <= self.grid.max_rho * model.line_flow_max[line_id] * x_ex
             )
 
         self.model.constraint_line_flow_bounds_or_lower = pyo.Constraint(
@@ -635,14 +635,14 @@ class TopologyOptimizationDCOPF(StandardDCOPF):
     def __build_constraint_line_flow_bounds(self):
         def _constraint_line_flow_bounds_upper(model, line_id):
             return model.line_flow[line_id] <= model.line_flow_max[line_id] * (
-                model.mu[line_id] + model.mu_overflow[line_id]
+                    model.mu[line_id] + model.mu_overflow[line_id]
             )
 
         def _constraint_line_flow_bounds_lower(model, line_id):
             return (
-                -model.line_flow_max[line_id]
-                * (model.mu[line_id] + model.mu_overflow[line_id])
-                <= model.line_flow[line_id]
+                    -model.line_flow_max[line_id]
+                    * (model.mu[line_id] + model.mu_overflow[line_id])
+                    <= model.line_flow[line_id]
             )
 
         self.model.constraint_line_flow_bounds_upper = pyo.Constraint(
@@ -659,7 +659,7 @@ class TopologyOptimizationDCOPF(StandardDCOPF):
 
         def _constraint_mu_overflow(model, line_id):
             return (
-                model.mu_overflow[line_id] <= self.grid.max_rho * model.f_line[line_id]
+                    model.mu_overflow[line_id] <= self.grid.max_rho * model.f_line[line_id]
             )
 
         self.model.constraint_mu_not_overflow = pyo.Constraint(
@@ -772,8 +772,8 @@ class TopologyOptimizationDCOPF(StandardDCOPF):
     def _build_constraint_onesided_line_disconnection(self):
         def _constraint_onesided_line_disconnection(model, line_id):
             return (
-                model.x_line_or_1[line_id] + model.x_line_or_2[line_id]
-                == model.x_line_ex_1[line_id] + model.x_line_ex_2[line_id]
+                    model.x_line_or_1[line_id] + model.x_line_or_2[line_id]
+                    == model.x_line_ex_1[line_id] + model.x_line_ex_2[line_id]
             )
 
         self.model.constraint_onesided_line_disconnection = pyo.Constraint(
@@ -866,8 +866,8 @@ class TopologyOptimizationDCOPF(StandardDCOPF):
             n_elements = model.sub_n_elements[sub_id]
 
             return (
-                sum(gens) + sum(loads) + sum(lines_or) + sum(lines_ex)
-                <= n_elements * model.w_bus_activation[bus_id]
+                    sum(gens) + sum(loads) + sum(lines_or) + sum(lines_ex)
+                    <= n_elements * model.w_bus_activation[bus_id]
             )
 
         self.model.constraint_implicit_line_disconnection_lower = pyo.Constraint(
@@ -931,8 +931,8 @@ class TopologyOptimizationDCOPF(StandardDCOPF):
             _, _, gens, loads, _, _ = _get_bus_elements(model, bus_id)
             if len(gens) or len(loads):
                 return (
-                    sum(gens) + sum(loads)
-                    <= (len(gens) + len(loads)) * model.w_bus_balance[bus_id]
+                        sum(gens) + sum(loads)
+                        <= (len(gens) + len(loads)) * model.w_bus_balance[bus_id]
                 )
             else:
                 return pyo.Constraint.Skip
@@ -973,10 +973,10 @@ class TopologyOptimizationDCOPF(StandardDCOPF):
         for line_id in self.line.index:
             if self.params.n_max_timestep_overflow - self.line.t_overflow[line_id] == 1:
                 expr = (
-                    self.model.x_line_or_1[line_id]
-                    + self.model.x_line_or_2[line_id]
-                    + self.model.x_line_ex_1[line_id]
-                    + self.model.x_line_ex_2[line_id]
+                        self.model.x_line_or_1[line_id]
+                        + self.model.x_line_or_2[line_id]
+                        + self.model.x_line_ex_1[line_id]
+                        + self.model.x_line_ex_2[line_id]
                 )
                 self.model.overflow.add(expr == 0)
 
@@ -992,7 +992,7 @@ class TopologyOptimizationDCOPF(StandardDCOPF):
                 self.model.x_line_status_switch[line_id].setub(0)
             else:  # Not under maintenance
                 if (
-                    t_main < 0 or d_main == 0
+                        t_main < 0 or d_main == 0
                 ):  # If no planned maintenance or duration is zero
                     pass
                 else:
@@ -1023,17 +1023,17 @@ class TopologyOptimizationDCOPF(StandardDCOPF):
                 x_line_status = model.x_line_status_switch[line_id]
 
             return (
-                model.x_line_or_1[line_id]
-                + model.x_line_or_2[line_id]
-                + model.x_line_ex_1[line_id]
-                + model.x_line_ex_2[line_id]
-                == 2 * x_line_status
+                    model.x_line_or_1[line_id]
+                    + model.x_line_or_2[line_id]
+                    + model.x_line_ex_1[line_id]
+                    + model.x_line_ex_2[line_id]
+                    == 2 * x_line_status
             )
 
         def _constraint_max_line_status_switch(model):
             return (
-                sum([model.x_line_status_switch[line_id] for line_id in model.line_set])
-                <= self.params.n_max_line_status_changed
+                    sum([model.x_line_status_switch[line_id] for line_id in model.line_set])
+                    <= self.params.n_max_line_status_changed
             )
 
         # Auxiliary constraint for checking line status switch
@@ -1106,12 +1106,12 @@ class TopologyOptimizationDCOPF(StandardDCOPF):
                 x_sub_line_ex_switch,
             ) = _get_substation_switch_terms(model, sub_id)
             return (
-                sum(x_sub_gen_switch)
-                + sum(x_sub_load_switch)
-                + sum(x_sub_line_or_switch)
-                + sum(x_sub_line_ex_switch)
-                <= model.sub_n_elements[sub_id]
-                * model.x_substation_topology_switch[sub_id]
+                    sum(x_sub_gen_switch)
+                    + sum(x_sub_load_switch)
+                    + sum(x_sub_line_or_switch)
+                    + sum(x_sub_line_ex_switch)
+                    <= model.sub_n_elements[sub_id]
+                    * model.x_substation_topology_switch[sub_id]
             )
 
         def _constraint_substation_topology_switch_lower(model, sub_id):
@@ -1123,22 +1123,22 @@ class TopologyOptimizationDCOPF(StandardDCOPF):
             ) = _get_substation_switch_terms(model, sub_id)
 
             return (
-                sum(x_sub_gen_switch)
-                + sum(x_sub_load_switch)
-                + sum(x_sub_line_or_switch)
-                + sum(x_sub_line_ex_switch)
-                >= model.x_substation_topology_switch[sub_id]
+                    sum(x_sub_gen_switch)
+                    + sum(x_sub_load_switch)
+                    + sum(x_sub_line_or_switch)
+                    + sum(x_sub_line_ex_switch)
+                    >= model.x_substation_topology_switch[sub_id]
             )
 
         def _constraint_max_substation_topology_switch(model):
             return (
-                sum(
-                    [
-                        model.x_substation_topology_switch[sub_id]
-                        for sub_id in model.sub_set
-                    ]
-                )
-                <= self.params.n_max_sub_changed
+                    sum(
+                        [
+                            model.x_substation_topology_switch[sub_id]
+                            for sub_id in model.sub_set
+                        ]
+                    )
+                    <= self.params.n_max_sub_changed
             )
 
         # Auxiliary constraint for checking substation topology reconfigurations
@@ -1162,9 +1162,9 @@ class TopologyOptimizationDCOPF(StandardDCOPF):
 
         def _constraint_lin_gen_penalty_lower(model, gen_id):
             return (
-                -model.mu_gen
-                <= (model.gen_p[gen_id] - model.gen_p_ref[gen_id])
-                / model.gen_p_max[gen_id]
+                    -model.mu_gen
+                    <= (model.gen_p[gen_id] - model.gen_p_ref[gen_id])
+                    / model.gen_p_max[gen_id]
             )
 
         self.model.constraint_lin_gen_penalty_lower = pyo.Constraint(
@@ -1195,21 +1195,21 @@ class TopologyOptimizationDCOPF(StandardDCOPF):
 
     def _build_objective(self):
         assert (
-            self.params.obj_gen_cost
-            or self.params.obj_reward_lin
-            or self.params.obj_reward_quad
-            or self.params.obj_reward_max
-            or self.params.obj_lin_gen_penalty
-            or self.params.obj_quad_gen_penalty
+                self.params.obj_gen_cost
+                or self.params.obj_reward_lin
+                or self.params.obj_reward_quad
+                or self.params.obj_reward_max
+                or self.params.obj_lin_gen_penalty
+                or self.params.obj_quad_gen_penalty
         )
 
         assert (
-            not (self.params.obj_reward_lin and self.params.obj_reward_quad)
-            and not (self.params.obj_reward_lin and self.params.obj_reward_max)
-            and not (self.params.obj_reward_max and self.params.obj_reward_quad)
+                not (self.params.obj_reward_lin and self.params.obj_reward_quad)
+                and not (self.params.obj_reward_lin and self.params.obj_reward_max)
+                and not (self.params.obj_reward_max and self.params.obj_reward_quad)
         )  # Only one penalty on margins
         assert not (
-            self.params.obj_lin_gen_penalty and self.params.obj_quad_gen_penalty
+                self.params.obj_lin_gen_penalty and self.params.obj_quad_gen_penalty
         )  # Only one penalty on generators
 
         """
@@ -1237,12 +1237,11 @@ class TopologyOptimizationDCOPF(StandardDCOPF):
 
         # Quadratic
         def _objective_quad_line_margins(model):
-            return sum(
-                [
-                    model.line_flow[line_id] ** 2 / model.line_flow_max[line_id] ** 2
-                    for line_id in model.line_set
-                ]
-            ) / len(model.line_set)
+            penalty = 0.0
+            for line_id in model.line_set:
+                penalty = penalty + model.f_line[line_id]
+                penalty = penalty + (model.line_flow[line_id] ** 2 / model.line_flow_max[line_id] ** 2)
+            return penalty / len(model.line_set)
 
         def _objective_max_line_margins(model):
             return model.mu_max
@@ -1260,8 +1259,8 @@ class TopologyOptimizationDCOPF(StandardDCOPF):
             penalty = sum(
                 [
                     (
-                        (model.gen_p[gen_id] - model.gen_p_ref[gen_id])
-                        / (model.gen_p_max[gen_id])
+                            (model.gen_p[gen_id] - model.gen_p_ref[gen_id])
+                            / (model.gen_p_max[gen_id])
                     )
                     ** 2
                     for gen_id in model.gen_set
@@ -1328,6 +1327,9 @@ class TopologyOptimizationDCOPF(StandardDCOPF):
 
         # Solution status
         solution_status = self.solver_status["Solver"][0]["Termination condition"]
+        if solution_status == "infeasibleOrUnbounded":
+            solution_status = "infeasible"
+
         if verbose and solution_status == "infeasible":
             log_infeasible_constraints(
                 self.model, tol=self.params.tol, log_expression=False
