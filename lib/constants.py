@@ -18,3 +18,7 @@ class Constants(object):
     OUT_FORMAT = "pdf"
 
     LW = 0.5
+    AXIS_FONT_SIZE = 22
+    TICKS_FONT_SIZE = 18
+    LEGEND_FONT_SIZE = 16
+    FONT_SIZE = 18
