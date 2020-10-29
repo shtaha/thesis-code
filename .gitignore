@@ -3,7 +3,6 @@ venv/
 __pycache__/
 .ipynb_checkpoints/
 
-helpers/
 results/
 good-results/
 l2rpn_wcci/
