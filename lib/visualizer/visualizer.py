@@ -23,11 +23,11 @@ class Visualizer:
                     ]
                 ),
                 "font.size": Const.FONT_SIZE,
-                'legend.fontsize': Const.LEGEND_FONT_SIZE,
-                'legend.title_fontsize': Const.LEGEND_FONT_SIZE,
-                'axes.labelsize': Const.AXIS_FONT_SIZE,
-                'xtick.labelsize': Const.TICKS_FONT_SIZE,
-                'ytick.labelsize': Const.TICKS_FONT_SIZE,
+                "legend.fontsize": Const.LEGEND_FONT_SIZE,
+                "legend.title_fontsize": Const.LEGEND_FONT_SIZE,
+                "axes.labelsize": Const.AXIS_FONT_SIZE,
+                "xtick.labelsize": Const.TICKS_FONT_SIZE,
+                "ytick.labelsize": Const.TICKS_FONT_SIZE,
             }
         )
         mpl.rcParams["savefig.format"] = Const.OUT_FORMAT
@@ -54,7 +54,7 @@ def format_matrix(matrix, spacing=None, decimals=4):
                     line = line + pattern.format(int(cell))
                 else:
                     pattern = (
-                            "{:>" + str(int(spacing)) + "." + str(int(decimals)) + "f}"
+                        "{:>" + str(int(spacing)) + "." + str(int(decimals)) + "f}"
                     )
                     line = line + pattern.format(cell)
             else:
@@ -96,6 +96,6 @@ def pprint(*args, shift=40):
         raise ValueError("At least two arguments for printing.")
 
     format_str = (
-            "{:<" + str(shift) + "}" + "\t".join(["{}" for _ in range(len(args) - 1)])
+        "{:<" + str(shift) + "}" + "\t".join(["{}" for _ in range(len(args) - 1)])
     )
     print(format_str.format(*args))

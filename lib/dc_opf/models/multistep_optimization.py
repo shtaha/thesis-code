@@ -1743,7 +1743,10 @@ class MultistepTopologyDCOPF(StandardDCOPF):
             for t in model.time_set:
                 for line_id in model.line_set:
                     total_cost = total_cost + model.f_line[t, line_id]
-                    total_cost = total_cost + (model.line_flow[t, line_id] ** 2 / model.line_flow_max[line_id] ** 2)
+                    total_cost = total_cost + (
+                        model.line_flow[t, line_id] ** 2
+                        / model.line_flow_max[line_id] ** 2
+                    )
 
             return total_cost / len(model.time_set) / len(model.line_set)
 

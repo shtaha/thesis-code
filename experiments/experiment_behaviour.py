@@ -54,7 +54,7 @@ class ExperimentBehaviour(ExperimentBase):
         )
 
     @staticmethod
-    def aggregate_by_agent(agent, save_dir, delete_file=True):
+    def aggregate_by_agent(agent, save_dir, delete_file=False):
         merger = PdfFileMerger()
         agent_name = agent.name.replace(" ", "-").lower()
         agent_files = []
@@ -200,6 +200,7 @@ class ExperimentBehaviour(ExperimentBase):
     def _plot_and_save(
         measurements, env, title=None, save_dir=None, prefix=None,
     ):
+        Const.LW = 1
         colors = Const.COLORS
         t = measurements["t"]
 
@@ -209,7 +210,7 @@ class ExperimentBehaviour(ExperimentBase):
         ax.set_xlabel("Time step t")
         ax.set_ylabel("Reward")
         ax.legend()
-        fig.suptitle(title)
+        # fig.suptitle(title)
         fig.tight_layout()
         if save_dir:
             file_name = "rewards"
@@ -240,13 +241,13 @@ class ExperimentBehaviour(ExperimentBase):
         ax.plot(t, measurements["env-rho"], label="Rho - ENV")
         ax.plot(t, measurements["rho"], label="Rho - EST")
         ax.plot(
-            t, np.ones_like(t), c="tab:red", linestyle="-", linewidth=2,
+            t, np.ones_like(t), c="tab:red", linestyle="-", linewidth=Const.LW,
         )
         ax.set_xlabel("Time step t")
-        ax.set_ylabel("Maximum relative power flow - Rho")
+        ax.set_ylabel(r"$\rho^\mathrm{max}$")
         ax.set_ylim((0.0, 2.0))
         ax.legend()
-        fig.suptitle(title)
+        # fig.suptitle(title)
         fig.tight_layout()
         if save_dir:
             file_name = "rho"
@@ -265,7 +266,7 @@ class ExperimentBehaviour(ExperimentBase):
                 label=f"Gen-{gen_id}",
                 c=color,
                 linestyle="-",
-                linewidth=1,
+                linewidth=Const.LW,
             )
             ax.plot(
                 t,
@@ -273,7 +274,7 @@ class ExperimentBehaviour(ExperimentBase):
                 label=f"Gen-{gen_id} - ENV",
                 c=color,
                 linestyle="--",
-                linewidth=1,
+                linewidth=Const.LW,
             )
 
         ax.set_xlabel("Time step t")
@@ -299,7 +300,7 @@ class ExperimentBehaviour(ExperimentBase):
                 label=f"Gen-{gen_id} - ENV",
                 c=color,
                 linestyle="--",
-                linewidth=1,
+                linewidth=Const.LW,
             )
 
         ax.set_xlabel("Time step t")
@@ -325,7 +326,7 @@ class ExperimentBehaviour(ExperimentBase):
                 label=f"Gen-{gen_id} - ENV",
                 c=color,
                 linestyle="--",
-                linewidth=1,
+                linewidth=Const.LW,
             )
 
         ax.set_xlabel("Time step t")
@@ -351,7 +352,7 @@ class ExperimentBehaviour(ExperimentBase):
                 label=f"Line-{line_id}",
                 c=color,
                 linestyle="-",
-                linewidth=0.5,
+                linewidth=Const.LW,
             )
             ax.plot(
                 t,
@@ -359,7 +360,7 @@ class ExperimentBehaviour(ExperimentBase):
                 label=f"Line-{line_id} - ENV",
                 c=color,
                 linestyle="--",
-                linewidth=0.5,
+                linewidth=Const.LW,
             )
 
         ax.set_xlabel("Time step t")
@@ -383,7 +384,7 @@ class ExperimentBehaviour(ExperimentBase):
                 label=f"Line-{line_id}",
                 c=color,
                 linestyle="-",
-                linewidth=0.5,
+                linewidth=Const.LW,
             )
             ax.plot(
                 t,
@@ -391,7 +392,7 @@ class ExperimentBehaviour(ExperimentBase):
                 label=f"Line-{line_id} - ENV",
                 c=color,
                 linestyle="--",
-                linewidth=0.5,
+                linewidth=Const.LW,
             )
 
         ax.set_xlabel("Time step t")
@@ -412,14 +413,14 @@ class ExperimentBehaviour(ExperimentBase):
             measurements["env-gens-p"],
             label="Total production",
             linestyle="--",
-            linewidth=1,
+            linewidth=Const.LW,
         )
         ax.plot(
             t,
             measurements["env-loads-p"],
             label="Total demand",
             linestyle="--",
-            linewidth=1,
+            linewidth=Const.LW,
         )
         ax.set_xlabel("Time step t")
         ax.set_ylabel("P [p.u.]")

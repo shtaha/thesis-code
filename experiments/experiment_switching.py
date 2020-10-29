@@ -14,7 +14,7 @@ from .experiment_base import ExperimentBase, ExperimentMixin
 
 class ExperimentSwitching(ExperimentBase, ExperimentMixin):
     def analyse(
-        self, case, agent, n_chronics=2, n_steps=500, save_dir=None, verbose=False
+        self, case, agent, n_chronics=1, n_steps=500, save_dir=None, verbose=False
     ):
         env = case.env
 
@@ -74,9 +74,9 @@ class ExperimentSwitching(ExperimentBase, ExperimentMixin):
             )
 
             for dist, ylabel in [
-                ("distances", "Unitary action distance to reference topology"),
-                ("distances_status", "Line status distance to reference topology"),
-                ("distances_sub", "Substation distance distance to reference topology"),
+                ("distances", r"$d(\tau, \tau^\mathrm{ref})$"),
+                ("distances_status", r"$d_\mathcal{P}(\tau, \tau^\mathrm{ref})$"),
+                ("distances_sub", r"$d_\mathcal{S}(\tau, \tau^\mathrm{ref})$"),
             ]:
                 self._plot_distances(
                     chronic_data,
@@ -212,31 +212,33 @@ class ExperimentSwitching(ExperimentBase, ExperimentMixin):
                 plt.setp(stemlines, linewidth=0.5)
 
                 rel_gain = np.divide(obj, obj_dn + 1e-9)
+
+                # action_mask = [True if action else False for action in actions]
+                # rel_gain = rel_gain[action_mask]
                 ax_rel.hist(
-                    rel_gain, lw=1.0, bins=25, histtype="step", label=agent_name
+                    rel_gain, lw=1.0, bins=25, histtype="step", label=agent_name, density=True,
                 )
 
-                for i in range(len(t)):
-                    if isinstance(actions[i], int):
-                        action_id = actions[i]
-                        if action_id != 0:
-                            ax_gain.text(t[i], gain[i], str(action_id), fontsize=2)
+                # for i in range(len(t)):
+                #     if isinstance(actions[i], int):
+                #         action_id = actions[i]
+                #         if action_id != 0:
+                #             ax_gain.text(t[i], gain[i], str(action_id), fontsize=2)
 
         ax_obj.set_xlabel("Time step t")
-        ax_obj.set_ylabel("Objective value")
+        ax_obj.set_ylabel("$\mathrm{obj}$")
         ax_obj.legend()
         ax_obj.set_ylim(bottom=0.0)
-        # fig_obj.suptitle(f"{case_name} - Chronic {chronic_name}")
 
         ax_gain.set_xlabel("Time step t")
         ax_gain.set_ylabel("Gain of selected action vs. do-nothing action")
         ax_gain.legend()
-        # fig_gain.suptitle(f"{case_name} - Chronic {chronic_name}")
 
-        ax_rel.set_xlabel("Relative objective value")
+        ax_rel.set_xlabel(r"$\mathrm{obj}/\mathrm{obj}_{DN}$")
         ax_rel.set_ylabel("Count")
+        ax_rel.set_ylabel("PDF")
+        # ax_rel.set_yscale('log')
         ax_rel.legend()
-        # fig_rel.suptitle(f"{case_name} - Chronic {chronic_name}")
 
         if save_dir:
             file_name = f"agents-chronic-" + "{:05}".format(chronic_idx) + "-"
@@ -365,7 +367,6 @@ class ExperimentSwitching(ExperimentBase, ExperimentMixin):
             ax_frac.set_yticks(np.arange(0, 111, 10))
             ax_frac.set_yticklabels([f"{tick} \\%" for tick in np.arange(0, 111, 10)])
             ax_frac.legend()
-            # fig_frac.suptitle(f"{case_name} - Chronic {chronic_name}")
 
             if save_dir:
                 agent_name_ = agent_name.replace(" ", "-").lower()
@@ -379,7 +380,7 @@ class ExperimentSwitching(ExperimentBase, ExperimentMixin):
             plt.close(fig_frac)
 
     @staticmethod
-    def _runner(case, env, agent, n_chronics=2, n_steps=500, done_chronic_indices=()):
+    def _runner(case, env, agent, n_chronics, n_steps, done_chronic_indices=()):
         chronics_dir, chronics, chronics_sorted = get_sorted_chronics(env=env)
         pprint("Chronics:", chronics_dir)
 

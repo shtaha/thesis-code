@@ -14,11 +14,11 @@ class Constants(object):
 
     MATPLOTLIB_STYLE = "seaborn"
     COLORS = list(mcolors.TABLEAU_COLORS)
-    FIG_SIZE = (8, 4)
+    FIG_SIZE = (8, 6)
     OUT_FORMAT = "pdf"
 
     LW = 0.5
-    AXIS_FONT_SIZE = 22
-    TICKS_FONT_SIZE = 18
+    AXIS_FONT_SIZE = 18
+    TICKS_FONT_SIZE = 16
     LEGEND_FONT_SIZE = 16
-    FONT_SIZE = 18
+    FONT_SIZE = 16

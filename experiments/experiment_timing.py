@@ -13,7 +13,7 @@ from .experiment_base import ExperimentBase
 
 class ExperimentDCOPFTiming(ExperimentBase):
     def compare_by_solver_and_parts(
-            self, case, agent, save_dir, solver_names, x_right=None, **kwargs,
+        self, case, agent, save_dir, solver_names, x_left=None, x_right=None, **kwargs,
     ):
         file_name = agent.name.replace(" ", "-").lower() + "-solvers"
         case_name = self._get_case_name(case)
@@ -37,6 +37,7 @@ class ExperimentDCOPFTiming(ExperimentBase):
             times=[data_dict[param]["solve"] for param in data_dict],
             labels=[param.capitalize() for param in data_dict],
             title=f"{case_name}, {agent.name} - MIP solver comparison",
+            x_left=x_left,
             x_right=x_right,
             legend_title="Solver",
             save_path=os.path.join(save_dir, file_name),
@@ -47,6 +48,7 @@ class ExperimentDCOPFTiming(ExperimentBase):
             times=[data_parts[part] for part in ["build", "solve"]],
             labels=[part.capitalize() for part in ["build", "solve"]],
             title=f"{case_name}, {agent.name} - Step parts comparison",
+            x_left=0,
             x_right=x_right,
             legend_title="Part",
             save_path=os.path.join(
@@ -58,7 +60,7 @@ class ExperimentDCOPFTiming(ExperimentBase):
             data_dict=data_dict, save_path=os.path.join(save_dir, file_name + ".csv")
         )
 
-    def compare_by_tolerance(self, case, agent, save_dir, tols, x_right=None, **kwargs):
+    def compare_by_tolerance(self, case, agent, save_dir, tols, x_left=None, x_right=None, **kwargs):
         file_name = agent.name.replace(" ", "-").lower() + "-tolerances"
         case_name = self._get_case_name(case)
 
@@ -81,6 +83,7 @@ class ExperimentDCOPFTiming(ExperimentBase):
             times=[data_dict[param]["solve"] for param in data_dict],
             labels=[param for param in data_dict],
             title=f"{case_name}, {agent.name} - Duality gap tolerance comparison",
+            x_left=x_left,
             x_right=x_right,
             legend_title="Tolerance",
             save_path=os.path.join(save_dir, file_name),
@@ -90,7 +93,9 @@ class ExperimentDCOPFTiming(ExperimentBase):
             data_dict=data_dict, save_path=os.path.join(save_dir, file_name + ".csv")
         )
 
-    def compare_by_delta_max(self, case, agent, save_dir, deltas, x_right=None, **kwargs):
+    def compare_by_delta_max(
+        self, case, agent, save_dir, deltas, x_left=None, x_right=None, **kwargs
+    ):
         file_name = agent.name.replace(" ", "-").lower() + "-deltas"
         case_name = self._get_case_name(case)
 
@@ -113,6 +118,7 @@ class ExperimentDCOPFTiming(ExperimentBase):
             times=[data_dict[param]["solve"] for param in data_dict],
             labels=[param for param in data_dict],
             title=f"{case_name}, {agent.name} - Bounds on bus voltage angles",
+            x_left=x_left,
             x_right=x_right,
             legend_title=r"$\delta^{\mathrm{max}}$",
             save_path=os.path.join(save_dir, file_name),
@@ -123,7 +129,7 @@ class ExperimentDCOPFTiming(ExperimentBase):
         )
 
     def compare_by_switching_limits(
-            self, case, agent, save_dir, switch_limits, x_right=None, **kwargs,
+        self, case, agent, save_dir, switch_limits, x_left=None, x_right=None, **kwargs,
     ):
         file_name = agent.name.replace(" ", "-").lower() + "-limits"
         case_name = self._get_case_name(case)
@@ -155,6 +161,7 @@ class ExperimentDCOPFTiming(ExperimentBase):
             times=[data_dict[param]["solve"] for param in data_dict],
             labels=[param for param in data_dict],
             title=f"{case_name}, {agent.name} - Maximum switching limit comparison",
+            x_left=x_left,
             x_right=x_right,
             legend_title=r"$n_\mathcal{P}$-$n_\mathcal{S}$",
             save_path=os.path.join(save_dir, file_name),
@@ -165,7 +172,7 @@ class ExperimentDCOPFTiming(ExperimentBase):
         )
 
     def compare_by_constraint_activations(
-            self, case, agent, save_dir, constraint_activations, x_right=None, **kwargs,
+        self, case, agent, save_dir, constraint_activations, x_left=None, x_right=None, **kwargs,
     ):
         file_name = agent.name.replace(" ", "-").lower() + "-activations"
         case_name = self._get_case_name(case)
@@ -189,6 +196,7 @@ class ExperimentDCOPFTiming(ExperimentBase):
             times=[data_dict[param]["solve"] for param in data_dict],
             labels=[param for param in data_dict],
             title=f"{case_name}, {agent.name} - Constraint activations comparison",
+            x_left=x_left,
             x_right=x_right,
             legend_title="Constraint deactivation",
             save_path=os.path.join(save_dir, file_name),
@@ -199,7 +207,7 @@ class ExperimentDCOPFTiming(ExperimentBase):
         )
 
     def compare_by_objective(
-            self, case, agent, save_dir, objectives, x_right=None, **kwargs,
+        self, case, agent, save_dir, objectives, x_left=None, x_right=None, **kwargs,
     ):
         file_name = agent.name.replace(" ", "-").lower() + "-objectives"
         case_name = self._get_case_name(case)
@@ -223,6 +231,7 @@ class ExperimentDCOPFTiming(ExperimentBase):
             times=[data_dict[param]["solve"] for param in data_dict],
             labels=[param for param in data_dict],
             title=f"{case_name}, {agent.name} - Objective function comparison",
+            x_left=x_left,
             x_right=x_right,
             legend_title="Objective modification",
             save_path=os.path.join(save_dir, file_name),
@@ -233,7 +242,7 @@ class ExperimentDCOPFTiming(ExperimentBase):
         )
 
     def compare_by_warmstart(
-            self, case, agent, save_dir, x_right=None, **kwargs,
+        self, case, agent, save_dir, x_left=None, x_right=None, **kwargs,
     ):
         file_name = agent.name.replace(" ", "-").lower() + "-warmstart"
         case_name = self._get_case_name(case)
@@ -257,6 +266,7 @@ class ExperimentDCOPFTiming(ExperimentBase):
             times=[data_dict[param]["solve"] for param in data_dict],
             labels=[param for param in data_dict],
             title=f"{case_name}, {agent.name} - Solver warm start comparison",
+            x_left=x_left,
             x_right=x_right,
             legend_title="Warm start",
             save_path=os.path.join(save_dir, file_name),
@@ -266,7 +276,9 @@ class ExperimentDCOPFTiming(ExperimentBase):
             data_dict=data_dict, save_path=os.path.join(save_dir, file_name + ".csv")
         )
 
-    def compare_by_lambda_gen(self, case, agent, save_dir, lambdas, x_right=None, **kwargs):
+    def compare_by_lambda_gen(
+        self, case, agent, save_dir, lambdas, x_left=None, x_right=None, **kwargs
+    ):
         file_name = agent.name.replace(" ", "-").lower() + "-lambdas"
         case_name = self._get_case_name(case)
 
@@ -289,6 +301,7 @@ class ExperimentDCOPFTiming(ExperimentBase):
             times=[data_dict[param]["solve"] for param in data_dict],
             labels=[param for param in data_dict],
             title=f"{case_name}, {agent.name} - Generator penalty scaling comparison",
+            x_left=x_left,
             x_right=x_right,
             legend_title="Regularization parameter",
             save_path=os.path.join(save_dir, file_name),
@@ -300,7 +313,7 @@ class ExperimentDCOPFTiming(ExperimentBase):
 
     @staticmethod
     def _runner_timing(
-            env, agent, n_timings=100, verbose=False, **kwargs,
+        env, agent, n_timings=100, verbose=False, **kwargs,
     ):
         np.random.seed(0)
         env.seed(0)
@@ -329,7 +342,7 @@ class ExperimentDCOPFTiming(ExperimentBase):
 
     @staticmethod
     def _plot_and_save(
-            times, labels, title=None, x_right=None, legend_title=None, save_path=None,
+        times, labels, title=None, x_left=None, x_right=None, legend_title=None, save_path=None,
     ):
         colors = Const.COLORS
 
@@ -338,17 +351,20 @@ class ExperimentDCOPFTiming(ExperimentBase):
         for i, (time, label) in enumerate(zip(times, labels)):
             color = colors[i % len(colors)]
 
-            sns.kdeplot(
-                time, label=label, ax=ax, color=color
-            )
+            sns.kdeplot(time, label=label, ax=ax, color=color)
 
         ax.set_xlabel("Time [s]")
         ax.set_ylabel("PDF")
 
+        # x_span = ax.get_xlim()[1] - ax.get_xlim()[0]
+        # x_left = ax.get_xlim()[0]
+        # if x_left < - 0.05 * x_span:
+        #     x_left = -0.05 * x_span
+
         if x_right and ax.get_xlim()[-1] > x_right:
-            ax.set_xlim(left=0, right=x_right)
+            ax.set_xlim(left=x_left, right=x_right)
         else:
-            ax.set_xlim(left=0)
+            ax.set_xlim(left=x_left)
 
         ax.legend(title=legend_title)
         fig.tight_layout()

@@ -10,18 +10,24 @@ from lib.visualizer import Visualizer
 
 visualizer = Visualizer()
 
-save_dir = make_dir(os.path.join(Const.RESULTS_DIR, "behaviour-rew"))
+# save_dir = make_dir(os.path.join(Const.RESULTS_DIR, "behaviour-1"))
+# kwargs = dict(obj_lambda_gen=1.0)
+
+# save_dir = make_dir(os.path.join(Const.RESULTS_DIR, "behaviour-10"))
+# kwargs = dict(obj_lambda_gen=10.0)
+
+save_dir = make_dir(os.path.join(Const.RESULTS_DIR, "behaviour"))
+kwargs = {}
 
 env_dc = True
 verbose = False
 
 experiment_behaviour = ExperimentBehaviour()
-kwargs = dict()
 
 for case_name in [
-    "rte_case5_example",
-    "l2rpn_2019",
-    "l2rpn_wcci_2020",
+    # "rte_case5_example",
+    "l2rpn_2019_art",
+    # "l2rpn_wcci_2020",
 ]:
 
     if "l2rpn_wcci_2020" in case_name:
@@ -43,8 +49,8 @@ for case_name in [
 
     for agent_name in [
         "agent-mip",
-        "agent-mip-l2rpn",
-        "agent-mip-q",
+        # "agent-mip-l2rpn",
+        # "agent-mip-q",
         # "agent-multistep-mip",
     ]:
         """

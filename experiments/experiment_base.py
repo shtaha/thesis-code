@@ -63,7 +63,7 @@ class ExperimentMixin:
                 rewards = chronic_data[agent_name].loc[chronic_idx]["rewards"]
 
                 ax.plot(
-                    t, rewards, linewidth=1, label=agent_name,
+                    t, rewards, linewidth=Const.LW, label=agent_name,
                 )
 
         ax.set_xlabel("Time step t")
@@ -92,7 +92,7 @@ class ExperimentMixin:
                     rho = np.array(chronic["rhos"])
 
                 ax.plot(
-                    t, rho, linewidth=1, label=agent_name,
+                    t, rho, linewidth=Const.LW, label=agent_name,
                 )
 
         ax.set_xlabel("Time step t")
@@ -118,7 +118,7 @@ class ExperimentMixin:
                 actions = chronic_data[agent_name].loc[chronic_idx]["actions"]
 
                 ax.plot(
-                    t, distances, linewidth=0.5, label=agent_name,
+                    t, distances, linewidth=Const.LW, label=agent_name,
                 )
 
                 # for i in range(len(t)):
@@ -130,7 +130,12 @@ class ExperimentMixin:
         ax.set_xlabel("Time step t")
         ax.set_ylabel(ylabel)
         ax.legend()
-        fig.suptitle(f"{case_name} - Chronic {chronic_name}")
+        # fig.suptitle(f"{case_name} - Chronic {chronic_name}")
+
+        x_right = 500
+        if ax.get_xlim()[-1] > x_right:
+            ax.set_xlim(right=x_right)
+
         fig.tight_layout()
         if save_dir:
             file_name = f"agents-chronic-" + "{:05}".format(chronic_idx) + "-"

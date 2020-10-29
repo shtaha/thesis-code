@@ -10,17 +10,20 @@ from lib.visualizer import Visualizer
 
 visualizer = Visualizer()
 
-save_dir = make_dir(os.path.join(Const.RESULTS_DIR, "switching-rew"))
+# save_dir = make_dir(os.path.join(Const.RESULTS_DIR, "switching-final-p"))
+# kwargs = {}
+
+save_dir = make_dir(os.path.join(Const.RESULTS_DIR, "switching-np"))
+kwargs = dict(obj_lambda_action=0.00)
 
 env_dc = True
 verbose = False
 
 experiment_switching = ExperimentSwitching()
 
-kwargs = dict(obj_lambda_action=0.0)
-
 for case_name in [
     # "rte_case5_example",
+    # "l2rpn_2019_art",
     "l2rpn_2019",
     # "l2rpn_wcci_2020",
 ]:
@@ -28,6 +31,7 @@ for case_name in [
         n_steps = 100
     else:
         n_steps = 1000
+        # n_steps = 10
 
     case_save_dir = make_dir(os.path.join(save_dir, f"{case_name}-{env_pf(env_dc)}"))
     create_logger(logger_name=f"logger", save_dir=case_save_dir)
@@ -39,9 +43,9 @@ for case_name in [
     case = load_case(case_name, env_parameters=parameters)
 
     for agent_name in [
-        # "agent-mip",
-        "agent-mip-l2rpn",
-        "agent-mip-q",
+        "agent-mip",
+        # "agent-mip-l2rpn",
+        # "agent-mip-q",
         # "agent-multistep-mip",
     ]:
         """
@@ -60,4 +64,4 @@ for case_name in [
             verbose=verbose,
         )
 
-    experiment_switching.compare_agents(case, save_dir=case_save_dir)
+    experiment_switching.compare_agents(case, save_dir=case_save_dir, delete_file=False)

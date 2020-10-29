@@ -76,7 +76,7 @@ for case_name in [
             case=case,
             agent=agent,
             do_chronics=do_chronics,
-            n_chronics=-1,
+            n_chronics=5,
             n_steps=-1,
             verbose=verbose,
         )
