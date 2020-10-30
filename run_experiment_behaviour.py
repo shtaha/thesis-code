@@ -10,64 +10,63 @@ from lib.visualizer import Visualizer
 
 visualizer = Visualizer()
 
-# save_dir = make_dir(os.path.join(Const.RESULTS_DIR, "behaviour-1"))
-# kwargs = dict(obj_lambda_gen=1.0)
-
-# save_dir = make_dir(os.path.join(Const.RESULTS_DIR, "behaviour-10"))
-# kwargs = dict(obj_lambda_gen=10.0)
-
-save_dir = make_dir(os.path.join(Const.RESULTS_DIR, "behaviour"))
-kwargs = {}
-
 env_dc = True
 verbose = False
 
-experiment_behaviour = ExperimentBehaviour()
-
-for case_name in [
-    # "rte_case5_example",
-    "l2rpn_2019_art",
-    # "l2rpn_wcci_2020",
-]:
-
-    if "l2rpn_wcci_2020" in case_name:
-        n_steps = 100
-        continue
-    elif "l2rpn_2019" in case_name:
-        n_steps = 200
+for obj_lambda_gen in [1, 3, 5, 10, 100]:
+    if obj_lambda_gen == 100:
+        save_dir = make_dir(os.path.join(Const.RESULTS_DIR, "behaviour"))
+        kwargs = {}
     else:
-        n_steps = 500
+        save_dir = make_dir(os.path.join(Const.RESULTS_DIR, f"behaviour-{obj_lambda_gen}"))
+        kwargs = dict(obj_lambda_gen=obj_lambda_gen)
 
-    case_save_dir = make_dir(os.path.join(save_dir, f"{case_name}-{env_pf(env_dc)}"))
-    create_logger(logger_name=f"logger", save_dir=case_save_dir)
+    experiment_behaviour = ExperimentBehaviour()
 
-    """
-        Initialize environment.
-    """
-    parameters = CaseParameters(case_name=case_name, env_dc=env_dc)
-    case = load_case(case_name, env_parameters=parameters)
-
-    for agent_name in [
-        "agent-mip",
-        # "agent-mip-l2rpn",
-        # "agent-mip-q",
-        # "agent-multistep-mip",
+    for case_name in [
+        # "rte_case5_example",
+        "l2rpn_2019_art",
+        # "l2rpn_wcci_2020",
     ]:
-        """
-            Initialize agent.
-        """
-        agent = make_test_agent(agent_name, case, **kwargs)
+
+        if "l2rpn_wcci_2020" in case_name:
+            n_steps = 100
+            continue
+        elif "l2rpn_2019" in case_name:
+            n_steps = 200
+        else:
+            n_steps = 500
+
+        case_save_dir = make_dir(os.path.join(save_dir, f"{case_name}-{env_pf(env_dc)}"))
+        create_logger(logger_name=f"logger", save_dir=case_save_dir)
 
         """
-            Experiments.
+            Initialize environment.
         """
-        experiment_behaviour.evaluate_performance(
-            case=case,
-            agent=agent,
-            save_dir=case_save_dir,
-            n_steps=n_steps,
-            verbose=verbose,
-        )
-        experiment_behaviour.aggregate_by_agent(agent=agent, save_dir=case_save_dir)
+        parameters = CaseParameters(case_name=case_name, env_dc=env_dc)
+        case = load_case(case_name, env_parameters=parameters)
 
-    experiment_behaviour.compare_agents(save_dir=case_save_dir)
+        for agent_name in [
+            "agent-mip",
+            # "agent-mip-l2rpn",
+            # "agent-mip-q",
+            # "agent-multistep-mip",
+        ]:
+            """
+                Initialize agent.
+            """
+            agent = make_test_agent(agent_name, case, **kwargs)
+
+            """
+                Experiments.
+            """
+            experiment_behaviour.evaluate_performance(
+                case=case,
+                agent=agent,
+                save_dir=case_save_dir,
+                n_steps=n_steps,
+                verbose=verbose,
+            )
+            experiment_behaviour.aggregate_by_agent(agent=agent, save_dir=case_save_dir)
+
+        experiment_behaviour.compare_agents(save_dir=case_save_dir)

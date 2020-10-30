@@ -136,6 +136,8 @@ class ExperimentMixin:
         if ax.get_xlim()[-1] > x_right:
             ax.set_xlim(right=x_right)
 
+        ax.set_ylim(bottom=0)
+
         fig.tight_layout()
         if save_dir:
             file_name = f"agents-chronic-" + "{:05}".format(chronic_idx) + "-"

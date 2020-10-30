@@ -92,9 +92,9 @@ class ExperimentSwitching(ExperimentBase, ExperimentMixin):
                 chronic_data, case_name, chronic_idx, chronic_name, save_dir
             )
 
-            self._plot_objective_parts(
-                chronic_data, case_name, chronic_idx, chronic_name, save_dir
-            )
+            # self._plot_objective_parts(
+            #     chronic_data, case_name, chronic_idx, chronic_name, save_dir
+            # )
 
         self.aggregate_by_chronics(save_dir, delete_file=delete_file)
 
@@ -235,7 +235,7 @@ class ExperimentSwitching(ExperimentBase, ExperimentMixin):
         ax_gain.legend()
 
         ax_rel.set_xlabel(r"$\mathrm{obj}/\mathrm{obj}_{DN}$")
-        ax_rel.set_ylabel("Count")
+        # ax_rel.set_ylabel("Count")
         ax_rel.set_ylabel("PDF")
         # ax_rel.set_yscale('log')
         ax_rel.legend()

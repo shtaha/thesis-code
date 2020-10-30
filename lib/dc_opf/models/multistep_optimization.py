@@ -1666,7 +1666,7 @@ class MultistepTopologyDCOPF(StandardDCOPF):
 
     def _build_constraint_do_nothing_action(self):
         def _constraint_do_nothing_action(model):
-            t = model.time_set[0]
+            t = model.time_set[1]
 
             line_switch = sum(
                 [model.x_line_status_switch[t, line_id] for line_id in model.line_set]

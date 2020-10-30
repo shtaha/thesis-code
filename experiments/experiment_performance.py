@@ -63,9 +63,9 @@ class ExperimentPerformance(ExperimentBase):
             self._plot_line_loading(chronic_data, case_name, chronic_idx, save_dir)
 
             for dist, ylabel in [
-                ("distances", "Unitary action distance to reference topology"),
-                ("distances_line", "Line status distance to reference topology"),
-                ("distances_sub", "Substation distance distance to reference topology"),
+                ("distances", r"$d(\tau, \tau^\mathrm{ref})$"),
+                ("distances_line", r"$d_\mathcal{P}(\tau, \tau^\mathrm{ref})$"),
+                ("distances_sub", r"$d_\mathcal{S}(\tau, \tau^\mathrm{ref})$"),
             ]:
                 self._plot_distances(
                     chronic_data, dist, ylabel, case_name, chronic_idx, save_dir,
@@ -78,6 +78,8 @@ class ExperimentPerformance(ExperimentBase):
         self._plot_loading_distribution(chronic_data, case_name, save_dir)
 
         self.aggregate_by_chronics(save_dir, delete_file=delete_file)
+
+        return chronic_data
 
     def aggregate_by_chronics(self, save_dir, delete_file=True):
         for plot_name in [
@@ -168,7 +170,7 @@ class ExperimentPerformance(ExperimentBase):
         ax.set_xlabel("Time step t")
         ax.set_ylabel("Reward")
         ax.legend()
-        fig.suptitle(f"{case_name} - Chronic {chronic_name}")
+        # fig.suptitle(f"{case_name} - Chronic {chronic_name}")
 
         if save_dir:
             file_name = f"agents-chronic-" + "{:05}".format(chronic_idx) + "-"
@@ -198,7 +200,7 @@ class ExperimentPerformance(ExperimentBase):
         ax.set_ylabel(r"Relative flow $\rho$")
         ax.legend()
         ax.set_ylim([0.0, 2.0])
-        fig.suptitle(f"{case_name} - Chronic {chronic_name}")
+        # fig.suptitle(f"{case_name} - Chronic {chronic_name}")
 
         if save_dir:
             file_name = f"agents-chronic-" + "{:05}".format(chronic_idx) + "-"
@@ -225,9 +227,9 @@ class ExperimentPerformance(ExperimentBase):
                 chronic_name = agent_data[chronic_idx]["chronic_name"]
 
                 ax.set_xlabel("Time step t")
-                ax.set_ylabel(r"Relative flow $\rho$")
+                ax.set_ylabel(r"$\rho$")
                 ax.set_ylim(bottom=0)
-                fig.suptitle(f"{case_name} - Chronic {chronic_name}")
+                # fig.suptitle(f"{case_name} - Chronic {chronic_name}")
 
                 if save_dir:
                     file_name = (
@@ -265,7 +267,9 @@ class ExperimentPerformance(ExperimentBase):
             ax.set_xlabel("Time step t")
             ax.set_ylabel(ylabel)
             ax.legend()
-            fig.suptitle(f"{case_name} - Chronic {chronic_name}")
+            # fig.suptitle(f"{case_name} - Chronic {chronic_name}")
+
+            ax.set_xlim(left=-10, right=500)
 
             if save_dir:
                 file_name = f"agents-chronic-" + "{:05}".format(chronic_idx) + "-"
@@ -314,14 +318,16 @@ class ExperimentPerformance(ExperimentBase):
         if len(chronic_indices_all) < 25:
             # ax.scatter(chronic_lengths_all, x_all, marker="|", c="black")
             ax.set_yticks(x_all)
+
+            chronic_names_all = [str(i + 1) for i in range(len(chronic_names_all))]
             ax.set_yticklabels(chronic_names_all)
 
         ax.invert_yaxis()
         ax.legend()
 
-        ax.set_ylabel("Chronic")
-        ax.set_xlabel("Chronic duration")
-        fig.suptitle(f"{case_name} - Chronic durations")
+        ax.set_ylabel("Scenario")
+        ax.set_xlabel("Duration")
+        # fig.suptitle(f"{case_name} - Chronic durations")
 
         if save_dir:
             file_name = f"_agents-chronics-"
@@ -364,14 +370,20 @@ class ExperimentPerformance(ExperimentBase):
                 color=color,
             )
 
-        ax.set_yticks(x_all)
+        if len(chronic_indices_all) < 25:
+            # ax.scatter(chronic_lengths_all, x_all, marker="|", c="black")
+            ax.set_yticks(x_all)
+
+            chronic_names_all = [str(i + 1) for i in range(len(chronic_names_all))]
+            ax.set_yticklabels(chronic_names_all)
+
         ax.set_yticklabels(chronic_names_all)
         ax.invert_yaxis()
         ax.legend()
 
-        ax.set_ylabel("Chronic")
-        ax.set_xlabel("Chronic return")
-        fig.suptitle(f"{case_name} - Chronic returns")
+        ax.set_ylabel("Scenario")
+        ax.set_xlabel("Return")
+        # fig.suptitle(f"{case_name} - Chronic returns")
 
         if save_dir:
             file_name = f"_agents-chronics-"
@@ -406,11 +418,12 @@ class ExperimentPerformance(ExperimentBase):
             rhos = pd.DataFrame(rhos[:, max_ids], columns=max_ids.astype(str))
 
             fig, ax = plt.subplots(figsize=Const.FIG_SIZE)
-            sns.histplot(data=rhos, ax=ax)
+            # sns.histplot(data=rhos, ax=ax)
+            sns.kdeplot(data=rhos, ax=ax)
             ax.set_xlabel(r"$\rho$")
-            ax.set_ylabel(r"Density")
+            ax.set_ylabel(r"PDF")
             ax.set_xlim([0.0, 2.0])
-            fig.suptitle(f"{case_name} - {agent_name}")
+            # fig.suptitle(f"{case_name} - {agent_name}")
 
             if save_dir:
                 file_name = f"_{agent_name}-chronics-"

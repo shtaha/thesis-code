@@ -172,7 +172,7 @@ def analyse_actions(actions, case, agent_name, save_dir=None):
         discrete=True,
         ax=ax,
         shrink=0.8,
-        stat="probability",
+        # stat="probability",
         multiple="dodge",
         alpha=1.0,
     )
@@ -196,11 +196,11 @@ def analyse_actions(actions, case, agent_name, save_dir=None):
             ref_topo = False
             if len(counts.index) > 3:
                 fig, ax = plt.subplots(figsize=Const.FIG_SIZE)
-                ax.set_title(
-                    r"Action target topologies at substation $s_{}$".format(
-                        "{" + str(sub_id + 1) + "}"
-                    )
-                )
+                # ax.set_title(
+                #     r"Action target topologies at substation $s_{}$".format(
+                #         "{" + str(sub_id + 1) + "}"
+                #     )
+                # )
                 for c, count in enumerate(counts):
                     if all(
                         [
@@ -307,9 +307,11 @@ def analyse_loading(obses, case, agent_name, save_dir=None):
             )
 
         fig, ax = plt.subplots(figsize=Const.FIG_SIZE)
-        sns.histplot(data=rhos[:, line_id], ax=ax)
+        # sns.histplot(data=rhos[:, line_id], ax=ax)
+        sns.kdeplot(data=rhos[:, line_id], ax=ax)
         ax.set_xlabel(r"$\rho$")
-        ax.set_ylabel(r"Count")
+        # ax.set_ylabel(r"Count")
+        ax.set_ylabel("PDF")
         ax.set_xlim(left=0.0, right=1.5)
         ax.set_title(f"Line {line_id}")
         # fig.suptitle(f"{case.name} - {agent_name}")
@@ -329,7 +331,7 @@ def analyse_topologies(obses, case, agent_name, save_dir=None):
     counts = Counter(topo_str)
     fig, ax = plt.subplots(figsize=Const.FIG_SIZE)
 
-    ax.set_title("Grid topologies")
+    # ax.set_title("Grid topologies")
 
     ticks = []
     labels = []
@@ -358,9 +360,9 @@ def analyse_topologies(obses, case, agent_name, save_dir=None):
 
         if len(counts) > 4:
             fig, ax = plt.subplots(figsize=Const.FIG_SIZE)
-            ax.set_title(
-                r"Substation $s_{}$ topologies".format("{" + str(sub_id + 1) + "}")
-            )
+            # ax.set_title(
+            #     r"Substation $s_{}$ topologies".format("{" + str(sub_id + 1) + "}")
+            # )
 
             ticks = []
             labels = []
