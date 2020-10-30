@@ -278,7 +278,7 @@ class ExperimentPerformance(ExperimentBase):
 
     @staticmethod
     def _plot_durations(chronic_data, chronic_indices_all, case_name, save_dir=None):
-        fig, ax = plt.subplots(figsize=Const.FIG_SIZE)
+        fig, ax = plt.subplots(figsize=(8, 10))
         width = 0.3 / len(chronic_data.keys())
 
         x_all = np.arange(len(chronic_indices_all))
@@ -336,7 +336,7 @@ class ExperimentPerformance(ExperimentBase):
 
     @staticmethod
     def _plot_returns(chronic_data, chronic_indices_all, case_name, save_dir=None):
-        fig, ax = plt.subplots(figsize=Const.FIG_SIZE)
+        fig, ax = plt.subplots(figsize=(8, 10))
         width = 0.3 / len(chronic_data.keys())
 
         x_all = np.arange(len(chronic_indices_all))
@@ -435,12 +435,14 @@ class ExperimentPerformance(ExperimentBase):
         rhos, case_name, agent_name, chronic_idx, save_dir=None
     ):
         fig, ax = plt.subplots(figsize=Const.FIG_SIZE)
-        sns.histplot(data=rhos, ax=ax)
+        # sns.histplot(data=rhos, ax=ax)
+        sns.kdeplot(data=rhos, ax=ax)
         ax.set_xlabel(r"$\rho$")
-        ax.set_ylabel(r"Counts")
+        # ax.set_ylabel(r"Counts")
+        ax.set_ylabel("PDF")
         ax.set_xlim([0.0, 2.0])
-        ax.set_title(f"Chronic {chronic_idx}")
-        fig.suptitle(f"{case_name} - {agent_name}")
+        # ax.set_title(f"Chronic {chronic_idx}")
+        # fig.suptitle(f"{case_name} - {agent_name}")
 
         if save_dir:
             file_name = f"{agent_name}-chronic-" + "{:05}".format(chronic_idx) + "-"
