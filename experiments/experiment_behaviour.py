@@ -116,9 +116,9 @@ class ExperimentBehaviour(ExperimentBase):
         ax_env.legend()
         ax_est.legend()
         ax_dist.legend()
-        fig_env.suptitle("Agent Comparison - Reward ENV")
-        fig_est.suptitle("Agent Comparison - Reward EST")
-        fig_dist.suptitle("Agent Comparison - Distance to reference topology")
+        # fig_env.suptitle("Agent Comparison - Reward ENV")
+        # fig_est.suptitle("Agent Comparison - Reward EST")
+        # fig_dist.suptitle("Agent Comparison - Distance to reference topology")
 
         if save_dir:
             file_name = "agents-"
@@ -227,7 +227,7 @@ class ExperimentBehaviour(ExperimentBase):
         ax.set_xlabel("Time step t")
         ax.set_ylabel("Unitary action distance to reference topology")
         ax.legend()
-        fig.suptitle(title)
+        # fig.suptitle(title)
         fig.tight_layout()
         if save_dir:
             file_name = "distance"
@@ -279,7 +279,7 @@ class ExperimentBehaviour(ExperimentBase):
 
         ax.set_xlabel("Time step t")
         ax.set_ylabel("P [p.u.]")
-        fig.suptitle(title)
+        # fig.suptitle(title)
         if env.n_gen < 3:
             ax.legend()
         fig.tight_layout()
@@ -305,7 +305,7 @@ class ExperimentBehaviour(ExperimentBase):
 
         ax.set_xlabel("Time step t")
         ax.set_ylabel("Q [p.u.]")
-        fig.suptitle(title)
+        # fig.suptitle(title)
         if env.n_gen < 3:
             ax.legend()
         fig.tight_layout()
@@ -331,7 +331,7 @@ class ExperimentBehaviour(ExperimentBase):
 
         ax.set_xlabel("Time step t")
         ax.set_ylabel("Q/P [p.u.]")
-        fig.suptitle(title)
+        # fig.suptitle(title)
         if env.n_gen < 3:
             ax.legend()
         fig.tight_layout()
@@ -365,7 +365,7 @@ class ExperimentBehaviour(ExperimentBase):
 
         ax.set_xlabel("Time step t")
         ax.set_ylabel("P [p.u.]")
-        fig.suptitle(title)
+        # fig.suptitle(title)
         fig.tight_layout()
         if save_dir:
             file_name = "power-flows"
@@ -397,7 +397,7 @@ class ExperimentBehaviour(ExperimentBase):
 
         ax.set_xlabel("Time step t")
         ax.set_ylabel(r"$\rho$ [p.u.]")
-        fig.suptitle(title)
+        # fig.suptitle(title)
         fig.tight_layout()
         if save_dir:
             file_name = "rhos"
@@ -426,7 +426,7 @@ class ExperimentBehaviour(ExperimentBase):
         ax.set_ylabel("P [p.u.]")
         ax.set_ylim(bottom=0.0)
         ax.legend()
-        fig.suptitle(title)
+        # fig.suptitle(title)
         fig.tight_layout()
         if save_dir:
             file_name = "production-demand"

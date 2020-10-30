@@ -30,7 +30,7 @@ for case_name in [
     if "l2rpn_wcci_2020" in case_name:
         n_steps = 100
     else:
-        n_steps = 1000
+        n_steps = 500
         # n_steps = 10
 
     case_save_dir = make_dir(os.path.join(save_dir, f"{case_name}-{env_pf(env_dc)}"))
@@ -43,10 +43,10 @@ for case_name in [
     case = load_case(case_name, env_parameters=parameters)
 
     for agent_name in [
-        "agent-mip",
+        # "agent-mip",
         # "agent-mip-l2rpn",
         # "agent-mip-q",
-        # "agent-multistep-mip",
+        "agent-multistep-mip",
     ]:
         """
             Initialize agent.

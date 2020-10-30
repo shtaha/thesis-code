@@ -44,6 +44,7 @@ class ExperimentDCOPFTiming(ExperimentBase):
         )
 
         data_parts = data_dict["gurobi"]
+        print(np.min(data_parts["solve"]), np.max(data_parts["solve"]), np.mean(data_parts["solve"]))
         self._plot_and_save(
             times=[data_parts[part] for part in ["build", "solve"]],
             labels=[part.capitalize() for part in ["build", "solve"]],
