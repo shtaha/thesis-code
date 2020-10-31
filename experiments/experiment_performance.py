@@ -171,7 +171,7 @@ class ExperimentPerformance(ExperimentBase):
         ax.set_ylabel("Reward")
         ax.legend()
         # fig.suptitle(f"{case_name} - Chronic {chronic_name}")
-
+        fig.tight_layout()
         if save_dir:
             file_name = f"agents-chronic-" + "{:05}".format(chronic_idx) + "-"
             fig.savefig(os.path.join(save_dir, file_name + "rewards"))
@@ -201,7 +201,7 @@ class ExperimentPerformance(ExperimentBase):
         ax.legend()
         ax.set_ylim([0.0, 2.0])
         # fig.suptitle(f"{case_name} - Chronic {chronic_name}")
-
+        fig.tight_layout()
         if save_dir:
             file_name = f"agents-chronic-" + "{:05}".format(chronic_idx) + "-"
             fig.savefig(os.path.join(save_dir, file_name + "rhos"))
@@ -230,7 +230,7 @@ class ExperimentPerformance(ExperimentBase):
                 ax.set_ylabel(r"$\rho$")
                 ax.set_ylim(bottom=0)
                 # fig.suptitle(f"{case_name} - Chronic {chronic_name}")
-
+                fig.tight_layout()
                 if save_dir:
                     file_name = (
                         f"{agent_name}-chronic-" + "{:05}".format(chronic_idx) + "-"
@@ -270,7 +270,7 @@ class ExperimentPerformance(ExperimentBase):
             # fig.suptitle(f"{case_name} - Chronic {chronic_name}")
 
             ax.set_xlim(left=-10, right=500)
-
+            fig.tight_layout()
             if save_dir:
                 file_name = f"agents-chronic-" + "{:05}".format(chronic_idx) + "-"
                 fig.savefig(os.path.join(save_dir, file_name + dist))
@@ -278,7 +278,7 @@ class ExperimentPerformance(ExperimentBase):
 
     @staticmethod
     def _plot_durations(chronic_data, chronic_indices_all, case_name, save_dir=None):
-        fig, ax = plt.subplots(figsize=(8, 10))
+        fig, ax = plt.subplots(figsize=(8, 8))
         width = 0.3 / len(chronic_data.keys())
 
         x_all = np.arange(len(chronic_indices_all))
@@ -329,6 +329,7 @@ class ExperimentPerformance(ExperimentBase):
         ax.set_xlabel("Duration")
         # fig.suptitle(f"{case_name} - Chronic durations")
 
+        fig.tight_layout()
         if save_dir:
             file_name = f"_agents-chronics-"
             fig.savefig(os.path.join(save_dir, file_name + "durations"))
@@ -336,7 +337,7 @@ class ExperimentPerformance(ExperimentBase):
 
     @staticmethod
     def _plot_returns(chronic_data, chronic_indices_all, case_name, save_dir=None):
-        fig, ax = plt.subplots(figsize=(8, 10))
+        fig, ax = plt.subplots(figsize=(8, 8))
         width = 0.3 / len(chronic_data.keys())
 
         x_all = np.arange(len(chronic_indices_all))
@@ -384,6 +385,7 @@ class ExperimentPerformance(ExperimentBase):
         ax.set_ylabel("Scenario")
         ax.set_xlabel("Return")
         # fig.suptitle(f"{case_name} - Chronic returns")
+        fig.tight_layout()
 
         if save_dir:
             file_name = f"_agents-chronics-"
@@ -425,6 +427,7 @@ class ExperimentPerformance(ExperimentBase):
             ax.set_xlim([0.0, 2.0])
             # fig.suptitle(f"{case_name} - {agent_name}")
 
+            fig.tight_layout()
             if save_dir:
                 file_name = f"_{agent_name}-chronics-"
                 fig.savefig(os.path.join(save_dir, file_name + "dist-all-loading"))
@@ -444,6 +447,7 @@ class ExperimentPerformance(ExperimentBase):
         # ax.set_title(f"Chronic {chronic_idx}")
         # fig.suptitle(f"{case_name} - {agent_name}")
 
+        fig.tight_layout()
         if save_dir:
             file_name = f"{agent_name}-chronic-" + "{:05}".format(chronic_idx) + "-"
             fig.savefig(os.path.join(save_dir, file_name + "dist-loading"))
