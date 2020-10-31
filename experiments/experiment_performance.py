@@ -36,7 +36,7 @@ class ExperimentPerformance(ExperimentBase):
             verbose=verbose,
         )
 
-    def compare_agents(self, case, save_dir=None, delete_file=True):
+    def compare_agents(self, case, save_dir=None, plot=True, delete_file=True):
         case_name = self._get_case_name(case)
         chronic_data = dict()
 
@@ -56,28 +56,29 @@ class ExperimentPerformance(ExperimentBase):
 
         chronic_indices_all = np.unique(chronic_indices_all).tolist()
 
-        for chronic_idx in chronic_indices_all:
-            self._plot_rewards(chronic_data, case_name, chronic_idx, save_dir)
+        if plot:
+            for chronic_idx in chronic_indices_all:
+                self._plot_rewards(chronic_data, case_name, chronic_idx, save_dir)
 
-            self._plot_max_rho(chronic_data, case_name, chronic_idx, save_dir)
-            self._plot_line_loading(chronic_data, case_name, chronic_idx, save_dir)
+                self._plot_max_rho(chronic_data, case_name, chronic_idx, save_dir)
+                self._plot_line_loading(chronic_data, case_name, chronic_idx, save_dir)
 
-            for dist, ylabel in [
-                ("distances", r"$d(\tau, \tau^\mathrm{ref})$"),
-                ("distances_line", r"$d_\mathcal{P}(\tau, \tau^\mathrm{ref})$"),
-                ("distances_sub", r"$d_\mathcal{S}(\tau, \tau^\mathrm{ref})$"),
-            ]:
-                self._plot_distances(
-                    chronic_data, dist, ylabel, case_name, chronic_idx, save_dir,
-                )
+                for dist, ylabel in [
+                    ("distances", r"$d(\tau, \tau^\mathrm{ref})$"),
+                    ("distances_line", r"$d_\mathcal{P}(\tau, \tau^\mathrm{ref})$"),
+                    ("distances_sub", r"$d_\mathcal{S}(\tau, \tau^\mathrm{ref})$"),
+                ]:
+                    self._plot_distances(
+                        chronic_data, dist, ylabel, case_name, chronic_idx, save_dir,
+                    )
 
-        self._plot_durations(chronic_data, chronic_indices_all, case_name, save_dir)
+            self._plot_durations(chronic_data, chronic_indices_all, case_name, save_dir)
 
-        self._plot_returns(chronic_data, chronic_indices_all, case_name, save_dir)
+            self._plot_returns(chronic_data, chronic_indices_all, case_name, save_dir)
 
-        self._plot_loading_distribution(chronic_data, case_name, save_dir)
+            self._plot_loading_distribution(chronic_data, case_name, save_dir)
 
-        self.aggregate_by_chronics(save_dir, delete_file=delete_file)
+            self.aggregate_by_chronics(save_dir, delete_file=delete_file)
 
         return chronic_data
 
