@@ -105,36 +105,47 @@ def compute_weight_bias(y):
 
 
 def plot_metric_group(training, metric_names, y_train, y_val, save_dir=None):
-    fig, axes = plt.subplots(ncols=len(metric_names), figsize=(12, 4))
+    fig, axes = plt.subplots(ncols=len(metric_names), figsize=(Const.FIG_SIZE[0] * len(metric_names), Const.FIG_SIZE[1]))
     for i, metric in enumerate(metric_names):
-        ax = axes[i]
+        if len(metric_names) == 1:
+            ax = axes
+        else:
+            ax = axes[i]
 
         epochs = training.epoch
         train_metric = training.history[metric]
         val_metric = training.history["val_" + metric]
 
         if metric == "fn":
-            metric = "fnr"
             train_n_pos = np.sum(np.equal(y_train, 1))
             val_n_pos = np.sum(np.equal(y_val, 1))
 
             train_metric = np.divide(train_metric, train_n_pos)
             val_metric = np.divide(val_metric, val_n_pos)
         elif metric == "fp":
-            metric = "fpr"
             train_n_neg = np.sum(np.equal(y_train, 0))
             val_n_neg = np.sum(np.equal(y_val, 0))
 
             train_metric = np.divide(train_metric, train_n_neg)
             val_metric = np.divide(val_metric, val_n_neg)
 
-        name = metric.replace("_", " ").upper()
         ax.plot(epochs, train_metric, label="Training", lw=0.5)
         ax.plot(epochs, val_metric, label="Validation", lw=0.5)
         ax.set_xlabel("Epoch")
 
-        # ax.set_ylabel(name)
-        ax.set_title(name)
+        names = {
+            "accuracy": "Accuracy",
+            "auc": "AUC",
+            "mcc": "MCC",
+            "fp": "FPR",
+            "fn": "FNR",
+            "recall": "Recall",
+            "precision": "Precision",
+        }
+        name = names[metric]
+
+        ax.set_ylabel(name)
+        # ax.set_title(name)
 
         if metric == "mcc":
             # ax.set_ylim([-1.0, 1.0])
@@ -144,6 +155,7 @@ def plot_metric_group(training, metric_names, y_train, y_val, save_dir=None):
 
         ax.legend()
 
+    fig.tight_layout()
     if save_dir:
         fig.savefig(os.path.join(save_dir, "training-" + "-".join(metric_names)))
 
@@ -154,19 +166,33 @@ def plot_metrics(training, y_train, y_val, save_dir=None):
     ax.plot(training.epoch, training.history["val_loss"], label="Validation", lw=0.5)
     ax.set_xlabel("Epoch")
     ax.set_ylabel("Loss")
-    ax.set_yscale("log")
     ax.legend()
 
+    fig.tight_layout()
     if save_dir:
         fig.savefig(os.path.join(save_dir, "training-loss"))
 
-    plot_metric_group(
-        training, ["accuracy", "mcc", "auc"], y_train, y_val, save_dir=save_dir
-    )
-    plot_metric_group(
-        training, ["precision", "recall"], y_train, y_val, save_dir=save_dir
-    )
-    plot_metric_group(training, ["fp", "fn"], y_train, y_val, save_dir=save_dir)
+    fig, ax = plt.subplots(figsize=Const.FIG_SIZE)
+    ax.plot(training.epoch, training.history["loss"], label="Training", lw=0.5)
+    ax.plot(training.epoch, training.history["val_loss"], label="Validation", lw=0.5)
+    ax.set_xlabel("Epoch")
+    ax.set_ylabel("Loss")
+    ax.legend()
+
+    ax.set_yscale("log")
+    fig.tight_layout()
+    if save_dir:
+        fig.savefig(os.path.join(save_dir, "training-log-loss"))
+
+    plot_metric_group(training, ["accuracy"], y_train, y_val, save_dir=save_dir)
+    plot_metric_group(training, ["mcc"], y_train, y_val, save_dir=save_dir)
+    plot_metric_group(training, ["auc"], y_train, y_val, save_dir=save_dir)
+
+    plot_metric_group(training, ["precision"], y_train, y_val, save_dir=save_dir)
+    plot_metric_group(training, ["recall"], y_train, y_val, save_dir=save_dir)
+
+    plot_metric_group(training, ["fp"], y_train, y_val, save_dir=save_dir)
+    plot_metric_group(training, ["fn"], y_train, y_val, save_dir=save_dir)
 
 
 def plot_cm(labels, predictions, name, p=0.5, save_dir=None):
@@ -179,21 +205,23 @@ def plot_cm(labels, predictions, name, p=0.5, save_dir=None):
     ax.set_ylabel("Actual label")
     ax.set_xlabel("Predicted label")
 
+    fig.tight_layout()
     if save_dir:
         fig.savefig(os.path.join(save_dir, f"{name.lower()}-cm"))
 
 
 def plot_roc(triplets, save_dir=None):
-    fig, ax = plt.subplots(figsize=(16, 5))
+    fig, ax = plt.subplots(figsize=Const.FIG_SIZE)
     for label, Y, Y_pred in triplets:
         fp, tp, _ = roc_curve(Y, Y_pred)
         ax.plot(fp, tp, label=label, lw=2)
 
-    ax.set_xlabel("False positives")
-    ax.set_ylabel("True positives")
+    ax.set_xlabel("FPR")
+    ax.set_ylabel("TPR")
     ax.grid(True)
     ax.legend(loc="lower right")
 
+    fig.tight_layout()
     if save_dir:
         fig.savefig(os.path.join(save_dir, "roc"))
 
@@ -202,6 +230,9 @@ def describe_results(metrics, results, y, name=None):
     pprint("\n    - Dataset", name)
 
     for metric, value in zip(metrics, results):
+        if metric in ["recall", "precision", "auc"]:
+            continue
+
         if metric in ["tp", "fn", "tn", "fp"]:
             if metric in ["tp", "fn"]:
                 c = 1

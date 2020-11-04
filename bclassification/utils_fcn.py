@@ -150,7 +150,7 @@ def create_dataset(
     case,
     collector,
     input_mode,
-    label_mode="action-dn",
+    label_mode="dn",
     n_window_targets=0,
     n_window_history=0,
     downsampling_rate=None,
