@@ -336,6 +336,9 @@ def analyse_topologies(obses, case, agent_name, save_dir=None):
     ticks = []
     labels = []
     for i, (topo, count) in enumerate(counts.most_common(25)):
+        if i < 2:
+            print(topo, count)
+
         if np.equal(np.array(topo.split(sep_str)).astype(int), 1).all():
             color = "tab:red"
         else:
@@ -345,7 +348,9 @@ def analyse_topologies(obses, case, agent_name, save_dir=None):
         ticks.append(i)
         labels.append(topo)
 
-    plt.xticks(ticks, labels, rotation=90)
+    # plt.xticks(ticks, labels, rotation=90)
+    labels = np.array(ticks).astype(str)
+    plt.xticks(ticks, labels)
     plt.tight_layout()
     if save_dir:
         fig.savefig(os.path.join(save_dir, agent_name + f"-topo"))

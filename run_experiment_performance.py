@@ -12,7 +12,7 @@ from lib.visualizer import Visualizer
 
 visualizer = Visualizer()
 
-save_dir = make_dir(os.path.join(Const.RESULTS_DIR, "performance-aug-nf"))
+save_dir = make_dir(os.path.join(Const.RESULTS_DIR, "performance-aug-f"))
 
 env_dc = True
 verbose = False
@@ -22,11 +22,11 @@ kwargs = dict(horizon=2, forecasts=False)
 # kwargs = dict(horizon=2, con_unitary_action=True)
 
 for case_name in [
-    "rte_case5_example",
-    "rte_case5_example_art",
-    "l2rpn_2019",
+    # "rte_case5_example",
+    # "rte_case5_example_art",
+    # "l2rpn_2019",
     "l2rpn_2019_art",
-    "l2rpn_wcci_2020",
+    # "l2rpn_wcci_2020",
 ]:
     if "l2rpn_2019_art" not in case_name:
         continue
@@ -56,11 +56,13 @@ for case_name in [
             if "_art" not in case_name:
                 # do_chronics = [0, 10, 100, 196, 200, 201, 206, 226, 259, 375, 384, 491]
                 # do_chronics.extend(np.random.randint(0, 1000, 500).tolist())
-                do_chronics = np.random.randint(0, 1000, 15).tolist()
+                # do_chronics = np.random.randint(0, 1000, 15).tolist()
+
+                do_chronics = np.random.randint(0, 1000, 50).tolist()
             else:
-                # do_chronics = np.arange(0, 151).tolist()
+                do_chronics = np.arange(0, 151).tolist()
                 # do_chronics = [18, 19, 20, 21, 22]
-                do_chronics = np.arange(0, 35).tolist()
+                # do_chronics = np.arange(0, 35).tolist()
         else:
             do_chronics = [*np.arange(0, 2880, 240), *(np.arange(0, 2880, 240) + 1)]
 
@@ -72,13 +74,13 @@ for case_name in [
         """
             Experiments.
         """
-        experiment_performance.analyse(
-            case=case,
-            agent=agent,
-            do_chronics=do_chronics,
-            n_chronics=5,
-            n_steps=-1,
-            verbose=verbose,
-        )
+        # experiment_performance.analyse(
+        #     case=case,
+        #     agent=agent,
+        #     do_chronics=do_chronics,
+        #     n_chronics=-1,
+        #     n_steps=-1,
+        #     verbose=verbose,
+        # )
 
     experiment_performance.compare_agents(case, save_dir=case_save_dir)
