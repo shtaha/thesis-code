@@ -54,7 +54,7 @@ class CaseParameters(Parameters):
                 "ALLOW_DISPATCH_GEN_SWITCH_OFF": True,
                 "NB_TIMESTEP_OVERFLOW_ALLOWED": 3,
                 "NB_TIMESTEP_RECONNECTION": 12,
-                "HARD_OVERFLOW_THRESHOLD": 200.0,
+                "HARD_OVERFLOW_THRESHOLD": 2.0,
                 "ENV_DC": False,
                 "FORECAST_DC": False,
                 "MAX_SUB_CHANGED": 1,
@@ -63,7 +63,20 @@ class CaseParameters(Parameters):
                 "NB_TIMESTEP_COOLDOWN_SUB": 3,
             }
         else:
-            raise ValueError(f"Invalid case name. Case {case_name} does not exist.")
+            param_dict = {
+                "NO_OVERFLOW_DISCONNECTION": False,
+                "IGNORE_MIN_UP_DOWN_TIME": True,
+                "ALLOW_DISPATCH_GEN_SWITCH_OFF": True,
+                "NB_TIMESTEP_OVERFLOW_ALLOWED": 3,
+                "NB_TIMESTEP_RECONNECTION": 12,
+                "HARD_OVERFLOW_THRESHOLD": 2.0,
+                "ENV_DC": False,
+                "FORECAST_DC": False,
+                "MAX_SUB_CHANGED": 1,
+                "MAX_LINE_STATUS_CHANGED": 1,
+                "NB_TIMESTEP_COOLDOWN_LINE": 3,
+                "NB_TIMESTEP_COOLDOWN_SUB": 3,
+            }
 
         return param_dict
 
@@ -77,8 +90,8 @@ class SolverParameters(AbstractParameters):
     def __init__(
         self, solver_name="gurobi", tol=0.0001, warm_start=False, time_limit=5,
     ):
-        #if sys.platform != "win32":
-            #solver_name = "glpk"
+        if sys.platform != "win32":
+            solver_name = "glpk"
 
         self.solver_name = solver_name
         self.tol = tol
