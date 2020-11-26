@@ -88,7 +88,7 @@ class AbstractParameters(ABC):
 
 class SolverParameters(AbstractParameters):
     def __init__(
-        self, solver_name="gurobi", tol=0.0001, warm_start=False, time_limit=5,
+        self, solver_name="gurobi", tol=0.0001, warm_start=False, time_limit=10,
     ):
         if sys.platform != "win32":
             solver_name = "glpk"
