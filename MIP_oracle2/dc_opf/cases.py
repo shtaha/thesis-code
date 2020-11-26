@@ -11,6 +11,8 @@ from MIP_oracle2.action_space import ActionSpaceGenerator
 from MIP_oracle2.constants import Constants as Const
 from MIP_oracle2.visualizer import describe_environment
 from .unit_converter import UnitConverter
+from lightsim2grid.LightSimBackend import LightSimBackend
+
 
 
 def load_case(case_name, env_parameters=None, verbose=False):
@@ -73,7 +75,7 @@ class OPFCaseMixin:
         if parameters:
             env: Environment = grid2op.make_from_dataset_path(
                 dataset_path=os.path.join(Const.DATASET_DIR, case_name),
-                backend=grid2op.Backend.PandaPowerBackend(),
+                backend=LightSimBackend(),
                 action_class=grid2op.Action.TopologyAction,
                 observation_class=grid2op.Observation.CompleteObservation,
                 reward_class=grid2op.Reward.L2RPNReward,
