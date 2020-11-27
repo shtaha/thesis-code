@@ -88,10 +88,10 @@ class AbstractParameters(ABC):
 
 class SolverParameters(AbstractParameters):
     def __init__(
-        self, solver_name="gurobi", tol=0.0001, warm_start=False, time_limit=10,
+        self, solver_name="gurobi", tol=0.0001, warm_start=False, time_limit=60,
     ):
-        if sys.platform != "win32":
-            solver_name = "glpk"
+        #if sys.platform != "win32":
+            #solver_name = "glpk"
 
         self.solver_name = solver_name
         self.tol = tol
@@ -112,7 +112,7 @@ class LineSwitchingParameters(StandardParameters):
         big_m=True,
         gen_cost=True,
         line_margin=True,
-        time_limit=7,
+        time_limit=60,
         **kwargs,
     ):
         StandardParameters.__init__(self, time_limit=time_limit, **kwargs)
@@ -150,7 +150,7 @@ class SinglestepTopologyParameters(StandardParameters):
         obj_lin_gen_penalty=True,
         obj_quad_gen_penalty=False,
         obj_lambda_action=0.0,
-        time_limit=7,
+        time_limit=60,
         **kwargs,
     ):
         StandardParameters.__init__(self, time_limit=time_limit, **kwargs)
@@ -191,7 +191,7 @@ class MultistepTopologyParameters(SinglestepTopologyParameters):
         self,
         horizon=2,
         con_allow_onesided_disconnection=False,
-        time_limit=20,
+        time_limit=90,
         **kwargs,
     ):
         SinglestepTopologyParameters.__init__(
